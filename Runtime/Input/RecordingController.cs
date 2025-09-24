@@ -17,12 +17,16 @@ namespace SimulationCrew.AIBridge.Input
         /// <summary>
         /// Fired when user starts speaking (regardless of PTT or VAD)
         /// </summary>
+#pragma warning disable 0067 // Event is never used - Available for external scripts
         public event Action OnUserStartedSpeaking;
+#pragma warning restore 0067
 
         /// <summary>
         /// Fired when user stops speaking (after all offsets/delays)
         /// </summary>
+#pragma warning disable 0067 // Event is never used - Available for external scripts
         public event Action OnUserStoppedSpeaking;
+#pragma warning restore 0067
 
         #endregion
 

@@ -115,7 +115,6 @@ namespace SimulationCrew.AIBridge.WebSocket
 
         [Header("Connection Settings")]
         [SerializeField] private bool preEstablishConnection = true;
-        [SerializeField] private float preConnectionDelay = 0.5f;
         [SerializeField] private bool sendWakeUpCall = true;
 
         [Header("Debug Settings")]
@@ -311,9 +310,13 @@ namespace SimulationCrew.AIBridge.WebSocket
         /// </summary>
         public async Task SendBinaryAsync(byte[] audioData)
         {
-            if (_webSocket == null || !_webSocket.IsConnected)
+            // Ensure connection before sending - auto-reconnect if needed
+            if (enableVerboseLogging && (_webSocket == null || !_webSocket.IsConnected))
+                Debug.Log("[UnifiedWebSocket] Connection lost - auto-reconnecting for SendBinaryAsync...");
+
+            if (!await EnsureConnectionAsync(CancellationToken.None))
             {
-                Debug.LogError("[UnifiedWebSocket] Cannot send audio - not connected!");
+                Debug.LogError("[UnifiedWebSocket] Cannot send audio - failed to establish connection!");
                 return;
             }
 
@@ -325,9 +328,13 @@ namespace SimulationCrew.AIBridge.WebSocket
         /// </summary>
         public async Task SendEndOfSpeechAsync(string requestId)
         {
-            if (_webSocket == null || !_webSocket.IsConnected)
+            // Ensure connection before sending - auto-reconnect if needed
+            if (enableVerboseLogging && (_webSocket == null || !_webSocket.IsConnected))
+                Debug.Log($"[UnifiedWebSocket] Connection lost - auto-reconnecting for SendEndOfSpeechAsync (RequestId: {requestId})...");
+
+            if (!await EnsureConnectionAsync(CancellationToken.None))
             {
-                Debug.LogError("[UnifiedWebSocket] Cannot send EndOfSpeech - not connected!");
+                Debug.LogError("[UnifiedWebSocket] Cannot send EndOfSpeech - failed to establish connection!");
                 return;
             }
 
@@ -345,9 +352,13 @@ namespace SimulationCrew.AIBridge.WebSocket
         /// </summary>
         public async Task SendEndOfAudioAsync(string requestId)
         {
-            if (_webSocket == null || !_webSocket.IsConnected)
+            // Ensure connection before sending - auto-reconnect if needed
+            if (enableVerboseLogging && (_webSocket == null || !_webSocket.IsConnected))
+                Debug.Log($"[UnifiedWebSocket] Connection lost - auto-reconnecting for SendEndOfAudioAsync (RequestId: {requestId})...");
+
+            if (!await EnsureConnectionAsync(CancellationToken.None))
             {
-                Debug.LogError("[UnifiedWebSocket] Cannot send EndOfAudio - not connected!");
+                Debug.LogError("[UnifiedWebSocket] Cannot send EndOfAudio - failed to establish connection!");
                 return;
             }
 
@@ -830,7 +841,6 @@ namespace SimulationCrew.AIBridge.WebSocket
         /// </summary>
         private System.Collections.IEnumerator PreEstablishConnection()
         {
-            yield return new WaitForSeconds(preConnectionDelay);
 
             if (enableVerboseLogging)
                 Debug.Log("[UnifiedWebSocket] Pre-establishing WebSocket connection...");
