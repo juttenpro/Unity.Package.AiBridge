@@ -1,0 +1,17 @@
+{
+    "name": "SimulationCrew.AIBridge",
+    "rootNamespace": "SimulationCrew.AIBridge",
+    "references": [
+        "endel.nativewebsocket",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

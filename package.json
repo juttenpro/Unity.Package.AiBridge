@@ -1,0 +1,41 @@
+{
+  "name": "com.simulationcrew.aibridge",
+  "version": "1.0.0",
+  "displayName": "TSC AI Bridge",
+  "description": "Core AI conversation and analysis system for Unity. Provides WebSocket-based communication with LLM services, audio streaming, and real-time conversation capabilities.",
+  "unity": "2022.3",
+  "unityRelease": "0f1",
+  "dependencies": {
+    "com.unity.modules.audio": "1.0.0",
+    "com.unity.modules.jsonserialize": "1.0.0",
+    "com.unity.modules.unitywebrequest": "1.0.0",
+    "com.endel.nativewebsocket": "1.1.4"
+  },
+  "keywords": [
+    "ai",
+    "conversation",
+    "llm",
+    "websocket",
+    "audio",
+    "streaming",
+    "tts",
+    "stt"
+  ],
+  "author": {
+    "name": "The Simulation Crew",
+    "email": "developers@simulationcrew.com",
+    "url": "https://thesimulationcrew.com/"
+  },
+  "samples": [
+    {
+      "displayName": "Basic Conversation",
+      "description": "Simple conversation setup example",
+      "path": "Samples~/BasicConversation"
+    },
+    {
+      "displayName": "Analysis Endpoint",
+      "description": "Example of using the analysis API",
+      "path": "Samples~/AnalysisExample"
+    }
+  ]
+}
