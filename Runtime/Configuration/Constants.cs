@@ -1,4 +1,4 @@
-﻿namespace SimulationCrew.AIBridge.Configuration
+namespace Tsc.AIBridge.Configuration
 {
     /// <summary>
     /// Central configuration for network and WebSocket constants

@@ -1,7 +1,7 @@
 using System;
-using SimulationCrew.AIBridge.Data;
+using Tsc.AIBridge.Data;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Interface for tracking latency metrics in the streaming pipeline

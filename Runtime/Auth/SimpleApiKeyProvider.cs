@@ -1,4 +1,4 @@
-namespace SimulationCrew.AIBridge.Auth
+namespace Tsc.AIBridge.Auth
 {
     /// <summary>
     /// Simple implementation of IApiKeyProvider that returns a hardcoded API key.

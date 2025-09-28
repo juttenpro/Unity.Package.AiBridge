@@ -1,8 +1,8 @@
-﻿using System.Collections;
-using SimulationCrew.AIBridge.Audio.Playback;
+using System.Collections;
+using Tsc.AIBridge.Audio.Playback;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Utils
+namespace Tsc.AIBridge.Utils
 {
     /// <summary>
     /// Utility class for finding StreamingAudioPlayer components in the scene.

@@ -1,4 +1,4 @@
-namespace SimulationCrew.AIBridge.Audio.Codecs
+namespace Tsc.AIBridge.Audio.Codecs
 {
     /// <summary>
     /// Simple packet structure for OGG/Opus data

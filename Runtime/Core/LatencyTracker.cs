@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using SimulationCrew.AIBridge.Data;
-using SimulationCrew.AIBridge.Messages;
+using Tsc.AIBridge.Data;
+using Tsc.AIBridge.Messages;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Tracks and reports comprehensive latency metrics for AI conversation pipeline.

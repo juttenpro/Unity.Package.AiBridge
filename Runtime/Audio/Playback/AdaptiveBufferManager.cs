@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Audio.Playback
+namespace Tsc.AIBridge.Audio.Playback
 {
     /// <summary>
     /// Centralized manager for adaptive audio buffering across all NPCs in the scene.
@@ -46,9 +46,14 @@ namespace SimulationCrew.AIBridge.Audio.Playback
 
         [Header("Buffer Configuration")]
         [SerializeField]
-        [Tooltip("Base buffer duration in seconds for excellent network conditions")]
-        [Range(0.05f, 0.5f)]
-        private float baseBufferDuration = 0.1f;
+        [Tooltip("Target buffer duration in seconds - the optimal value for balanced latency/stability")]
+        [Range(0.05f, 0.3f)]
+        private float targetBufferDuration = 0.1f;
+
+        [SerializeField]
+        [Tooltip("Minimum buffer duration in seconds - absolute floor for perfect network")]
+        [Range(0.03f, 0.1f)]
+        private float minBufferDuration = 0.05f;
 
         [SerializeField]
         [Tooltip("Maximum buffer duration in seconds for poor network conditions")]
@@ -163,13 +168,13 @@ namespace SimulationCrew.AIBridge.Audio.Playback
             // You may want to keep it per-scene instead
             // DontDestroyOnLoad(gameObject);
 
-            // Initialize with base buffer
-            _currentBufferDuration = baseBufferDuration;
-            _targetBufferDuration = baseBufferDuration;
+            // Initialize with target buffer
+            _currentBufferDuration = targetBufferDuration;
+            _targetBufferDuration = targetBufferDuration;
             _lastUpdateTime = Time.time;
 
             if(enableVerboseLogging)
-                Debug.Log($"[AdaptiveBufferManager] Initialized with base buffer: {baseBufferDuration:F3}s, max: {maxBufferDuration:F3}s");
+                Debug.Log($"[AdaptiveBufferManager] Initialized with target buffer: {targetBufferDuration:F3}s, max: {maxBufferDuration:F3}s");
         }
 
         private void Update()
@@ -289,12 +294,12 @@ namespace SimulationCrew.AIBridge.Audio.Playback
         }
 
         /// <summary>
-        /// Reset buffer to base settings
+        /// Reset buffer to target settings
         /// </summary>
         public void ResetBuffer()
         {
-            _currentBufferDuration = baseBufferDuration;
-            _targetBufferDuration = baseBufferDuration;
+            _currentBufferDuration = targetBufferDuration;
+            _targetBufferDuration = targetBufferDuration;
             _averageTtsLatencyMs = 0f;
             _measurementCount = 0;
             _worstCaseLatencyMs = 0f;
@@ -302,7 +307,7 @@ namespace SimulationCrew.AIBridge.Audio.Playback
 
             if (enableVerboseLogging)
             {
-                Debug.Log($"[AdaptiveBufferManager] Buffer reset to {baseBufferDuration:F3}s");
+                Debug.Log($"[AdaptiveBufferManager] Buffer reset to {targetBufferDuration:F3}s");
             }
         }
 
@@ -351,18 +356,18 @@ namespace SimulationCrew.AIBridge.Audio.Playback
             else if (latencyMs <= excellentThresholdMs)
                 multiplier *= 0.9f; // Slightly reduce buffer for excellent network
 
-            var buffer = baseBufferDuration * multiplier;
-            return Mathf.Clamp(buffer, baseBufferDuration, maxBufferDuration);
+            var buffer = targetBufferDuration * multiplier;
+            return Mathf.Clamp(buffer, minBufferDuration, maxBufferDuration);
         }
 
         private float CalculateBufferFromRtt(float rttMs)
         {
-            // Formula: base + (RTT * multiplier) + jitter margin
+            // Formula: target + (RTT * multiplier) + jitter margin
             const float rttMultiplier = 0.0015f; // 1.5ms buffer per 1ms RTT
             const float jitterMargin = 0.05f; // 50ms base jitter margin
 
-            var buffer = baseBufferDuration + (rttMs * rttMultiplier) + jitterMargin;
-            return Mathf.Clamp(buffer, baseBufferDuration, maxBufferDuration);
+            var buffer = targetBufferDuration + (rttMs * rttMultiplier) + jitterMargin;
+            return Mathf.Clamp(buffer, minBufferDuration, maxBufferDuration);
         }
 
         private void UpdateBufferSmooth()

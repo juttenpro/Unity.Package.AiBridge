@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Audio.Interruption
+namespace Tsc.AIBridge.Audio.Interruption
 {
     /// <summary>
     /// Core interruption detection logic - regular C# class for better performance.

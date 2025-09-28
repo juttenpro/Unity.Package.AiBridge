@@ -2,7 +2,7 @@ using System;
 using UnityEngine;
 using NativeWebSocket;
 
-namespace SimulationCrew.AIBridge.WebSocket
+namespace Tsc.AIBridge.WebSocket
 {
     /// <summary>
     /// Enhanced WebSocket wrapper that properly separates binary and text messages.

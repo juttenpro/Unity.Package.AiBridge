@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Complete conversation request containing all settings determined by RuleSystem.
@@ -13,7 +13,7 @@ namespace SimulationCrew.AIBridge.Core
 
         // Conversation content (determined by RuleSystem)
         public string SystemPrompt { get; set; }
-        public List<SimulationCrew.AIBridge.Messages.ChatMessage> Messages { get; set; }
+        public List<Tsc.AIBridge.Messages.ChatMessage> Messages { get; set; }
 
         // API Configuration (determined by RuleSystem per conversation)
         public string SttProvider { get; set; } = "google";

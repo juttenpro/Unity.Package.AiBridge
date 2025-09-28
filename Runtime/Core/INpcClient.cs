@@ -1,7 +1,7 @@
 using System.Collections.Generic;
-using SimulationCrew.AIBridge.Messages;
+using Tsc.AIBridge.Messages;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Interface for NPC client implementations.

@@ -1,7 +1,7 @@
 using System;
 using Newtonsoft.Json;
 
-namespace SimulationCrew.AIBridge.Messages
+namespace Tsc.AIBridge.Messages
 {
     /// <summary>
     /// Represents a single message in the chat history for LLM context.

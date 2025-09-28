@@ -4,9 +4,9 @@ using System.Threading.Tasks;
 using UnityEngine;
 using NativeWebSocket;
 using Newtonsoft.Json;
-using SimulationCrew.AIBridge.Core;
+using Tsc.AIBridge.Core;
 
-namespace SimulationCrew.AIBridge.WebSocket
+namespace Tsc.AIBridge.WebSocket
 {
     /// <summary>
     /// Low-level WebSocket connection handler using NativeWebSocket library.

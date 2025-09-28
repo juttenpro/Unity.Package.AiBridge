@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.TestTools;
 using System.Collections;
 
-namespace SimulationCrew.AIBridge.Tests.Runtime
+namespace Tsc.AIBridge.Tests.Runtime
 {
     /// <summary>
     /// Unit tests for NpcClientBase functionality

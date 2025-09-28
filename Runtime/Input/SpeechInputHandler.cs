@@ -1,11 +1,13 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
-using SimulationCrew.AIBridge.Audio.Capture;
+using Tsc.AIBridge.Audio.Capture;
 using UnityEngine.InputSystem;
-using SimulationCrew.AIBridge.Audio.VAD;
+using Tsc.AIBridge.Audio.VAD;
 
-namespace SimulationCrew.AIBridge.Input
+namespace Tsc.AIBridge.Input
 {
     /// <summary>
     /// Handles speech input through Push-To-Talk (PTT) or Voice Activation.
@@ -127,6 +129,11 @@ namespace SimulationCrew.AIBridge.Input
         [Tooltip("Silence duration to stop recording")]
         private float voiceActivationSilenceTimeout = 0.8f;
 
+        [Header("Custom Vocabulary")]
+        [Tooltip("Domain-specific words for better STT recognition. One word per line or separated by commas.")]
+        [TextArea(3, 5)]
+        [SerializeField] private string customVocabularyText = "";
+
         [Header("Debug")]
         [SerializeField] private bool enableVerboseLogging;
 
@@ -193,6 +200,10 @@ namespace SimulationCrew.AIBridge.Input
         /// </summary>
         public VADManager VadManager => _vadManager;
 
+        /// <summary>
+        /// Gets the parsed custom vocabulary list
+        /// </summary>
+        public List<string> ParsedCustomVocabulary => ParseCustomVocabulary();
 
         #endregion
 
@@ -602,6 +613,29 @@ namespace SimulationCrew.AIBridge.Input
             }
 
             StopRecording();
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        /// <summary>
+        /// Parses the custom vocabulary text into a list of words
+        /// </summary>
+        private List<string> ParseCustomVocabulary()
+        {
+            if (string.IsNullOrWhiteSpace(customVocabularyText))
+                return null;
+
+            // Split by common delimiters: comma, semicolon, newline
+            var words = customVocabularyText
+                .Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(w => w.Trim())
+                .Where(w => !string.IsNullOrEmpty(w))
+                .Distinct() // Remove duplicates
+                .ToList();
+
+            return words.Count > 0 ? words : null;
         }
 
         #endregion

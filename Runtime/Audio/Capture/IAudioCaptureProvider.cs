@@ -1,6 +1,6 @@
 using System;
 
-namespace SimulationCrew.AIBridge.Audio.Capture
+namespace Tsc.AIBridge.Audio.Capture
 {
     /// <summary>
     /// Interface for audio capture providers.

@@ -5,7 +5,7 @@ using System.IO;
 using UnityEngine;
 using OpusSharp.Core;
 
-namespace SimulationCrew.AIBridge.Audio.Codecs
+namespace Tsc.AIBridge.Audio.Codecs
 {
     /// <summary>
     /// Opus stream decoder - treats all incoming data as ONE continuous stream.
@@ -294,7 +294,7 @@ namespace SimulationCrew.AIBridge.Audio.Codecs
     }
 }
 #else
-namespace SimulationCrew.AIBridge.Audio.Codecs
+namespace Tsc.AIBridge.Audio.Codecs
 {
     /// <summary>
     /// Placeholder when OpusSharp is not available

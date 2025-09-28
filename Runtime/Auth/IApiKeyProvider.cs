@@ -1,4 +1,4 @@
-namespace SimulationCrew.AIBridge.Auth
+namespace Tsc.AIBridge.Auth
 {
     /// <summary>
     /// Interface for providing API key authentication to the conversation backend.

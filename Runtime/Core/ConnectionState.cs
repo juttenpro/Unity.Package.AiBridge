@@ -1,4 +1,4 @@
-﻿namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Represents the state of the WebSocket connection used for real-time audio streaming.

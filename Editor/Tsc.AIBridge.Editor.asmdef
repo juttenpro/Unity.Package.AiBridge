@@ -1,8 +1,8 @@
 {
-    "name": "SimulationCrew.AIBridge.Editor",
-    "rootNamespace": "SimulationCrew.AIBridge.Editor",
+    "name": "Tsc.AIBridge.Editor",
+    "rootNamespace": "Tsc.AIBridge.Editor",
     "references": [
-        "SimulationCrew.AIBridge",
+        "Tsc.AIBridge",
         "Unity.InputSystem"
     ],
     "includePlatforms": [

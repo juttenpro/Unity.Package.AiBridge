@@ -1,11 +1,11 @@
 using System;
 using System.Linq;
 using UnityEngine;
-using SimulationCrew.AIBridge.Core;
-using SimulationCrew.AIBridge.Input;
-using SimulationCrew.AIBridge.Audio.VAD;
+using Tsc.AIBridge.Core;
+using Tsc.AIBridge.Input;
+using Tsc.AIBridge.Audio.VAD;
 
-namespace SimulationCrew.AIBridge.Audio.Interruption
+namespace Tsc.AIBridge.Audio.Interruption
 {
     /// <summary>
     /// Interruption detection system that works with INpcConfiguration.

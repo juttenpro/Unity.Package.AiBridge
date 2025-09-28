@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using UnityEngine;
 using UnityEngine.Events;
 
-namespace SimulationCrew.AIBridge.Audio.Playback
+namespace Tsc.AIBridge.Audio.Playback
 {
     /// <summary>
     /// Real-time streaming audio player optimized for low-latency AI voice playback.
@@ -22,25 +22,19 @@ namespace SimulationCrew.AIBridge.Audio.Playback
         // Static events for logging (prefixed to avoid naming conflicts)
         public static event Action OnPlaybackStartedStatic;
 
+        // Static test mode flag - can be set before component creation
+        private static bool _globalSuppressWarnings = false;
+
         [Header("Audio Configuration")]
         [SerializeField]
         [Tooltip("REQUIRED: Audio filter relay component. Must be assigned in the Inspector! Should be on the same GameObject as the AudioSource.")]
         private AudioFilterRelay audioFilterRelay;
 
-        [SerializeField]
-        [Tooltip("Audio gain/volume multiplier")]
-        [Range(0.01f, 2f)]
-        private float audioGain = 1.0f;
+        // Instance test mode flag - suppress initialization warnings when true
+        private bool _suppressInitializationWarnings = false;
 
-        [Header("Buffering")]
-        [SerializeField]
-        [Tooltip("Minimum buffer size in seconds before starting playback")]
-        [Range(0.05f, 2f)]
-        private float minBufferDuration = 0.1f; // Reduced from 0.3f for lower latency
-
-        [SerializeField]
-        [Tooltip("Enable adaptive buffering via centralized AdaptiveBufferManager")]
-        private bool enableAdaptiveBuffering = true;
+        // Volume control should be done via AudioSource.volume, not with gain multipliers!
+        // Buffering is now handled by centralized AdaptiveBufferManager
 
         [Header("Debug Settings")]
         [SerializeField]
@@ -83,13 +77,50 @@ namespace SimulationCrew.AIBridge.Audio.Playback
         public bool IsPlaybackActive => _isStreamActive && _cachedIsPlaying;
         public bool HasBufferedAudio => _audioBuffer.Count > 0;
         public float BufferLevel => _audioBuffer.Count / (float)_sampleRate; // In seconds
-        public float MinBufferDuration => minBufferDuration; // Expose buffer threshold
-        public bool IsAdaptiveBufferingEnabled => enableAdaptiveBuffering;
+
+        // Get buffer settings from centralized manager
+        public float MinBufferDuration => AdaptiveBufferManager.Instance?.CurrentBufferDuration ?? 0.1f;
+        public bool IsAdaptiveBufferingEnabled => AdaptiveBufferManager.Instance?.IsAdaptiveBufferingEnabled ?? true;
 
         /// <summary>
         /// Gets the AudioFilterRelay component (read-only access)
         /// </summary>
         public AudioFilterRelay AudioFilterRelay => audioFilterRelay;
+
+        /// <summary>
+        /// Sets the AudioFilterRelay programmatically (primarily for testing).
+        /// In production, this should be set via Inspector on the prefab.
+        /// </summary>
+        public void SetAudioFilterRelay(AudioFilterRelay relay)
+        {
+            audioFilterRelay = relay;
+            _suppressInitializationWarnings = true; // We've set it programmatically, no need for warnings
+            if (relay != null)
+            {
+                relay.SetStreamingPlayer(this);
+                UpdateBufferSizes();
+                if (enableVerboseLogging)
+                    Debug.Log($"[{_cachedGameObjectName}] AudioFilterRelay set programmatically");
+            }
+        }
+
+        /// <summary>
+        /// Suppresses initialization warnings - for test use only.
+        /// This prevents warning logs when AudioFilterRelay is not assigned yet.
+        /// </summary>
+        public void SuppressInitializationWarnings()
+        {
+            _suppressInitializationWarnings = true;
+        }
+
+        /// <summary>
+        /// Globally suppresses initialization warnings for all new instances - for test use only.
+        /// Call this BEFORE creating StreamingAudioPlayer components in tests.
+        /// </summary>
+        public static void SetGlobalTestMode(bool suppressWarnings)
+        {
+            _globalSuppressWarnings = suppressWarnings;
+        }
 
         /// <summary>
         /// True if we're still receiving a response from the backend (even during pauses in audio)
@@ -123,18 +154,26 @@ namespace SimulationCrew.AIBridge.Audio.Playback
         {
             _cachedGameObjectName = gameObject.name;
 
-            // Start initialization coroutine to ensure proper component discovery
-            StartCoroutine(InitializeWithRetry());
-
-            // Subscribe to buffer updates if enabled
-            if (enableAdaptiveBuffering)
+            // Check global test mode flag
+            if (_globalSuppressWarnings)
             {
-                var bufferManager = AdaptiveBufferManager.Instance;
-                if (bufferManager != null)
-                {
-                    bufferManager.OnBufferUpdateEvent += OnBufferUpdateReceived;
-                    Debug.Log($"[{_cachedGameObjectName}] Subscribed to buffer update events");
-                }
+                _suppressInitializationWarnings = true;
+            }
+
+            // Only start initialization coroutine if not suppressing warnings (test mode)
+            // In test mode, SetAudioFilterRelay will be called manually
+            if (!_suppressInitializationWarnings)
+            {
+                StartCoroutine(InitializeWithRetry());
+            }
+
+            // Subscribe to buffer updates from centralized manager
+            var bufferManager = AdaptiveBufferManager.Instance;
+            if (bufferManager != null)
+            {
+                bufferManager.OnBufferUpdateEvent += OnBufferUpdateReceived;
+                if (enableVerboseLogging)
+                    Debug.Log($"[{_cachedGameObjectName}] Subscribed to centralized buffer update events");
             }
 
             #if UNITY_EDITOR
@@ -181,9 +220,18 @@ namespace SimulationCrew.AIBridge.Audio.Playback
                 // Check if audio filter relay is assigned
                 if (!audioFilterRelay)
                 {
-                    if (attempt == 0)
+                    // Only log warnings if not in test mode (where we set it programmatically)
+                    if (!_suppressInitializationWarnings)
                     {
-                        Debug.LogError($"[{_cachedGameObjectName}] AudioFilterRelay is not assigned in the Inspector! Please assign it to enable audio playback.", this);
+                        if (attempt == 1)
+                        {
+                            Debug.LogWarning($"[{_cachedGameObjectName}] AudioFilterRelay not yet assigned, waiting for assignment...", this);
+                        }
+                        else if (attempt == 4)
+                        {
+                            // Only error on last attempt
+                            Debug.LogError($"[{_cachedGameObjectName}] AudioFilterRelay is not assigned! Please assign it in the Inspector or use SetAudioFilterRelay().", this);
+                        }
                     }
                     continue; // Continue retry loop in case it gets assigned dynamically
                 }
@@ -196,7 +244,7 @@ namespace SimulationCrew.AIBridge.Audio.Playback
                     UpdateBufferSizes();
 
                     if(enableVerboseLogging)
-                        Debug.Log($"[{_cachedGameObjectName}] StreamingAudioPlayer initialized with relay on attempt {attempt + 1} - Gain: {audioGain}");
+                        Debug.Log($"[{_cachedGameObjectName}] StreamingAudioPlayer initialized with relay on attempt {attempt + 1}");
                     yield break; // Exit coroutine
                 }
                 if (enableVerboseLogging && attempt < 4)
@@ -215,47 +263,29 @@ namespace SimulationCrew.AIBridge.Audio.Playback
         }
 
         /// <summary>
-        /// Update buffer size calculations
+        /// Update buffer size calculations from centralized manager
         /// </summary>
         private void UpdateBufferSizes()
         {
-            _minBufferSamples = Mathf.RoundToInt(minBufferDuration * _sampleRate);
+            // Get buffer from centralized AdaptiveBufferManager
+            var bufferDuration = AdaptiveBufferManager.Instance?.CurrentBufferDuration ?? 0.1f;
+            _minBufferSamples = Mathf.RoundToInt(bufferDuration * _sampleRate);
             // No max buffer limit anymore - buffer grows dynamically
         }
 
         /// <summary>
-        /// Updates the minimum buffer duration based on measured network quality.
-        /// Called proactively during warmup/pre-connection to optimize first turn latency.
+        /// Legacy method - network quality is now handled by AdaptiveBufferManager.
+        /// This method is kept for backward compatibility but does nothing.
         /// </summary>
-        /// <param name="recommendedBufferDuration">Recommended buffer duration in seconds based on network RTT</param>
+        /// <param name="recommendedBufferDuration">Not used - handled by AdaptiveBufferManager</param>
+        [Obsolete("Use AdaptiveBufferManager.Instance.ProcessBufferHint() instead")]
         public void UpdateNetworkQuality(float recommendedBufferDuration)
         {
-            if (!enableAdaptiveBuffering)
+            // Network quality updates are now handled by the centralized AdaptiveBufferManager
+            // This method is kept for backward compatibility only
+            if (enableVerboseLogging)
             {
-                return; // Silently ignore if disabled
-            }
-
-            lock (_stateLock)
-            {
-                var previousBuffer = minBufferDuration;
-
-                // Only update if there's a meaningful change (> 5ms difference)
-                if (Mathf.Abs(recommendedBufferDuration - minBufferDuration) < 0.005f)
-                {
-                    return; // No significant change, skip update
-                }
-
-                // Apply the recommended buffer directly for first turn optimization
-                minBufferDuration = recommendedBufferDuration;
-
-                // Update buffer sizes
-                UpdateBufferSizes();
-
-                // Only log significant changes (> 10ms)
-                if (enableVerboseLogging && Mathf.Abs(recommendedBufferDuration - previousBuffer) > 0.01f)
-                {
-                    Debug.Log($"[{_cachedGameObjectName}] Buffer adjusted: {previousBuffer:F3}s → {minBufferDuration:F3}s (network optimization)");
-                }
+                Debug.Log($"[{_cachedGameObjectName}] UpdateNetworkQuality called but ignored - using AdaptiveBufferManager instead");
             }
         }
 
@@ -265,24 +295,15 @@ namespace SimulationCrew.AIBridge.Audio.Playback
         /// <param name="newBufferDuration">New recommended buffer duration in seconds</param>
         private void OnBufferUpdateReceived(float newBufferDuration)
         {
-            if (!enableAdaptiveBuffering)
-                return;
-
+            // Buffer updates are now handled centrally
+            // Just update our cached buffer sizes
             lock (_stateLock)
             {
-                var previousBuffer = minBufferDuration;
-
-                // Only update if there's a meaningful change (> 5ms difference)
-                if (Mathf.Abs(newBufferDuration - minBufferDuration) < 0.005f)
-                    return;
-
-                minBufferDuration = newBufferDuration;
                 UpdateBufferSizes();
 
-                // Only log significant changes (> 10ms)
-                if (enableVerboseLogging && Mathf.Abs(newBufferDuration - previousBuffer) > 0.01f)
+                if (enableVerboseLogging)
                 {
-                    Debug.Log($"[{_cachedGameObjectName}] Buffer updated via event: {previousBuffer:F3}s → {minBufferDuration:F3}s");
+                    Debug.Log($"[{_cachedGameObjectName}] Buffer update notification received: {newBufferDuration:F3}s from AdaptiveBufferManager");
                 }
             }
         }
@@ -324,31 +345,28 @@ namespace SimulationCrew.AIBridge.Audio.Playback
                 while (_audioBuffer.TryDequeue(out _)) { }
 
                 // Get buffer recommendation from centralized AdaptiveBufferManager
-                if (enableAdaptiveBuffering)
-                {
-                    var bufferManager = AdaptiveBufferManager.Instance;
-                    if (bufferManager && bufferManager.IsAdaptiveBufferingEnabled)
-                    {
-                        // Use the centralized buffer recommendation
-                        var recommendedBuffer = bufferManager.CurrentBufferDuration;
-                        if (Mathf.Abs(recommendedBuffer - minBufferDuration) > 0.01f)
-                        {
-                            minBufferDuration = recommendedBuffer;
-                            if (enableVerboseLogging)
-                                Debug.Log($"[{_cachedGameObjectName}] Using centralized buffer: {minBufferDuration:F3}s from AdaptiveBufferManager");
-                        }
-                    }
-                }
+                // Get buffer settings from centralized manager
+                var bufferManager = AdaptiveBufferManager.Instance;
+                var currentBuffer = bufferManager?.CurrentBufferDuration ?? 0.1f;
 
                 // Log the buffer being used for this stream (verbose only to reduce spam)
                 if (enableVerboseLogging)
-                    Debug.Log($"[{_cachedGameObjectName}] Starting stream with buffer: {minBufferDuration:F3}s");
+                {
+                    if (bufferManager != null)
+                    {
+                        Debug.Log($"[{_cachedGameObjectName}] Starting stream with centralized buffer: {currentBuffer:F3}s from AdaptiveBufferManager");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[{_cachedGameObjectName}] AdaptiveBufferManager not found, using default buffer: {currentBuffer:F3}s");
+                    }
+                }
 
                 // Update buffer sizes for new sample rate
                 UpdateBufferSizes();
 
                 if(enableVerboseLogging)
-                    Debug.Log($"[{_cachedGameObjectName}] Stream started at {sampleRate}Hz, min buffer: {minBufferDuration}s (dynamic max)");
+                    Debug.Log($"[{_cachedGameObjectName}] Stream started at {sampleRate}Hz, buffer: {currentBuffer:F3}s (dynamic max)");
             }
         }
 
@@ -370,9 +388,10 @@ namespace SimulationCrew.AIBridge.Audio.Playback
 
 
                 // Add samples to buffer - no limit, memory will grow as needed
+                // Use AudioSource.volume for volume control, not gain multipliers!
                 foreach (var sample in samples)
                 {
-                    _audioBuffer.Enqueue(sample * audioGain);
+                    _audioBuffer.Enqueue(sample);
                 }
 
                 // Optional: Log warning if buffer is getting very large

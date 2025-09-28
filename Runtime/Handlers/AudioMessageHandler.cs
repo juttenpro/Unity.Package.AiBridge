@@ -1,8 +1,8 @@
 using System;
 using UnityEngine;
-using SimulationCrew.AIBridge.Audio.Processing;
+using Tsc.AIBridge.Audio.Processing;
 
-namespace SimulationCrew.AIBridge.Handlers
+namespace Tsc.AIBridge.Handlers
 {
     /// <summary>
     /// Handles binary audio messages received from the WebSocket.

@@ -1,13 +1,13 @@
-﻿using System;
+using System;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 using Newtonsoft.Json;
-using SimulationCrew.AIBridge.WebSocket;
-using SimulationCrew.AIBridge.Configuration;
+using Tsc.AIBridge.WebSocket;
+using Tsc.AIBridge.Configuration;
 
-namespace SimulationCrew.AIBridge.Auth
+namespace Tsc.AIBridge.Auth
 {
     /// <summary>
     /// JWT-based authentication service for API access with token caching

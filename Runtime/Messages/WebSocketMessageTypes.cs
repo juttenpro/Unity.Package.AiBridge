@@ -1,4 +1,4 @@
-namespace SimulationCrew.AIBridge.Messages
+namespace Tsc.AIBridge.Messages
 {
     /// <summary>
     /// Defines all WebSocket message types used in the conversation protocol

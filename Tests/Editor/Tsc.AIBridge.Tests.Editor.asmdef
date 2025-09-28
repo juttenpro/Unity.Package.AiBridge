@@ -1,9 +1,9 @@
 {
-    "name": "SimulationCrew.AIBridge.Tests.Editor",
-    "rootNamespace": "SimulationCrew.AIBridge.Tests.Editor",
+    "name": "Tsc.AIBridge.Tests.Editor",
+    "rootNamespace": "Tsc.AIBridge.Tests.Editor",
     "references": [
-        "SimulationCrew.AIBridge.Runtime",
-        "SimulationCrew.AIBridge.Editor",
+        "Tsc.AIBridge",
+        "Tsc.AIBridge.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

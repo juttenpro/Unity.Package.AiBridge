@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Audio.Feedback
+namespace Tsc.AIBridge.Audio.Feedback
 {
     /// <summary>
     /// Detects audio feedback by comparing microphone input with NPC audio output.

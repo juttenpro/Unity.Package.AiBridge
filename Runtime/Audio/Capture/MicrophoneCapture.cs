@@ -2,7 +2,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Audio.Capture
+namespace Tsc.AIBridge.Audio.Capture
 {
     /// <summary>
     /// Microphone audio capture for Push-To-Talk (PTT) recording.

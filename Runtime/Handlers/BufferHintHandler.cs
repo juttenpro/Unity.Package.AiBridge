@@ -1,10 +1,10 @@
 using System;
-using SimulationCrew.AIBridge.Audio.Playback;
+using Tsc.AIBridge.Audio.Playback;
 using UnityEngine;
-using SimulationCrew.AIBridge.Messages;
-using SimulationCrew.AIBridge.Core;
+using Tsc.AIBridge.Messages;
+using Tsc.AIBridge.Core;
 
-namespace SimulationCrew.AIBridge.Handlers
+namespace Tsc.AIBridge.Handlers
 {
     /// <summary>
     /// Handles buffer hint messages from the server to optimize audio buffering.

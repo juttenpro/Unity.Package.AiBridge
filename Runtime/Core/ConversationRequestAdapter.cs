@@ -1,6 +1,6 @@
 using System;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Adapter class that wraps a ConversationRequest to implement INpcConfiguration.

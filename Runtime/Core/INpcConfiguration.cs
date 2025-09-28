@@ -1,6 +1,6 @@
 using System;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Configuration interface for NPC settings.

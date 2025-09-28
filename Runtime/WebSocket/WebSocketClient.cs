@@ -3,14 +3,14 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
-using SimulationCrew.AIBridge.Auth;
-using SimulationCrew.AIBridge.Configuration;
-using SimulationCrew.AIBridge.Messages;
-using SimulationCrew.AIBridge.Core;
+using Tsc.AIBridge.Auth;
+using Tsc.AIBridge.Configuration;
+using Tsc.AIBridge.Messages;
+using Tsc.AIBridge.Core;
 using UnityEngine;
 using UnityEngine.Serialization;
 
-namespace SimulationCrew.AIBridge.WebSocket
+namespace Tsc.AIBridge.WebSocket
 {
     /// <summary>
     /// WEBSOCKET CLIENT - Singleton connection manager (THE ONLY connection authority).

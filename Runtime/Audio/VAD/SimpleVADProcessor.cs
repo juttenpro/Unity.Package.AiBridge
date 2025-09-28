@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Audio.VAD
+namespace Tsc.AIBridge.Audio.VAD
 {
     /// <summary>
     /// Simple Voice Activity Detection processor

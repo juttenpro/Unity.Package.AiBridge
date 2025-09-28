@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Audio.Playback
+namespace Tsc.AIBridge.Audio.Playback
 {
     /// <summary>
     /// Relay component that must be placed on the same GameObject as the AudioSource.

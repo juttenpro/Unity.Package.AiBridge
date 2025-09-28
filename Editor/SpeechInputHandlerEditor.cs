@@ -1,8 +1,8 @@
-using SimulationCrew.AIBridge.Input;
+using Tsc.AIBridge.Input;
 using UnityEditor;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Editor
+namespace Tsc.AIBridge.Editor
 {
     /// <summary>
     /// Custom editor for SpeechInputHandler to provide better Inspector UI.
@@ -26,6 +26,9 @@ namespace SimulationCrew.AIBridge.Editor
         private SerializedProperty _voiceActivationOnsetTime;
         private SerializedProperty _voiceActivationSilenceTimeout;
 
+        // Custom Vocabulary
+        private SerializedProperty _customVocabularyText;
+
         // Debug
         private SerializedProperty _enableVerboseLogging;
 
@@ -43,6 +46,8 @@ namespace SimulationCrew.AIBridge.Editor
             _voiceActivationPreBufferTime = serializedObject.FindProperty("voiceActivationPreBufferTime");
             _voiceActivationOnsetTime = serializedObject.FindProperty("voiceActivationOnsetTime");
             _voiceActivationSilenceTimeout = serializedObject.FindProperty("voiceActivationSilenceTimeout");
+
+            _customVocabularyText = serializedObject.FindProperty("customVocabularyText");
 
             _enableVerboseLogging = serializedObject.FindProperty("enableVerboseLogging");
         }
@@ -123,6 +128,28 @@ namespace SimulationCrew.AIBridge.Editor
                         "Voice Activation handles its own silence detection.",
                         MessageType.Info);
                 }
+            }
+
+            EditorGUILayout.Space();
+
+            // Custom Vocabulary Settings
+            EditorGUILayout.LabelField("Custom Vocabulary", EditorStyles.boldLabel);
+
+            // Help box explaining the format
+            EditorGUILayout.HelpBox(
+                "Add domain-specific words for better STT recognition.\n\n" +
+                "Enter one word per line or separate with commas.\n\n" +
+                "EXAMPLES:\n" +
+                "terminology\n" +
+                "specialized\n" +
+                "technical\n" +
+                "domain-specific",
+                MessageType.Info);
+
+            if (_customVocabularyText != null)
+            {
+                EditorGUILayout.PropertyField(_customVocabularyText, new GUIContent("Word List",
+                    "Enter words separated by comma, semicolon or new lines"));
             }
 
             EditorGUILayout.Space();

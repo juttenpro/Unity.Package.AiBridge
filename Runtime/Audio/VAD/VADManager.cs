@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Audio.VAD
+namespace Tsc.AIBridge.Audio.VAD
 {
     /// <summary>
     /// Manages Voice Activity Detection independently from MonoBehaviour components.

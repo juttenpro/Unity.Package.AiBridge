@@ -1,7 +1,7 @@
 using System;
 using Newtonsoft.Json.Linq;
 
-namespace SimulationCrew.AIBridge.Messages
+namespace Tsc.AIBridge.Messages
 {
     /// <summary>
     /// Represents a complete conversation turn response from the backend API.

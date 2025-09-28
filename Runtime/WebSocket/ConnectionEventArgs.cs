@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace SimulationCrew.AIBridge.WebSocket
+namespace Tsc.AIBridge.WebSocket
 {
     /// <summary>
     /// Event arguments for connection failure events

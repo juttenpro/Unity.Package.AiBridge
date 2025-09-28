@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Audio.Codecs
+namespace Tsc.AIBridge.Audio.Codecs
 {
     /// <summary>
     /// Robust Ogg/Opus container parser for streaming audio from ElevenLabs

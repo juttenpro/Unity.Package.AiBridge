@@ -1,9 +1,9 @@
 using System;
 using UnityEngine;
-using SimulationCrew.AIBridge.Core;
-using SimulationCrew.AIBridge.Audio.Processing;
+using Tsc.AIBridge.Core;
+using Tsc.AIBridge.Audio.Processing;
 
-namespace SimulationCrew.AIBridge.Controllers
+namespace Tsc.AIBridge.Controllers
 {
     /// <summary>
     /// Handles audio recording events and coordination.

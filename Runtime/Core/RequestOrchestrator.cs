@@ -3,12 +3,12 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using SimulationCrew.AIBridge.Messages;
-using SimulationCrew.AIBridge.WebSocket;
-using SimulationCrew.AIBridge.Audio.Interruption;
-using SimulationCrew.AIBridge.Input;
+using Tsc.AIBridge.Messages;
+using Tsc.AIBridge.WebSocket;
+using Tsc.AIBridge.Audio.Interruption;
+using Tsc.AIBridge.Input;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Central orchestrator for all API requests.
@@ -95,8 +95,8 @@ namespace SimulationCrew.AIBridge.Core
 
         #region Private Fields
 
-        private Queue<AudioRequest> _audioRequestQueue = new Queue<AudioRequest>();
-        private Queue<TextRequest> _textRequestQueue = new Queue<TextRequest>();
+        private readonly Queue<AudioRequest> _audioRequestQueue = new();
+        private readonly Queue<TextRequest> _textRequestQueue = new();
 
         private ConversationSession _currentSession;
         private INpcConfiguration _activeNpcConfig;
@@ -449,11 +449,38 @@ namespace SimulationCrew.AIBridge.Core
                 NpcMessageRouter.Instance.SetActiveRequest(request.RequestId, npcName);
 
                 var messages = GetChatHistory();
-                // TODO: Implement StartConversation in WebSocketClient
-                Debug.LogWarning("[RequestOrchestrator] WebSocketClient.StartConversation not yet implemented");
 
-                // TODO: When WebSocketClient receives transcription, fire OnTranscriptionReceived event
-                // This will allow AIBridgeRulesHandler to send speechDetected/noSpeechDetected to RuleSystem
+                // Build SessionStartMessage with all parameters including custom vocabulary
+                var sessionStartMessage = new Messages.SessionStartMessage
+                {
+                    RequestId = request.RequestId,
+                    Messages = messages,
+                    // Core audio settings
+                    AudioFormat = parameters.AudioFormat,
+                    SampleRate = parameters.SampleRate,
+                    OpusBitrate = parameters.Bitrate,
+                    // TTS settings
+                    VoiceId = parameters.VoiceId,
+                    TtsModel = parameters.Model,
+                    TtsOutputFormat = parameters.AudioFormat,
+                    TtsStreamingMode = parameters.TtsStreamingMode,
+                    // LLM settings
+                    LlmProvider = parameters.LlmProvider,
+                    LlmModel = parameters.LlmModel,
+                    Temperature = parameters.Temperature,
+                    MaxTokens = parameters.MaxTokens,
+                    // STT settings
+                    SttProvider = parameters.SttProvider,
+                    LanguageCode = parameters.Language,  // Note: field is called LanguageCode, not Language
+                    // Get custom vocabulary from SpeechInputHandler
+                    CustomVocabulary = speechInputHandler?.ParsedCustomVocabulary,
+                    CustomVocabularyBoost = 10.0f, // Fixed boost value for Google STT
+                    // Enable metrics if configured
+                    EnableMetrics = enableMetrics
+                };
+
+                // Start the conversation via WebSocket
+                yield return _webSocketClient.SendSessionStartAsync(sessionStartMessage);
 
                 Debug.Log($"[RequestOrchestrator] Audio request started. Session: {_currentSession.SessionId}");
             }
@@ -483,8 +510,22 @@ namespace SimulationCrew.AIBridge.Core
                 };
 
                 var messages = GetChatHistory();
-                // TODO: Implement StartTextConversation in WebSocketClient
-                Debug.LogWarning("[RequestOrchestrator] WebSocketClient.StartTextConversation not yet implemented");
+
+                // Build TextInputMessage for text-based conversation
+                var textInputMessage = new Messages.TextInputMessage
+                {
+                    RequestId = request.RequestId,
+                    ConversationParameters = ConvertToConversationParameters(parameters),
+                    Messages = messages,
+                    Text = request.Text,
+                    // Text requests typically don't need custom vocabulary since no STT is involved
+                    // But we'll include it for consistency in case backend wants it for response generation
+                    CustomVocabulary = speechInputHandler?.ParsedCustomVocabulary,
+                    CustomVocabularyBoost = 10.0f // Fixed boost value for Google STT
+                };
+
+                // Send text input via WebSocket
+                yield return _webSocketClient.SendTextInputAsync(textInputMessage);
 
                 Debug.Log($"[RequestOrchestrator] Text request started. Session: {_currentSession.SessionId}");
             }

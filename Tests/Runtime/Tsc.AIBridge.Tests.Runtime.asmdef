@@ -1,8 +1,8 @@
 {
-    "name": "SimulationCrew.AIBridge.Tests.Runtime",
-    "rootNamespace": "SimulationCrew.AIBridge.Tests.Runtime",
+    "name": "Tsc.AIBridge.Tests.Runtime",
+    "rootNamespace": "Tsc.AIBridge.Tests.Runtime",
     "references": [
-        "SimulationCrew.AIBridge.Runtime",
+        "Tsc.AIBridge",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
@@ -11,7 +11,8 @@
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
-        "nunit.framework.dll"
+        "nunit.framework.dll",
+        "Newtonsoft.Json.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [

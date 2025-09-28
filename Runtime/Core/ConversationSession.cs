@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// State of a conversation session

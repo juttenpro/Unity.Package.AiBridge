@@ -1,9 +1,9 @@
 using System;
 using System.Collections;
 using UnityEngine;
-using SimulationCrew.AIBridge.Audio.VAD;
+using Tsc.AIBridge.Audio.VAD;
 
-namespace SimulationCrew.AIBridge.Input
+namespace Tsc.AIBridge.Input
 {
     /// <summary>
     /// Internal controller that manages all recording logic.

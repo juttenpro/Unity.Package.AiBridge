@@ -1,6 +1,6 @@
 using Newtonsoft.Json;
 
-namespace SimulationCrew.AIBridge.Messages
+namespace Tsc.AIBridge.Messages
 {
     /// <summary>
     /// Represents a buffer hint message from the backend for adaptive audio buffering.

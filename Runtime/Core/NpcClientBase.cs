@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
-using SimulationCrew.AIBridge.Messages;
-using SimulationCrew.AIBridge.WebSocket;
+using Tsc.AIBridge.Messages;
+using Tsc.AIBridge.WebSocket;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Base class for NPC clients with common functionality.
@@ -39,6 +39,12 @@ namespace SimulationCrew.AIBridge.Core
         /// Metadata handler for processing WebSocket messages (internal for router access)
         /// </summary>
         internal ConversationMetadataHandler _metadataHandler;
+
+        /// <summary>
+        /// Public access to metadata handler for testing and router access.
+        /// This property provides controlled access to the internal handler.
+        /// </summary>
+        public ConversationMetadataHandler MetadataHandler => _metadataHandler;
 
         /// <summary>
         /// Latency tracker for performance monitoring

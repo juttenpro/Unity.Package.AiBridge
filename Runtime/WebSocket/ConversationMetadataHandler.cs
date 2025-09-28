@@ -1,10 +1,10 @@
 using System;
 using UnityEngine;
 using Newtonsoft.Json;
-using SimulationCrew.AIBridge.Core;
-using SimulationCrew.AIBridge.Messages;
+using Tsc.AIBridge.Core;
+using Tsc.AIBridge.Messages;
 
-namespace SimulationCrew.AIBridge.WebSocket
+namespace Tsc.AIBridge.WebSocket
 {
     /// <summary>
     /// Processes and routes incoming WebSocket messages from the conversation server.
@@ -59,7 +59,7 @@ namespace SimulationCrew.AIBridge.WebSocket
         /// Supports both camelCase (backend) and PascalCase (Unity) field names.
         /// </summary>
         /// <param name="message">Raw JSON message string from WebSocket</param>
-        public void ProcessMessage(string message)
+        public virtual void ProcessMessage(string message)
         {
             // Don't log here - StreamingApiClient handles logging to avoid duplication
             

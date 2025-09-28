@@ -1,9 +1,9 @@
 using System;
 using UnityEngine;
-using SimulationCrew.AIBridge.Messages;
-using SimulationCrew.AIBridge.Core;
+using Tsc.AIBridge.Messages;
+using Tsc.AIBridge.Core;
 
-namespace SimulationCrew.AIBridge.Handlers
+namespace Tsc.AIBridge.Handlers
 {
     /// <summary>
     /// Handles NoTranscript messages from the WebSocket when speech detection fails.

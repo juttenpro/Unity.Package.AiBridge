@@ -1,12 +1,12 @@
 using System;
-using SimulationCrew.AIBridge.Audio.Capture;
-using SimulationCrew.AIBridge.Audio.Codecs;
-using SimulationCrew.AIBridge.Audio.Playback;
-using SimulationCrew.AIBridge.Audio.Processing;
+using Tsc.AIBridge.Audio.Capture;
+using Tsc.AIBridge.Audio.Codecs;
+using Tsc.AIBridge.Audio.Playback;
+using Tsc.AIBridge.Audio.Processing;
 using UnityEngine;
-using SimulationCrew.AIBridge.Core;
+using Tsc.AIBridge.Core;
 
-namespace SimulationCrew.AIBridge.Audio.Processing
+namespace Tsc.AIBridge.Audio.Processing
 {
     /// <summary>
     /// AUDIO STREAM PROCESSOR - Central audio pipeline for encoding and decoding.

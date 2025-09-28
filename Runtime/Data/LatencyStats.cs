@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Data
+namespace Tsc.AIBridge.Data
 {
     /// <summary>
     /// Container for conversation latency statistics and performance metrics.

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
-namespace SimulationCrew.AIBridge.Messages
+namespace Tsc.AIBridge.Messages
 {
 
     /// <summary>
@@ -298,6 +298,18 @@ namespace SimulationCrew.AIBridge.Messages
         /// </summary>
         [JsonProperty("conversationParameters")]
         public ConversationParameters ConversationParameters;
+
+        /// <summary>
+        /// Custom vocabulary for STT (even though this is text input, might be useful for response generation)
+        /// </summary>
+        [JsonProperty("customVocabulary")]
+        public List<string> CustomVocabulary { get; set; }
+
+        /// <summary>
+        /// Boost value for custom vocabulary
+        /// </summary>
+        [JsonProperty("customVocabularyBoost")]
+        public float CustomVocabularyBoost { get; set; } = 10.0f;
 
         public TextInputMessage()
         {

@@ -1,6 +1,6 @@
-﻿using System.Threading.Tasks;
+using System.Threading.Tasks;
 
-namespace SimulationCrew.AIBridge.Auth
+namespace Tsc.AIBridge.Auth
 {
     /// <summary>
     /// Interface for authentication services

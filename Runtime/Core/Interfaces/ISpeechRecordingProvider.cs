@@ -1,6 +1,6 @@
 using System;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Provides speech recording functionality without specific implementation dependencies.

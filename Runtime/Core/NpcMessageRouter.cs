@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
-using SimulationCrew.AIBridge.WebSocket;
+using Tsc.AIBridge.WebSocket;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Routes WebSocket messages to the correct NPC based on RequestId.
@@ -132,12 +132,19 @@ namespace SimulationCrew.AIBridge.Core
         }
 
         /// <summary>
-        /// Route a WebSocket message to the appropriate NPC
+        /// Route a WebSocket message to the appropriate NPC or system handler
         /// </summary>
         public void RouteMessage(string json, string requestId = null)
         {
             if (string.IsNullOrEmpty(json))
                 return;
+
+            // Check if this is a BufferHint message - route to NetworkQualityMonitor instead of NPC
+            if (IsBufferHintMessage(json))
+            {
+                RouteBufferHintToNetworkMonitor(json);
+                return; // Don't route to NPCs
+            }
 
             // Try to extract RequestId from message if not provided
             if (string.IsNullOrEmpty(requestId))
@@ -151,9 +158,9 @@ namespace SimulationCrew.AIBridge.Core
             if (!string.IsNullOrEmpty(requestId) && _activeNpcsByRequestId.TryGetValue(requestId, out targetNpc))
             {
                 // Route to specific NPC based on RequestId
-                if (targetNpc._metadataHandler != null)
+                if (targetNpc.MetadataHandler != null)
                 {
-                    targetNpc._metadataHandler.ProcessMessage(json);
+                    targetNpc.MetadataHandler.ProcessMessage(json);
                 }
                 else
                 {
@@ -165,9 +172,9 @@ namespace SimulationCrew.AIBridge.Core
                 // Fallback: Route to first active NPC (for backwards compatibility)
                 foreach (var npc in _npcsByName.Values)
                 {
-                    if (npc.IsActive && npc._metadataHandler != null)
+                    if (npc.IsActive && npc.MetadataHandler != null)
                     {
-                        npc._metadataHandler.ProcessMessage(json);
+                        npc.MetadataHandler.ProcessMessage(json);
                         break;
                     }
                 }
@@ -222,6 +229,45 @@ namespace SimulationCrew.AIBridge.Core
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Check if this is a BufferHint message
+        /// </summary>
+        private bool IsBufferHintMessage(string json)
+        {
+            // Quick check without full deserialization
+            return json.Contains("\"type\":\"bufferhint\"") ||
+                   json.Contains("\"type\":\"BufferHint\"");
+        }
+
+        /// <summary>
+        /// Route BufferHint messages to the centralized NetworkQualityMonitor
+        /// </summary>
+        private void RouteBufferHintToNetworkMonitor(string json)
+        {
+            try
+            {
+                // Get the NetworkQualityMonitor singleton
+                var networkMonitor = Network.NetworkQualityMonitor.Instance;
+                if (networkMonitor != null)
+                {
+                    // Deserialize the BufferHint message
+                    var bufferHint = Newtonsoft.Json.JsonConvert.DeserializeObject<Messages.BufferHintMessage>(json);
+                    if (bufferHint != null)
+                    {
+                        networkMonitor.ProcessBufferHint(bufferHint);
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning("[NpcMessageRouter] NetworkQualityMonitor not available for BufferHint message");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[NpcMessageRouter] Error processing BufferHint: {ex.Message}");
+            }
         }
 
         #endregion

@@ -2,13 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
-using SimulationCrew.AIBridge.Core;
-using SimulationCrew.AIBridge.Messages;
-using SimulationCrew.AIBridge.WebSocket;
-using SimulationCrew.AIBridge.Audio.Capture;
+using Tsc.AIBridge.Core;
+using Tsc.AIBridge.Messages;
+using Tsc.AIBridge.WebSocket;
+using Tsc.AIBridge.Audio.Capture;
 using Newtonsoft.Json;
 
-namespace SimulationCrew.AIBridge.Controllers
+namespace Tsc.AIBridge.Controllers
 {
     /// <summary>
     /// Network message builder and sender - formats messages, NOT connection manager.

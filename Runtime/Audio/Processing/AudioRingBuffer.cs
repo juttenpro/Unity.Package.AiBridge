@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 
-namespace SimulationCrew.AIBridge.Audio.Processing
+namespace Tsc.AIBridge.Audio.Processing
 {
     /// <summary>
     /// Thread-safe ring buffer for audio streaming.

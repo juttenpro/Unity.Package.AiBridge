@@ -1,6 +1,6 @@
 using System;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Parameters for establishing a conversation session with the AI backend

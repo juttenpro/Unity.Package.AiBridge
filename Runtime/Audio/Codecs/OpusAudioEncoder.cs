@@ -5,7 +5,7 @@ using UnityEngine;
 #if OPUSSHARP_AVAILABLE
 using OpusSharp.Core;
 
-namespace SimulationCrew.AIBridge.Audio.Codecs
+namespace Tsc.AIBridge.Audio.Codecs
 {
     /// <summary>
     /// High-performance Opus encoder using OpusSharp native library.
@@ -207,7 +207,7 @@ namespace SimulationCrew.AIBridge.Audio.Codecs
     }
 }
 #else
-namespace SimulationCrew.AIBridge.Audio.Codecs
+namespace Tsc.AIBridge.Audio.Codecs
 {
     /// <summary>
     /// Placeholder when OpusSharp is not available

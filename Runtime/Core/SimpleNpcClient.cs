@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
-using SimulationCrew.AIBridge.Messages;
+using Tsc.AIBridge.Messages;
 
-namespace SimulationCrew.AIBridge.Core
+namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Simple NPC client for core package - no PersonaSO dependencies.

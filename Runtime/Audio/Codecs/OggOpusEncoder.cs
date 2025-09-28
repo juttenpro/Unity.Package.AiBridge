@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Audio.Codecs
+namespace Tsc.AIBridge.Audio.Codecs
 {
     /// <summary>
     /// Wraps Opus encoded frames in OGG container format

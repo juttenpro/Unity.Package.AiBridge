@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Audio.VAD
+namespace Tsc.AIBridge.Audio.VAD
 {
     /// <summary>
     /// Dynamic VAD that adapts threshold based on observed noise and speech levels

@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace SimulationCrew.AIBridge.Auth
+namespace Tsc.AIBridge.Auth
 {
     /// <summary>
     /// Provides API key authentication by reading from environment variables.
