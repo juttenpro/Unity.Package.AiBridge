@@ -45,7 +45,7 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// TTS voice ID
         /// </summary>
-        public string TtsVoice => _request.TtsVoice;
+        public string VoiceId => _request.VoiceId;
 
         /// <summary>
         /// Language code

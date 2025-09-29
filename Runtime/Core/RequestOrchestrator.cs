@@ -579,7 +579,7 @@ namespace Tsc.AIBridge.Core
             var parameters = new ConnectionParameters
             {
                 SessionId = Guid.NewGuid().ToString(),
-                VoiceId = npcConfig.TtsVoice,
+                VoiceId = npcConfig.VoiceId,
                 Model = npcConfig.TtsModel,
                 Language = npcConfig.Language,
                 SttProvider = npcConfig.SttProvider,  // STT provider from NPC configuration

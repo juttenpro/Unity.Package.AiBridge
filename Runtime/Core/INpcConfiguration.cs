@@ -36,7 +36,7 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// TTS voice ID
         /// </summary>
-        string TtsVoice { get; }
+        string VoiceId { get; }
 
         /// <summary>
         /// Language code (e.g., "nl-NL", "en-US")

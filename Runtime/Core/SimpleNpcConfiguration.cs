@@ -11,7 +11,7 @@ namespace Tsc.AIBridge.Core
     public class SimpleNpcConfiguration : INpcConfiguration
     {
         [Header("NPC Identity")]
-        [SerializeField] private string id = System.Guid.NewGuid().ToString();
+        [SerializeField] private string id = Guid.NewGuid().ToString();
         [SerializeField] private string name = "Assistant";
 
         [Header("AI Configuration")]
@@ -46,7 +46,7 @@ namespace Tsc.AIBridge.Core
         public string SystemPrompt => systemPrompt;
         public string TtsStreamingMode => ttsStreamingMode;
         public string TtsModel => ttsModel;
-        public string TtsVoice => ttsVoice;
+        public string VoiceId => ttsVoice;
         public string Language => language;
         public string SttProvider => sttProvider;
         public string LlmProvider => llmProvider;
