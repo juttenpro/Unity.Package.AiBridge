@@ -13,22 +13,27 @@ namespace Tsc.AIBridge.Core
 
         // Conversation content (determined by RuleSystem)
         public string SystemPrompt { get; set; }
-        public List<Tsc.AIBridge.Messages.ChatMessage> Messages { get; set; }
+        public List<Messages.ChatMessage> Messages { get; set; }
 
         // API Configuration (determined by RuleSystem per conversation)
         public string SttProvider { get; set; } = "google";
         public string LlmProvider { get; set; } = "openai";  // vertexai, openai, azure-openai
         public string LlmModel { get; set; } = "gpt-4o-mini";
+        public string TtsProvider { get; set; } = "elevenlabs";
         public string TtsModel { get; set; } = "eleven_turbo_v2_5";
         public string Language { get; set; } = "nl-NL";
         public int MaxTokens { get; set; } = 500;
         public float Temperature { get; set; } = 0.7f;
-
-        // Voice settings (from PersonaSO)
-        public string TtsVoice { get; set; }
+        public float TopP { get; set; } = 1.0f;
+        public float TopK { get; set; } = 0f;
+        public float FrequencyPenalty { get; set; } = 0f;
+        public float PresencePenalty { get; set; } = 0f;
+        public string VoiceId { get; set; }  // TTS voice identifier
         public string TtsStreamingMode { get; set; } = "batch";
-
-        // Interruption settings (from PersonaSO)
+        public float TtsStability { get; set; } = 0.5f;
+        public float TtsSimilarityBoost { get; set; } = 0.75f;
+        public bool TtsSpeakerBoost { get; set; } = true;
+        public float TtsStyle { get; set; } = 0f;
         public bool AllowInterruption { get; set; } = true;
         public float InterruptionPersistenceTime { get; set; } = 1.5f;
     }
