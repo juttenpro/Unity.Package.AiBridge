@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using Tsc.AIBridge.Messages;
-
 namespace Tsc.AIBridge.Core
 {
     /// <summary>
@@ -29,15 +26,9 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         string NpcName { get; }
 
-        /// <summary>
-        /// Get the conversation history as chat messages for API
-        /// </summary>
-        List<ChatMessage> GetApiHistoryAsChatMessages();
-
-        /// <summary>
-        /// Clear the conversation history
-        /// </summary>
-        void ClearHistory();
+        // History methods removed - now optional via IConversationHistory interface
+        // This allows flexibility: RuleSystem-based implementations provide messages directly,
+        // while third-party implementations can optionally implement IConversationHistory
 
         /// <summary>
         /// Stop any ongoing audio playback

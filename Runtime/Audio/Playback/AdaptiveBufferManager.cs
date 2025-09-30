@@ -22,6 +22,12 @@ namespace Tsc.AIBridge.Audio.Playback
         #region Singleton
 
         private static AdaptiveBufferManager _instance;
+
+        /// <summary>
+        /// Check if an instance exists without creating one
+        /// </summary>
+        public static bool HasInstance => _instance != null;
+
         public static AdaptiveBufferManager Instance
         {
             get

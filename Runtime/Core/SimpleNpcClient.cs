@@ -8,6 +8,7 @@ namespace Tsc.AIBridge.Core
     /// Simple NPC client for core package - no PersonaSO dependencies.
     /// Can be configured via Inspector or programmatically.
     /// For PersonaSO integration, use the extended package NpcClient.
+    /// Inherits IConversationHistory implementation from NpcClientBase.
     /// </summary>
     public class SimpleNpcClient : NpcClientBase
     {
@@ -67,16 +68,21 @@ namespace Tsc.AIBridge.Core
         #region Configuration Methods
 
         /// <summary>
-        /// Set NPC name
+        /// Set NPC name.
+        /// Updates the display name for this NPC.
         /// </summary>
+        /// <param name="name">The new name for this NPC</param>
         public void SetNpcName(string name)
         {
             npcName = name;
         }
 
         /// <summary>
-        /// Set voice configuration
+        /// Set voice configuration for TTS.
+        /// Configures how this NPC's voice will be synthesized.
         /// </summary>
+        /// <param name="voiceId">The TTS voice ID to use</param>
+        /// <param name="streamingMode">Optional streaming mode ("sentence" or "batch"). If null, keeps current setting</param>
         public void SetVoiceConfiguration(string voiceId, string streamingMode = null)
         {
             this.voiceId = voiceId;
@@ -85,8 +91,11 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// Set interruption settings
+        /// Set interruption settings.
+        /// Configures how this NPC handles interruptions.
         /// </summary>
+        /// <param name="allow">Whether this NPC can be interrupted</param>
+        /// <param name="persistence">Time in seconds user must speak to trigger interruption</param>
         public void SetInterruptionSettings(bool allow, float persistence)
         {
             this.allowInterruption = allow;
@@ -95,8 +104,14 @@ namespace Tsc.AIBridge.Core
 
 
         /// <summary>
-        /// Configure this NPC programmatically
+        /// Configure this NPC programmatically.
+        /// Sets all NPC parameters in a single call.
         /// </summary>
+        /// <param name="npcName">Optional NPC name override</param>
+        /// <param name="voiceId">Optional voice ID for TTS</param>
+        /// <param name="ttsStreamingMode">Optional TTS streaming mode ("sentence" or "batch")</param>
+        /// <param name="allowInterruption">Optional interruption enabled flag</param>
+        /// <param name="persistenceTime">Optional persistence time in seconds for interruption</param>
         public void Configure(
             string npcName = null,
             string voiceId = null,
@@ -115,13 +130,14 @@ namespace Tsc.AIBridge.Core
 
         #endregion
 
-        #region Abstract Method Implementations
+        #region IConversationHistory Override
 
         /// <summary>
         /// Get the conversation history as chat messages for API
         /// </summary>
         public override List<ChatMessage> GetApiHistoryAsChatMessages()
         {
+            // Pre-allocate capacity to avoid resizing
             return new List<ChatMessage>(chatHistory);
         }
 
@@ -151,32 +167,42 @@ namespace Tsc.AIBridge.Core
         #region Public Methods
 
         /// <summary>
-        /// Add a message to the chat history
+        /// Add a message to the chat history.
+        /// Records conversation messages for context.
         /// </summary>
+        /// <param name="role">The role of the speaker ("user" or "assistant")</param>
+        /// <param name="content">The message content to add</param>
         public void AddMessageToHistory(string role, string content)
         {
             chatHistory.Add(new ChatMessage { Role = role, Content = content });
         }
 
         /// <summary>
-        /// Get session parameters for this NPC
+        /// Get conversation context for this NPC.
+        /// Creates a fully configured ConversationContext with all required parameters.
         /// </summary>
-        public override Dictionary<string, string> GetSessionParameters()
+        /// <param name="systemPrompt">Optional system prompt. If null, uses empty string</param>
+        /// <returns>A ConversationContext configured with this NPC's settings</returns>
+        public ConversationContext GetConversationContext(string systemPrompt = null)
         {
-            var parameters = new Dictionary<string, string>();
-
-            // Add voice settings if configured
-            if (!string.IsNullOrEmpty(voiceId))
+            var context = new ConversationContext
             {
-                parameters["voiceId"] = voiceId;
-            }
+                systemPrompt = systemPrompt,
+                messages = GetApiHistoryAsChatMessages() ?? new List<ChatMessage>(),
+                voiceId = voiceId,
+                ttsStreamingMode = ttsStreamingMode,
+                // These MUST be provided by caller
+                language = null,
+                temperature = 0,
+                maxTokens = 0,
+                llmModel = null,
+                llmProvider = null,
+                ttsModel = null,
+                sttProvider = null,
+                // Audio settings removed - API always uses opus_48000_64
+            };
 
-            if (!string.IsNullOrEmpty(ttsStreamingMode))
-            {
-                parameters["ttsStreamingMode"] = ttsStreamingMode;
-            }
-
-            return parameters;
+            return context;
         }
 
         #endregion

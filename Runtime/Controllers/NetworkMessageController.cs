@@ -6,7 +6,6 @@ using Tsc.AIBridge.Core;
 using Tsc.AIBridge.Messages;
 using Tsc.AIBridge.WebSocket;
 using Tsc.AIBridge.Audio.Capture;
-using Newtonsoft.Json;
 
 namespace Tsc.AIBridge.Controllers
 {
@@ -144,8 +143,22 @@ namespace Tsc.AIBridge.Controllers
                 Type = "textinput",  // Lowercase per protocol
                 RequestId = session.SessionId,
                 Text = text,
-                Messages = messages ?? new List<ChatMessage>(),
-                ConversationParameters = parameters
+                IsNpcInitiated = false,
+                Context = new ConversationContext
+                {
+                    messages = messages ?? new List<ChatMessage>(),
+                    voiceId = parameters?.voiceId,
+                    ttsStreamingMode = parameters?.ttsStreamingMode,
+                    llmModel = parameters?.llmModel,
+                    llmProvider = parameters?.llmProvider,
+                    language = parameters?.language,
+                    temperature = parameters?.temperature ?? 0,
+                    maxTokens = parameters?.maxTokens ?? 0,
+                    ttsModel = parameters?.ttsModel,
+                    sttProvider = parameters?.sttProvider,
+                    // Audio settings removed - API always uses opus_48000_64
+                    systemPrompt = null // No system prompt for user-initiated
+                }
             };
             
             // Send via WebSocketClient - it will handle connection internally
@@ -159,7 +172,49 @@ namespace Tsc.AIBridge.Controllers
             if (_enableVerboseLogging)
                 Debug.Log($"[{_personaName}] TextInput sent: '{text}'");
         }
-        
+
+        /// <summary>
+        /// Send DirectTTS message - text directly to TTS without LLM processing.
+        /// Useful for scripted NPC dialogue, system messages, or pre-defined responses.
+        /// </summary>
+        /// <param name="session">The conversation session</param>
+        /// <param name="text">The text to convert to speech</param>
+        /// <param name="voice">Optional voice override (null = use default)</param>
+        /// <param name="model">Optional TTS model override (null = use default)</param>
+        public void SendDirectTTS(
+            ConversationSession session,
+            string text,
+            string voice = null,
+            string model = null)
+        {
+            if (session == null || string.IsNullOrEmpty(text))
+            {
+                Debug.LogWarning($"[{_personaName}] Cannot send DirectTTS without session and text");
+                return;
+            }
+
+            var directTtsMsg = new DirectTTSMessage
+            {
+                Type = "directtts",  // Lowercase per protocol
+                RequestId = session.SessionId,
+                Text = text,
+                Voice = voice,  // Optional - null means use default
+                Model = model   // Optional - null means use default
+            };
+
+            // Send via WebSocketClient - it will handle connection internally
+            _ = WebSocketClient.Instance.SendDirectTTSAsync(directTtsMsg);
+
+            if (_enableVerboseLogging)
+                Debug.Log($"[{_personaName}] Sending DirectTTS: '{text}' (voice: {voice ?? "default"}, model: {model ?? "default"})");
+
+            // Signal that DirectTTS was sent (could add event if needed)
+            OnTextInputSent?.Invoke(session.SessionId);
+
+            if (_enableVerboseLogging)
+                Debug.Log($"[{_personaName}] DirectTTS sent: '{text}'");
+        }
+
         /// <summary>
         /// Send EndOfSpeech message
         /// </summary>

@@ -8,7 +8,6 @@ using Tsc.AIBridge.Configuration;
 using Tsc.AIBridge.Messages;
 using Tsc.AIBridge.Core;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace Tsc.AIBridge.WebSocket
 {
@@ -120,6 +119,10 @@ namespace Tsc.AIBridge.WebSocket
         [Header("Debug Settings")]
         [SerializeField] private bool enableVerboseLogging;
 
+        [Header("Persistence")]
+        [Tooltip("Make this GameObject persist across scene changes (for Initializer scene setup)")]
+        [SerializeField] private bool persistAcrossScenes = false;
+
         [Header("API Key Configuration")]
         [SerializeField] private string orchestratorApiKey = "";
 
@@ -156,19 +159,24 @@ namespace Tsc.AIBridge.WebSocket
 
             _instance = this;
 
-            // Ensure we're on a root GameObject for DontDestroyOnLoad
-            if (transform.parent != null)
+            // Make persistent across scenes if configured (for Initializer scene setup)
+            if (persistAcrossScenes)
             {
-                // Move to root to avoid DontDestroyOnLoad warning
-                transform.SetParent(null);
+                DontDestroyOnLoad(gameObject);
+                Debug.Log("[WebSocketClient] Set to persist across scenes");
             }
-            DontDestroyOnLoad(gameObject);
 
             // Initialize authentication with configurable API key
             _apiKeyProvider = new SimpleApiKeyProvider(orchestratorApiKey);
             _authService = new JwtAuthenticationService(apiBaseUrl);
 
-            // Start initialization sequence
+            // Delay initialization to Start() to avoid interfering with scene loading
+            // StartCoroutine(InitializeConnectionSequence()); // Moved to Start()
+        }
+
+        private void Start()
+        {
+            // Start initialization sequence after scene is properly loaded
             StartCoroutine(InitializeConnectionSequence());
         }
 
@@ -405,6 +413,23 @@ namespace Tsc.AIBridge.WebSocket
         }
 
         /// <summary>
+        /// Send DirectTTS message - text directly to TTS without LLM processing
+        /// </summary>
+        public async Task SendDirectTTSAsync(DirectTTSMessage message)
+        {
+            // Ensure connection before sending (follows WebSocketClient pattern)
+            if (!await EnsureConnectionAsync())
+            {
+                Debug.LogError("[UnifiedWebSocket] Failed to establish connection for DirectTTS");
+                return;
+            }
+
+            await _webSocket.SendJsonAsync(message);
+            if (enableVerboseLogging)
+                Debug.Log($"[UnifiedWebSocket] Sent DirectTTS for RequestId: {message.RequestId}, Text: '{message.Text}', Voice: {message.Voice ?? "default"}");
+        }
+
+        /// <summary>
         /// Send AnalysisRequest message for conversation analysis
         /// </summary>
         public async Task SendAnalysisRequestAsync(AnalysisRequestMessage message)
@@ -418,7 +443,7 @@ namespace Tsc.AIBridge.WebSocket
 
             await _webSocket.SendJsonAsync(message);
             if (enableVerboseLogging)
-                Debug.Log($"[UnifiedWebSocket] Sent AnalysisRequest for RequestId: {message.RequestId}, Model: {message.LlmModel}");
+                Debug.Log($"[UnifiedWebSocket] Sent AnalysisRequest for RequestId: {message.RequestId}, Model: {message.Context?.llmModel ?? "default"}");
         }
 
         /// <summary>
@@ -882,6 +907,12 @@ namespace Tsc.AIBridge.WebSocket
 
         private void OnDestroy()
         {
+            // Clear singleton instance
+            if (_instance == this)
+            {
+                _instance = null;
+            }
+
             // Cleanup on destroy
             if (_webSocket != null)
             {
@@ -889,11 +920,6 @@ namespace Tsc.AIBridge.WebSocket
             }
 
             CleanupConnection();
-
-            if (_instance == this)
-            {
-                _instance = null;
-            }
         }
 
         private void OnApplicationQuit()

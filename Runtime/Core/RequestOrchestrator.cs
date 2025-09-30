@@ -39,7 +39,7 @@ namespace Tsc.AIBridge.Core
         #region Singleton
 
         private static RequestOrchestrator _instance;
-        private static bool _isQuitting = false;
+        private static bool _isQuitting;
 
         public static RequestOrchestrator Instance
         {
@@ -67,7 +67,6 @@ namespace Tsc.AIBridge.Core
         #region Required Components
 
         [Header("Required Components")]
-        [SerializeField] private WebSocketClient _webSocketClient;
         [SerializeField] private SpeechInputHandler speechInputHandler;
 
         [Header("Optional Components")]
@@ -75,6 +74,9 @@ namespace Tsc.AIBridge.Core
 
         [Header("NPC Provider (Optional)")]
         [Tooltip("Optional provider for dynamic NPC lookup by ID. If not set, pass INpcConfiguration directly to request methods.")]
+        // NOTE: Using MonoBehaviour for Inspector compatibility. External packages (e.g., RuleSystem)
+        // provide components that implement both MonoBehaviour and INpcProvider.
+        // The cast warning is a false positive - the component WILL implement INpcProvider at runtime.
         [SerializeField] private MonoBehaviour npcProviderComponent; // Will be cast to INpcProvider
         private INpcProvider _npcProvider;
 
@@ -89,7 +91,7 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Fired when STT transcription is received
         /// </summary>
-        public event System.Action<string> OnTranscriptionReceived;
+        public event Action<string> OnTranscriptionReceived;
 
         #endregion
 
@@ -98,6 +100,7 @@ namespace Tsc.AIBridge.Core
         private readonly Queue<AudioRequest> _audioRequestQueue = new();
         private readonly Queue<TextRequest> _textRequestQueue = new();
 
+        private WebSocketClient _webSocketClient;
         private ConversationSession _currentSession;
         private INpcConfiguration _activeNpcConfig;
         private INpcClient _activeNpcClient; // Cache to avoid FindObjectsByType
@@ -107,7 +110,6 @@ namespace Tsc.AIBridge.Core
 
         // For tracking whether we're waiting for audio to finish
         private bool _isWaitingForAudioStart;
-        private bool _isAudioPlaying;
 
         #endregion
 
@@ -127,8 +129,11 @@ namespace Tsc.AIBridge.Core
             // Try to get INpcProvider from component
             if (npcProviderComponent != null)
             {
-                _npcProvider = npcProviderComponent as INpcProvider;
-                if (_npcProvider == null)
+                if (npcProviderComponent is INpcProvider provider)
+                {
+                    _npcProvider = provider;
+                }
+                else
                 {
                     Debug.LogError($"[RequestOrchestrator] Component {npcProviderComponent.name} does not implement INpcProvider!");
                 }
@@ -233,7 +238,6 @@ namespace Tsc.AIBridge.Core
             var request = new AudioRequest
             {
                 NpcConfig = npcConfig,
-                StartTime = Time.time,
                 RequestId = Guid.NewGuid().ToString()
             };
 
@@ -288,7 +292,6 @@ namespace Tsc.AIBridge.Core
             {
                 NpcConfig = npcConfig,
                 Text = text,
-                StartTime = Time.time,
                 RequestId = Guid.NewGuid().ToString()
             };
 
@@ -346,7 +349,8 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public bool IsAudioPlaying()
         {
-            return _isAudioPlaying;
+            // Check if the active NPC client is currently playing audio
+            return _activeNpcClient?.IsSpeaking ?? false;
         }
 
         /// <summary>
@@ -386,7 +390,7 @@ namespace Tsc.AIBridge.Core
 
         private IEnumerator ProcessRequestQueues()
         {
-            while (true)
+            while (this && gameObject && gameObject.activeInHierarchy)
             {
                 // Process text requests first (higher priority for NPC-initiated conversations)
                 if (_textRequestQueue.Count > 0 && !_isProcessingRequest)
@@ -440,8 +444,6 @@ namespace Tsc.AIBridge.Core
                 _currentSession = new ConversationSession
                 {
                     SessionId = request.RequestId,
-                    NpcConfig = request.NpcConfig,
-                    StartTime = Time.time
                 };
 
                 // Register this request with the NPC router so messages are routed correctly
@@ -451,7 +453,7 @@ namespace Tsc.AIBridge.Core
                 var messages = GetChatHistory();
 
                 // Build SessionStartMessage with all parameters including custom vocabulary
-                var sessionStartMessage = new Messages.SessionStartMessage
+                var sessionStartMessage = new SessionStartMessage
                 {
                     RequestId = request.RequestId,
                     Messages = messages,
@@ -498,30 +500,35 @@ namespace Tsc.AIBridge.Core
             {
                 Debug.Log($"[RequestOrchestrator] Processing text request: {request.Text}");
 
-                // Create session parameters
-                var parameters = BuildSessionParameters(request.NpcConfig);
-
                 // Start WebSocket session with text input
                 _currentSession = new ConversationSession
                 {
                     SessionId = request.RequestId,
-                    NpcConfig = request.NpcConfig,
-                    StartTime = Time.time
                 };
 
                 var messages = GetChatHistory();
 
                 // Build TextInputMessage for text-based conversation
-                var textInputMessage = new Messages.TextInputMessage
+                var textInputMessage = new TextInputMessage
                 {
                     RequestId = request.RequestId,
-                    ConversationParameters = ConvertToConversationParameters(parameters),
-                    Messages = messages,
                     Text = request.Text,
-                    // Text requests typically don't need custom vocabulary since no STT is involved
-                    // But we'll include it for consistency in case backend wants it for response generation
-                    CustomVocabulary = speechInputHandler?.ParsedCustomVocabulary,
-                    CustomVocabularyBoost = 10.0f // Fixed boost value for Google STT
+                    IsNpcInitiated = false,
+                    Context = new ConversationContext
+                    {
+                        messages = messages,
+                        systemPrompt = request.NpcConfig?.SystemPrompt,
+                        voiceId = request.NpcConfig?.VoiceId,
+                        ttsStreamingMode = request.NpcConfig?.TtsStreamingMode,
+                        llmModel = request.NpcConfig?.LlmModel,
+                        llmProvider = request.NpcConfig?.LlmProvider,
+                        language = request.NpcConfig?.Language,
+                        temperature = request.NpcConfig?.Temperature ?? 0,
+                        maxTokens = request.NpcConfig?.MaxTokens ?? 0,
+                        ttsModel = request.NpcConfig?.TtsModel,
+                        sttProvider = request.NpcConfig?.SttProvider,
+                        // Audio settings removed - API always uses opus_48000_64
+                    }
                 };
 
                 // Send text input via WebSocket
@@ -602,59 +609,21 @@ namespace Tsc.AIBridge.Core
             return parameters;
         }
 
-        /// <summary>
-        /// Convert ConnectionParameters to ConversationParameters for NetworkMessageController
-        /// </summary>
-        private Messages.ConversationParameters ConvertToConversationParameters(ConnectionParameters connParams)
-        {
-            return new Messages.ConversationParameters
-            {
-                language = connParams.Language,
-                llmProvider = connParams.LlmProvider,
-                llmModel = connParams.LlmModel,
-                ttsModel = connParams.Model,  // Model in ConnectionParams is TTS model
-                sttProvider = connParams.SttProvider,
-                voiceId = connParams.VoiceId,
-                maxTokens = connParams.MaxTokens,
-                temperature = connParams.Temperature,
-                ttsStreamingMode = connParams.TtsStreamingMode
-            };
-        }
-
         private List<ChatMessage> GetChatHistory()
         {
-            // Get chat history from active NPC client
-            if (_activeNpcClient != null)
+            // Get chat history from active NPC client (if it supports history)
+            if (_activeNpcClient != null && _activeNpcClient is IConversationHistory historyProvider)
             {
-                var history = _activeNpcClient.GetApiHistoryAsChatMessages();
+                var history = historyProvider.GetApiHistoryAsChatMessages();
                 if (history != null && history.Count > 0)
                 {
                     return history;
                 }
             }
 
-            // Fallback: Create minimal message list with system prompt
-            var messages = new List<ChatMessage>();
-
-            if (_activeNpcConfig != null && !string.IsNullOrEmpty(_activeNpcConfig.SystemPrompt))
-            {
-                messages.Add(new ChatMessage
-                {
-                    Role = "system",
-                    Content = _activeNpcConfig.SystemPrompt
-                });
-            }
-            else
-            {
-                // Ultimate fallback
-                messages.Add(new ChatMessage
-                {
-                    Role = "system",
-                    Content = "Je bent een behulpzame assistent die in het Nederlands antwoordt."
-                });
-            }
-
-            return messages;
+            // No history available - return empty list
+            // Client MUST provide system prompt if needed
+            return new List<ChatMessage>();
         }
 
         #endregion
@@ -665,7 +634,6 @@ namespace Tsc.AIBridge.Core
         {
             public INpcConfiguration NpcConfig;
             public string RequestId;
-            public float StartTime;
         }
 
         private class TextRequest
@@ -673,14 +641,11 @@ namespace Tsc.AIBridge.Core
             public INpcConfiguration NpcConfig;
             public string Text;
             public string RequestId;
-            public float StartTime;
         }
 
         private class ConversationSession
         {
             public string SessionId;
-            public INpcConfiguration NpcConfig;
-            public float StartTime;
         }
 
         #endregion

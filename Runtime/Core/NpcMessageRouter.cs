@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using Tsc.AIBridge.WebSocket;
 
 namespace Tsc.AIBridge.Core
 {
@@ -13,18 +12,23 @@ namespace Tsc.AIBridge.Core
         #region Singleton
 
         private static NpcMessageRouter _instance;
+        /// <summary>
+        /// Check if an instance exists without creating one
+        /// </summary>
+        public static bool HasInstance => _instance != null;
+
         public static NpcMessageRouter Instance
         {
             get
             {
-                if (_instance == null)
+                if (_instance == null && Application.isPlaying)
                 {
                     _instance = FindFirstObjectByType<NpcMessageRouter>();
-                    if (_instance == null && Application.isPlaying)
+
+                    if (_instance == null)
                     {
                         var go = new GameObject("NpcMessageRouter");
                         _instance = go.AddComponent<NpcMessageRouter>();
-                        DontDestroyOnLoad(go);
                         Debug.Log("[NpcMessageRouter] Created singleton instance");
                     }
                 }
@@ -52,7 +56,6 @@ namespace Tsc.AIBridge.Core
                 return;
             }
             _instance = this;
-            DontDestroyOnLoad(gameObject);
         }
 
         private void OnDestroy()

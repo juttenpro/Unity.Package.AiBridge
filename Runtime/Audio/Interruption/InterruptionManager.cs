@@ -1,9 +1,7 @@
 using System;
-using System.Linq;
 using UnityEngine;
 using Tsc.AIBridge.Core;
 using Tsc.AIBridge.Input;
-using Tsc.AIBridge.Audio.VAD;
 
 namespace Tsc.AIBridge.Audio.Interruption
 {
@@ -12,9 +10,11 @@ namespace Tsc.AIBridge.Audio.Interruption
     /// Lives on the PLAYER GameObject alongside SpeechInputHandler.
     /// No PersonaSO dependencies - works with any INpcConfiguration implementation.
     /// </summary>
-    [RequireComponent(typeof(SpeechInputHandler))]
     public class InterruptionManager : MonoBehaviour
     {
+        [Header("Required Components")]
+        [SerializeField] private SpeechInputHandler speechInputHandler;
+
         [Header("Near-End Detection")]
         [SerializeField]
         [Range(0.5f, 3.0f)]
@@ -30,7 +30,6 @@ namespace Tsc.AIBridge.Audio.Interruption
         // Using object to avoid PersonaSO dependency in Core package
         public event Action<object, string> OnInterruptionDetectedEvent;
 
-        private SpeechInputHandler _speechInputHandler;
         private INpcProvider _npcProvider;
         private float _overlapTimer;
         private bool _hasValidInterruption;
@@ -41,10 +40,9 @@ namespace Tsc.AIBridge.Audio.Interruption
 
         private void Awake()
         {
-            _speechInputHandler = GetComponent<SpeechInputHandler>();
-            if (_speechInputHandler == null)
+            if (speechInputHandler == null)
             {
-                Debug.LogError("[InterruptionManager] SpeechInputHandler is required on the same GameObject!");
+                Debug.LogError("[InterruptionManager] SpeechInputHandler is required!");
             }
         }
 
@@ -80,14 +78,14 @@ namespace Tsc.AIBridge.Audio.Interruption
 
         private void Update()
         {
-            if (_speechInputHandler == null)
+            if (speechInputHandler == null)
                 return;
 
             var activeNpc = GetActiveNpc();
             if (activeNpc == null)
                 return;
 
-            bool pttActive = _speechInputHandler.IsPushToTalkActive();
+            bool pttActive = speechInputHandler.IsPushToTalkActive();
             bool userSpeaking = DetectUserSpeech();
             bool npcSpeaking = activeNpc.IsTalking;
 
@@ -216,7 +214,7 @@ namespace Tsc.AIBridge.Audio.Interruption
         private bool DetectUserSpeech()
         {
             // Use SpeechInputHandler's VAD result
-            return _speechInputHandler?.IsUserSpeaking ?? false;
+            return speechInputHandler?.IsUserSpeaking ?? false;
         }
 
         /// <summary>

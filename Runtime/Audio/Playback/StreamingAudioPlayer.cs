@@ -798,11 +798,14 @@ namespace Tsc.AIBridge.Audio.Playback
         {
             StopPlayback();
 
-            // Unsubscribe from buffer updates
-            var bufferManager = AdaptiveBufferManager.Instance;
-            if (bufferManager != null)
+            // Unsubscribe from buffer updates (only if instance exists, don't create during cleanup)
+            if (AdaptiveBufferManager.HasInstance)
             {
-                bufferManager.OnBufferUpdateEvent -= OnBufferUpdateReceived;
+                var bufferManager = AdaptiveBufferManager.Instance;
+                if (bufferManager != null)
+                {
+                    bufferManager.OnBufferUpdateEvent -= OnBufferUpdateReceived;
+                }
             }
 
             #if UNITY_EDITOR

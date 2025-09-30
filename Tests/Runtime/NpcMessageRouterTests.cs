@@ -43,19 +43,18 @@ namespace Tsc.AIBridge.Tests.Runtime
         private AdaptiveBufferManager _bufferManager;
 
         // Mock NPC client for testing
-        private class MockNpcClient : NpcClientBase
+        private class MockNpcClient : NpcClientBase, IConversationHistory
         {
             public bool ReceivedMessage { get; set; }
             public string LastMessage { get; set; }
             private string _npcName = "TestNPC";
-            private string _npcId = "test-npc-id";
-            private List<ChatMessage> _history = new List<ChatMessage>();
-            public TestMetadataHandler MetadataHandler { get; private set; }
+            private readonly List<ChatMessage> _history = new();
+            public new TestMetadataHandler MetadataHandler { get; private set; }
 
             public override string NpcName => _npcName;
 
             // Initialize handler after Unity creates the component
-            private void Start()
+            private new void Start()
             {
                 if (MetadataHandler == null)
                 {
@@ -86,17 +85,17 @@ namespace Tsc.AIBridge.Tests.Runtime
                 // No-op for testing
             }
 
-            public override List<ChatMessage> GetApiHistoryAsChatMessages()
+            public List<ChatMessage> GetApiHistoryAsChatMessages()
             {
                 return new List<ChatMessage>(_history);
             }
 
-            public override void ClearHistory()
+            public void ClearHistory()
             {
                 _history.Clear();
             }
 
-            public override void AddPlayerMessage(string message)
+            public void AddPlayerMessage(string message)
             {
                 _history.Add(new ChatMessage { Role = "user", Content = message });
             }
@@ -140,7 +139,7 @@ namespace Tsc.AIBridge.Tests.Runtime
         public void TearDown()
         {
             // Destroy all test GameObjects created for MockNpcClient
-            var allGameObjects = GameObject.FindObjectsOfType<GameObject>();
+            var allGameObjects = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
             foreach (var go in allGameObjects)
             {
                 if (go != null && (go.name == "MockNpc" || go.name == "NPC1" || go.name == "NPC2"))

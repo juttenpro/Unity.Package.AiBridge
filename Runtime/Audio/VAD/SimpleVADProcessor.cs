@@ -1,5 +1,3 @@
-using UnityEngine;
-
 namespace Tsc.AIBridge.Audio.VAD
 {
     /// <summary>

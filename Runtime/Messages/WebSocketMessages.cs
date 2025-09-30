@@ -288,32 +288,53 @@ namespace Tsc.AIBridge.Messages
         public string Text;
 
         /// <summary>
-        /// Conversation history
+        /// Whether this is an NPC-initiated conversation (NPC speaks first)
         /// </summary>
-        [JsonProperty("messages")]
-        public List<ChatMessage> Messages;
+        [JsonProperty("isNpcInitiated")]
+        public bool IsNpcInitiated;
 
         /// <summary>
-        /// Conversation parameters
+        /// Unified conversation context containing all parameters, chat history, and settings
         /// </summary>
-        [JsonProperty("conversationParameters")]
-        public ConversationParameters ConversationParameters;
-
-        /// <summary>
-        /// Custom vocabulary for STT (even though this is text input, might be useful for response generation)
-        /// </summary>
-        [JsonProperty("customVocabulary")]
-        public List<string> CustomVocabulary { get; set; }
-
-        /// <summary>
-        /// Boost value for custom vocabulary
-        /// </summary>
-        [JsonProperty("customVocabularyBoost")]
-        public float CustomVocabularyBoost { get; set; } = 10.0f;
+        [JsonProperty("context")]
+        public ConversationContext Context;
 
         public TextInputMessage()
         {
             Type = "textinput";  // Lowercase per protocol
+        }
+    }
+
+    /// <summary>
+    /// Direct TTS request - sends text directly to TTS service without LLM processing.
+    /// Useful for pre-scripted NPC dialogue, system messages, or when LLM is not needed.
+    /// </summary>
+    [Serializable]
+    public class DirectTTSMessage : WebSocketMessageBase
+    {
+        /// <summary>
+        /// The text to be converted to speech
+        /// </summary>
+        [JsonProperty("text")]
+        public string Text;
+
+        /// <summary>
+        /// Optional voice override for this specific TTS request.
+        /// If not specified, uses the voice from connection parameters.
+        /// </summary>
+        [JsonProperty("voice")]
+        public string Voice;
+
+        /// <summary>
+        /// Optional TTS model override (e.g., "eleven_turbo_v2_5", "eleven_turbo_v2")
+        /// If not specified, uses the model from connection parameters.
+        /// </summary>
+        [JsonProperty("model")]
+        public string Model;
+
+        public DirectTTSMessage()
+        {
+            Type = "directtts";  // Lowercase per protocol
         }
     }
 
@@ -326,28 +347,10 @@ namespace Tsc.AIBridge.Messages
     public class AnalysisRequestMessage : WebSocketMessageBase
     {
         /// <summary>
-        /// System prompt containing evaluation criteria and conversation history
+        /// All parameters in one context object
         /// </summary>
-        [JsonProperty("systemPrompt")]
-        public string SystemPrompt;
-
-        /// <summary>
-        /// LLM model to use for analysis
-        /// </summary>
-        [JsonProperty("llmModel")]
-        public string LlmModel;
-
-        /// <summary>
-        /// Temperature for response generation
-        /// </summary>
-        [JsonProperty("temperature")]
-        public float Temperature;
-
-        /// <summary>
-        /// Maximum tokens for response
-        /// </summary>
-        [JsonProperty("maxTokens")]
-        public int MaxTokens;
+        [JsonProperty("context")]
+        public ConversationContext Context;
 
         public AnalysisRequestMessage()
         {

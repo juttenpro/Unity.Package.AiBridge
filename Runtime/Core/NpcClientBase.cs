@@ -10,8 +10,9 @@ namespace Tsc.AIBridge.Core
     /// <summary>
     /// Base class for NPC clients with common functionality.
     /// Extended by SimpleNpcClient (core) and ExtendedNpcClient (with PersonaSO).
+    /// Implements IConversationHistory with virtual methods for flexible overriding.
     /// </summary>
-    public abstract class NpcClientBase : MonoBehaviour, INpcClient
+    public abstract class NpcClientBase : MonoBehaviour, INpcClient, IConversationHistory, INpcMessageHandler
     {
         #region Properties
 
@@ -70,20 +71,9 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public virtual string NpcId => gameObject.GetInstanceID().ToString();
 
-        /// <summary>
-        /// Get the conversation history as chat messages for API
-        /// </summary>
-        public abstract List<ChatMessage> GetApiHistoryAsChatMessages();
-
-        /// <summary>
-        /// Clear the conversation history
-        /// </summary>
-        public abstract void ClearHistory();
-
-        /// <summary>
-        /// Add a player message to the conversation history
-        /// </summary>
-        public abstract void AddPlayerMessage(string message);
+        // History management methods removed - now optional via IConversationHistory interface
+        // This allows RuleSystem-based implementations to provide messages directly
+        // while still supporting third-party implementations that manage their own history
 
         /// <summary>
         /// Stop any ongoing audio playback
@@ -170,8 +160,11 @@ namespace Tsc.AIBridge.Core
                 _metadataHandler.OnTranscription -= HandleTranscription;
             }
 
-            // Unregister from message router
-            NpcMessageRouter.Instance.UnregisterNpc(this);
+            // Unregister from message router (only if it exists, don't create new one during cleanup)
+            if (NpcMessageRouter.HasInstance)
+            {
+                NpcMessageRouter.Instance.UnregisterNpc(this);
+            }
 
             StopAudio();
         }
@@ -216,21 +209,112 @@ namespace Tsc.AIBridge.Core
         #region Public Methods
 
         /// <summary>
-        /// Start a conversation with text input
+        /// Start a conversation with text input (equivalent to audio streaming but without STT)
         /// </summary>
-        public virtual void StartTextConversation(string userInput, Dictionary<string, string> parameters = null)
+        /// <param name="userInput">The user's text input</param>
+        /// <param name="context">Conversation context with all parameters</param>
+        public virtual void StartTextConversation(string userInput, ConversationContext context)
         {
             Debug.Log($"[{GetType().Name}] Starting text conversation: {userInput}");
 
-            // Fire event
-            OnConversationStarted?.Invoke();
+            // Create text input message with context
+            var textMessage = CreateTextInputMessage(userInput, false, context);
 
-            // Subclasses should override to actually send the request
+            // Send to backend
+            SendTextInputMessage(textMessage);
         }
 
         /// <summary>
-        /// Handle AI response received
+        /// Send scripted text directly to TTS without LLM processing.
+        /// Useful for pre-defined NPC responses, system messages, or scripted dialogue.
         /// </summary>
+        /// <param name="text">The text to convert to speech</param>
+        /// <param name="voice">Optional voice override (null = use default)</param>
+        /// <param name="model">Optional TTS model override (null = use default)</param>
+        public virtual async void SendDirectTTS(string text, string voice = null, string model = null)
+        {
+            Debug.Log($"[{GetType().Name}] Sending DirectTTS: {text} (voice: {voice ?? "default"})");
+
+            // Create DirectTTS message
+            var directTtsMessage = new DirectTTSMessage
+            {
+                RequestId = Guid.NewGuid().ToString(),
+                Text = text,
+                Voice = voice,
+                Model = model
+            };
+
+            // Get the WebSocket client
+            var webSocketClient = WebSocketClient.Instance;
+            if (webSocketClient == null)
+            {
+                Debug.LogError($"[{GetType().Name}] WebSocketClient not found!");
+                return;
+            }
+
+            // Register this NPC to receive responses for this request
+            webSocketClient.RegisterNpc(directTtsMessage.RequestId, this);
+
+            // Send DirectTTS message
+            await webSocketClient.SendDirectTTSAsync(directTtsMessage);
+
+            Debug.Log($"[{GetType().Name}] DirectTTS message sent with RequestId: {directTtsMessage.RequestId}");
+        }
+
+        /// <summary>
+        /// Create a TextInputMessage with the given parameters
+        /// </summary>
+        protected virtual TextInputMessage CreateTextInputMessage(string text, bool isNpcInitiated, ConversationContext context)
+        {
+            return new TextInputMessage
+            {
+                RequestId = Guid.NewGuid().ToString(),
+                Text = text,
+                IsNpcInitiated = isNpcInitiated,
+                Context = context
+            };
+        }
+
+        /// <summary>
+        /// Send a TextInputMessage to the backend
+        /// </summary>
+        protected virtual async void SendTextInputMessage(TextInputMessage message)
+        {
+            Debug.Log($"[{GetType().Name}] Sending text input message. NPC-initiated: {message.IsNpcInitiated}");
+
+            // Get the WebSocket client
+            var webSocketClient = WebSocketClient.Instance;
+            if (webSocketClient == null)
+            {
+                Debug.LogError($"[{GetType().Name}] WebSocketClient not found in scene");
+                return;
+            }
+
+            // Register this NPC for the request
+            NpcMessageRouter.Instance.SetActiveRequest(message.RequestId, NpcName);
+
+            // Send the text input message
+            try
+            {
+                await webSocketClient.SendTextInputAsync(message);
+                Debug.Log($"[{GetType().Name}] Sent text input message. RequestId: {message.RequestId}, NPC-initiated: {message.IsNpcInitiated}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[{GetType().Name}] Failed to send text input: {ex.Message}");
+            }
+
+            // Fire event
+            OnConversationStarted?.Invoke();
+        }
+
+
+        /// <summary>
+        /// Handle AI response received from the backend.
+        /// Stores the response and triggers relevant events.
+        /// </summary>
+        /// <param name="response">The text response from the AI</param>
+        /// <param name="metadata">Optional metadata about the response (timing, model info, etc.)</param>
         public virtual void OnAiResponseReceived(string response, Dictionary<string, object> metadata = null)
         {
             Debug.Log($"[{GetType().Name}] AI response: {response}");
@@ -270,19 +354,6 @@ namespace Tsc.AIBridge.Core
             OnConversationEnded?.Invoke();
         }
 
-        /// <summary>
-        /// Get session parameters for API request.
-        /// Subclasses can override to add voice/TTS settings.
-        /// </summary>
-        public virtual Dictionary<string, string> GetSessionParameters()
-        {
-            // Base implementation only provides NPC identity
-            // Subclasses can add voice settings if available
-            return new Dictionary<string, string>
-            {
-                ["npcName"] = NpcName
-            };
-        }
 
         #endregion
 
@@ -310,6 +381,76 @@ namespace Tsc.AIBridge.Core
         protected void LogError(string message)
         {
             Debug.LogError($"[{GetType().Name}:{NpcName}] {message}");
+        }
+
+        #endregion
+
+        #region IConversationHistory Implementation (Virtual)
+
+        /// <summary>
+        /// Get the conversation history as chat messages for API.
+        /// Default implementation returns empty list. Override in derived classes to provide actual history.
+        /// </summary>
+        public virtual List<ChatMessage> GetApiHistoryAsChatMessages()
+        {
+            // Default: return empty list
+            // Derived classes can override to provide actual history
+            return new List<ChatMessage>();
+        }
+
+        /// <summary>
+        /// Clear the conversation history.
+        /// Default implementation does nothing. Override in derived classes that manage history.
+        /// </summary>
+        public virtual void ClearHistory()
+        {
+            // Default: no-op
+            // Derived classes can override if they manage history
+            // RuleSystem-based implementations typically don't clear history here
+        }
+
+        /// <summary>
+        /// Add a player message to the conversation history.
+        /// Default implementation does nothing. Override in derived classes that track history.
+        /// </summary>
+        /// <param name="message">The player's message to add</param>
+        public virtual void AddPlayerMessage(string message)
+        {
+            // Default: no-op
+            // Derived classes can override if they track history
+        }
+
+        #endregion
+
+        #region INpcMessageHandler Implementation
+
+        /// <summary>
+        /// Handle incoming text messages from WebSocket
+        /// </summary>
+        public virtual void OnTextMessage(string json)
+        {
+            // Handle text messages - typically JSON messages like AiResponse, AudioStreamStart, etc.
+            // This is usually handled by the NpcMessageRouter, but we need to implement it for the interface
+            Debug.Log($"[{GetType().Name}] Received text message: {json}");
+        }
+
+        /// <summary>
+        /// Handle incoming binary messages from WebSocket (audio data)
+        /// </summary>
+        public virtual void OnBinaryMessage(byte[] data)
+        {
+            // Handle binary messages - typically audio data
+            // This is usually handled by the audio processing system
+            Debug.Log($"[{GetType().Name}] Received binary message: {data.Length} bytes");
+        }
+
+        /// <summary>
+        /// Called when a request is completed
+        /// </summary>
+        public virtual void OnRequestComplete(string requestId)
+        {
+            Debug.Log($"[{GetType().Name}] Request completed: {requestId}");
+            // Clean up any request-specific resources if needed
         }
 
         #endregion
