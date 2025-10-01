@@ -586,10 +586,10 @@ namespace Tsc.AIBridge.Audio.Playback
             }
 
             // Log first callback to confirm it's working
-            if (enableVerboseLogging && _totalSamplesPlayed == 0 && data.Length > 0)
-            {
-                Debug.Log($"[{_cachedGameObjectName}] OnAudioFilterRead first callback - data.Length: {data.Length}, channels: {channels}");
-            }
+            //if (enableVerboseLogging && _totalSamplesPlayed == 0 && data.Length > 0)
+            //{
+            //    Debug.Log($"[{_cachedGameObjectName}] OnAudioFilterRead first callback - data.Length: {data.Length}, channels: {channels}");
+            //}
 
             // Check if we're paused - output silence but DON'T consume buffer
             if (_isPaused)

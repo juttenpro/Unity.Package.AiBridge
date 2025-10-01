@@ -7,6 +7,7 @@ using Tsc.AIBridge.Auth;
 using Tsc.AIBridge.Configuration;
 using Tsc.AIBridge.Messages;
 using Tsc.AIBridge.Core;
+using Tsc.AIBridge.Utilities;
 using UnityEngine;
 
 namespace Tsc.AIBridge.WebSocket
@@ -127,7 +128,7 @@ namespace Tsc.AIBridge.WebSocket
         [SerializeField] private string orchestratorApiKey = "";
 
         // Connection state
-        public bool IsConnected => _webSocket != null && _webSocket.IsConnected;
+        public virtual bool IsConnected => _webSocket != null && _webSocket.IsConnected;
         public ConnectionState State
         {
             get
@@ -282,7 +283,7 @@ namespace Tsc.AIBridge.WebSocket
         /// <summary>
         /// Send SessionStart message to begin a conversation
         /// </summary>
-        public async Task SendSessionStartAsync(SessionStartMessage message, CancellationToken cancellationToken = default)
+        public virtual async Task SendSessionStartAsync(SessionStartMessage message, CancellationToken cancellationToken = default)
         {
             if (message == null)
             {
@@ -316,7 +317,7 @@ namespace Tsc.AIBridge.WebSocket
         /// <summary>
         /// Send binary audio data
         /// </summary>
-        public async Task SendBinaryAsync(byte[] audioData)
+        public virtual async Task SendBinaryAsync(byte[] audioData)
         {
             // Ensure connection before sending - auto-reconnect if needed
             if (enableVerboseLogging && (_webSocket == null || !_webSocket.IsConnected))
@@ -659,28 +660,43 @@ namespace Tsc.AIBridge.WebSocket
         }
 
         /// <summary>
-        /// Handle incoming binary messages (audio) and route to appropriate NPC
+        /// Handle incoming binary messages (audio) and route to appropriate NPC.
+        /// STRICT MODE: All audio MUST be wrapped with RequestId.
+        /// Routes to specific NPC only - no broadcast fallback.
         /// </summary>
         private void HandleBinaryMessage(byte[] data)
         {
             if (data == null || data.Length == 0)
                 return;
 
-            // Binary audio doesn't have RequestId, route to all active NPCs
-            // In practice, only one NPC should be expecting audio at a time
-            lock (_routingLock)
+            try
             {
-                foreach (var handler in _npcHandlers.Values)
+                // Unwrap audio to extract RequestId (REQUIRED)
+                var (requestId, audioData) = BinaryAudioWrapper.UnwrapAudioChunk(data);
+
+                lock (_routingLock)
                 {
-                    try
+                    // Route to specific NPC by RequestId
+                    if (_npcHandlers.TryGetValue(requestId, out var handler))
                     {
-                        handler.OnBinaryMessage(data);
+                        try
+                        {
+                            handler.OnBinaryMessage(audioData);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.LogError($"[UnifiedWebSocket] Error in NPC binary handler for RequestId {requestId}: {ex.Message}");
+                        }
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        Debug.LogError($"[UnifiedWebSocket] Error in NPC binary handler: {ex.Message}");
+                        Debug.LogError($"[UnifiedWebSocket] No NPC handler registered for RequestId: {requestId}. Audio dropped.");
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[UnifiedWebSocket] Failed to unwrap audio data: {ex.Message}. Audio must be wrapped with RequestId!");
             }
         }
 

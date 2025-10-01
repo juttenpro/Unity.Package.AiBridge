@@ -92,8 +92,8 @@ namespace Tsc.AIBridge.Controllers
                 TtsStreamingMode = parameters?.ttsStreamingMode ?? "batch",  // Default to batch if not specified
                 // CRITICAL audio format fields - without these STT cannot decode audio!
                 AudioFormat = "opus",      // Must be opus for compressed audio
-                SampleRate = MicrophoneCapture.Frequency,  // Use actual recording frequency (16000)
-                OpusBitrate = 64000        // 64kbps Opus encoding
+                SampleRate = MicrophoneCapture.Frequency,  // UPSTREAM: 16kHz for STT
+                OpusBitrate = MicrophoneCapture.UPSTREAM_OPUS_BITRATE  // UPSTREAM: 16kbps
             };
             
             // Use WebSocketClient for SessionStart - Fire and forget (event-driven!)

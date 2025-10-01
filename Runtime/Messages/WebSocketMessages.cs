@@ -95,13 +95,14 @@ namespace Tsc.AIBridge.Messages
         public string AudioFormat { get; set; } = "opus";
 
         /// <summary>
-        /// Sample rate for audio in Hz (e.g., 16000, 48000)
+        /// Sample rate for audio in Hz - UPSTREAM (microphone capture for STT)
         /// </summary>
         [JsonProperty("sampleRate")]
         public int SampleRate { get; set; } = 16000;
 
         /// <summary>
-        /// Opus bitrate in bits per second (e.g., 64000)
+        /// Opus bitrate in bits per second - UPSTREAM (microphone → backend)
+        /// 64kbps provides good quality for voice recognition
         /// </summary>
         [JsonProperty("opusBitrate")]
         public int OpusBitrate { get; set; } = 64000;

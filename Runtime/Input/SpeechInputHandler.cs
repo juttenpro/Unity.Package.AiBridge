@@ -149,6 +149,9 @@ namespace Tsc.AIBridge.Input
         // Voice activation pre-buffer
         private CircularAudioBuffer _preBuffer;
 
+        // Audio encoding for upstream (player → backend)
+        private Audio.Processing.AudioStreamProcessor _audioStreamProcessor;
+
         // Recording state
         private bool _isRecording;
         private bool _isPttPressed;
@@ -217,13 +220,24 @@ namespace Tsc.AIBridge.Input
             {
                 _microphoneCapture = gameObject.AddComponent<MicrophoneCapture>();
             }
-            
+
             // Setup pre-buffer for voice activation
             if (useVoiceActivation)
             {
                 var bufferSamples = Mathf.CeilToInt(voiceActivationPreBufferTime * MicrophoneCapture.Frequency);
                 _preBuffer = new CircularAudioBuffer(bufferSamples);
             }
+
+            // Initialize AudioStreamProcessor for encoding (NO audioPlayer = encoding-only mode)
+            _audioStreamProcessor = new Audio.Processing.AudioStreamProcessor(
+                audioPlayer: null, // encoding-only mode
+                opusBitrate: MicrophoneCapture.UPSTREAM_OPUS_BITRATE,
+                bufferDuration: 0f, // not used for encoding
+                isVerboseLogging: enableVerboseLogging
+            );
+
+            if (enableVerboseLogging)
+                Debug.Log("[SpeechInputHandler] AudioStreamProcessor initialized for upstream encoding");
 
             StopRecordingDelayStatic = stopRecordingDelay;
         }
@@ -270,12 +284,25 @@ namespace Tsc.AIBridge.Input
                 return;
 
             _isRecording = true;
+
+            // Start microphone capture
             _microphoneCapture.StartCapture();
+
+            // Start audio encoding - buffering is controlled by RequestOrchestrator
+            if (_audioStreamProcessor == null)
+            {
+                Debug.LogError("[SpeechInputHandler] _audioStreamProcessor is NULL! Cannot start encoding!");
+            }
+            else
+            {
+                Debug.Log("[SpeechInputHandler] Calling StartEncoding() on AudioStreamProcessor");
+                _audioStreamProcessor.StartEncoding();
+            }
 
             OnRecordingStarted?.Invoke();
 
             if (enableVerboseLogging)
-                Debug.Log("[SpeechInputHandler] Recording started");
+                Debug.Log("[SpeechInputHandler] Recording and encoding started");
         }
 
         /// <summary>
@@ -300,10 +327,13 @@ namespace Tsc.AIBridge.Input
             _isRecording = false;
             _microphoneCapture.StopCapture();
 
+            // Stop audio encoding
+            _audioStreamProcessor?.StopEncoding();
+
             OnRecordingStopped?.Invoke();
 
             if (enableVerboseLogging)
-                Debug.Log("[SpeechInputHandler] Recording stopped");
+                Debug.Log("[SpeechInputHandler] Recording and encoding stopped");
         }
 
         /// <summary>
@@ -397,6 +427,11 @@ namespace Tsc.AIBridge.Input
                 Debug.Log("[SpeechInputHandler] Initialized for testing");
         }
 
+        /// <summary>
+        /// Get the AudioStreamProcessor for upstream encoding (used by RequestOrchestrator)
+        /// </summary>
+        public Audio.Processing.AudioStreamProcessor AudioStreamProcessor => _audioStreamProcessor;
+
         #endregion
 
         #region Input Handling
@@ -482,7 +517,12 @@ namespace Tsc.AIBridge.Input
         private void HandleAudioData(float[] samples)
         {
             if (samples == null || samples.Length == 0)
+            {
+                Debug.LogWarning("[SpeechInputHandler] HandleAudioData received null or empty samples!");
                 return;
+            }
+
+            Debug.Log($"[SpeechInputHandler] HandleAudioData received {samples.Length} samples, _isRecording={_isRecording}");
 
             // Update VAD
             var pttDuration = _isPttPressed ? Time.time - _pttPressTime : 0f;
@@ -498,7 +538,17 @@ namespace Tsc.AIBridge.Input
             // Forward audio if recording
             if (_isRecording)
             {
+                Debug.Log($"[SpeechInputHandler] Forwarding {samples.Length} samples to AudioStreamProcessor");
+                // Send to AudioStreamProcessor for encoding
+                // Buffering is controlled by RequestOrchestrator via AudioStreamProcessor.StartBuffering()
+                _audioStreamProcessor?.ProcessRecordingData(samples);
+
+                // Also fire event for other listeners (e.g., InterruptionManager)
                 OnAudioDataReceived?.Invoke(samples);
+            }
+            else
+            {
+                Debug.LogWarning($"[SpeechInputHandler] NOT forwarding audio - _isRecording is false");
             }
 
             // Track silence for smart offset

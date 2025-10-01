@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Tsc.AIBridge.Audio.Capture;
 using UnityEngine;
 using Tsc.AIBridge.Messages;
 using Tsc.AIBridge.WebSocket;
@@ -104,7 +105,8 @@ namespace Tsc.AIBridge.Core
         private ConversationSession _currentSession;
         private INpcConfiguration _activeNpcConfig;
         private INpcClient _activeNpcClient; // Cache to avoid FindObjectsByType
-        private bool _isProcessingRequest;
+        private bool _isProcessingRequest; // Queue management - prevents concurrent request STARTS
+        private bool _isRequestActive; // Request lifecycle - true from StartAudioRequest until EndAudioRequest/Cancel
         private bool _isInterrupting;
         private Coroutine _processQueueCoroutine;
 
@@ -144,11 +146,42 @@ namespace Tsc.AIBridge.Core
         private void Start()
         {
             ValidateRequiredComponents();
+
+            // Subscribe to SpeechInputHandler's AudioStreamProcessor for encoded audio
+            if (speechInputHandler != null && speechInputHandler.AudioStreamProcessor != null)
+            {
+                speechInputHandler.AudioStreamProcessor.OnOpusAudioEncoded += ProcessAudioChunk;
+                Debug.Log("[RequestOrchestrator] Subscribed to AudioStreamProcessor.OnOpusAudioEncoded");
+            }
+            else
+            {
+                Debug.LogError("[RequestOrchestrator] SpeechInputHandler or AudioStreamProcessor is null! Audio encoding will not work!");
+            }
+
+            // Subscribe to recording stopped event to send EndOfSpeech
+            if (speechInputHandler != null)
+            {
+                speechInputHandler.OnRecordingStopped += HandleRecordingStopped;
+                Debug.Log("[RequestOrchestrator] Subscribed to SpeechInputHandler.OnRecordingStopped");
+            }
+
             _processQueueCoroutine = StartCoroutine(ProcessRequestQueues());
         }
 
         private void OnDestroy()
         {
+            // Unsubscribe from AudioStreamProcessor
+            if (speechInputHandler != null && speechInputHandler.AudioStreamProcessor != null)
+            {
+                speechInputHandler.AudioStreamProcessor.OnOpusAudioEncoded -= ProcessAudioChunk;
+            }
+
+            // Unsubscribe from recording stopped event
+            if (speechInputHandler != null)
+            {
+                speechInputHandler.OnRecordingStopped -= HandleRecordingStopped;
+            }
+
             if (_processQueueCoroutine != null)
             {
                 StopCoroutine(_processQueueCoroutine);
@@ -219,6 +252,9 @@ namespace Tsc.AIBridge.Core
             }
 
             _activeNpcConfig = npcConfig;
+
+            // Mark request as active - audio chunks can now be accepted
+            _isRequestActive = true;
 
             // Try to find the NPC client
             if (_npcProvider != null)
@@ -300,13 +336,17 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// Called when PTT is released
+        /// Called when PTT is released or voice activation ends
         /// </summary>
         public void EndAudioRequest()
         {
             // Note: Animation events should be triggered via the NPC client, not directly
 
             speechInputHandler?.StopRecording();
+
+            // Request is no longer accepting new audio chunks
+            _isRequestActive = false;
+
             Debug.Log("[RequestOrchestrator] Audio request ended (PTT released)");
         }
 
@@ -318,6 +358,13 @@ namespace Tsc.AIBridge.Core
             if (_currentSession != null)
             {
                 Debug.Log($"[RequestOrchestrator] Cancelling session {_currentSession.SessionId}: {reason}");
+
+                // Discard any buffered audio (RuleSystem rejection or interruption)
+                if (speechInputHandler?.AudioStreamProcessor != null)
+                {
+                    speechInputHandler.AudioStreamProcessor.DiscardBuffer();
+                    Debug.Log("[RequestOrchestrator] Discarded buffered audio due to session cancellation");
+                }
 
                 // Stop any ongoing recording
                 speechInputHandler?.StopRecording();
@@ -332,6 +379,7 @@ namespace Tsc.AIBridge.Core
                 _activeNpcConfig = null;
                 _activeNpcClient = null;
                 _isProcessingRequest = false;
+                _isRequestActive = false;
                 _isInterrupting = false;
             }
         }
@@ -364,6 +412,85 @@ namespace Tsc.AIBridge.Core
 
         #endregion
 
+        #region Audio Processing
+
+        /// <summary>
+        /// Process encoded audio chunk from SpeechInputHandler.
+        /// This is called by AudioStreamProcessor.OnOpusAudioEncoded event.
+        /// Audio is either buffered (if RuleSystem hasn't approved yet) or sent directly to WebSocket.
+        /// </summary>
+        private void ProcessAudioChunk(byte[] encodedAudio)
+        {
+            Debug.Log($"[RequestOrchestrator] ProcessAudioChunk called with {encodedAudio?.Length ?? 0} bytes");
+
+            if (encodedAudio == null || encodedAudio.Length == 0)
+            {
+                Debug.LogWarning("[RequestOrchestrator] ProcessAudioChunk received null or empty data!");
+                return;
+            }
+
+            Debug.Log($"[RequestOrchestrator] _isRequestActive={_isRequestActive}");
+
+            // Simple check: Is there an active request accepting audio?
+            // This covers both buffering phase (before session) and active session phase
+            if (!_isRequestActive)
+            {
+                Debug.LogWarning($"[RequestOrchestrator] Received {encodedAudio.Length} bytes but no active request! Audio dropped.");
+                return;
+            }
+
+            // Audio is sent directly to WebSocket
+            // Buffering is handled by AudioStreamProcessor itself (StartBuffering/FlushBuffer)
+            if (_webSocketClient != null && _webSocketClient.IsConnected)
+            {
+                Debug.Log($"[RequestOrchestrator] Sending {encodedAudio.Length} bytes to WebSocket");
+                _ = _webSocketClient.SendBinaryAsync(encodedAudio);
+            }
+            else
+            {
+                Debug.LogWarning($"[RequestOrchestrator] WebSocket not connected - cannot send {encodedAudio.Length} bytes");
+            }
+        }
+
+        /// <summary>
+        /// Handle recording stopped event from SpeechInputHandler.
+        /// Sends EndOfSpeech and EndOfAudio messages to backend to trigger transcription.
+        /// </summary>
+        private async void HandleRecordingStopped()
+        {
+            Debug.Log("[RequestOrchestrator] Recording stopped - sending EndOfSpeech and EndOfAudio");
+
+            // Only send messages if there's an active request
+            if (!_isRequestActive || _currentSession == null)
+            {
+                Debug.LogWarning("[RequestOrchestrator] Recording stopped but no active request - messages not sent");
+                return;
+            }
+
+            if (_webSocketClient == null || !_webSocketClient.IsConnected)
+            {
+                Debug.LogError("[RequestOrchestrator] Cannot send end messages - WebSocket not connected");
+                return;
+            }
+
+            try
+            {
+                // Send EndOfSpeech - indicates user stopped speaking
+                await _webSocketClient.SendEndOfSpeechAsync(_currentSession.SessionId);
+                Debug.Log($"[RequestOrchestrator] EndOfSpeech sent for session: {_currentSession.SessionId}");
+
+                // Send EndOfAudio - indicates all audio data has been transmitted
+                await _webSocketClient.SendEndOfAudioAsync(_currentSession.SessionId);
+                Debug.Log($"[RequestOrchestrator] EndOfAudio sent for session: {_currentSession.SessionId}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[RequestOrchestrator] Failed to send end messages: {ex.Message}");
+            }
+        }
+
+        #endregion
+
         #region Private Methods
 
         private void ValidateRequiredComponents()
@@ -377,13 +504,40 @@ namespace Tsc.AIBridge.Core
             // InterruptionManager is optional
             // Will be null if not using interruption features
 
-            // Log warnings for missing components
+            // CRITICAL: Validate required components
+            var missingComponents = new System.Collections.Generic.List<string>();
+
             if (_webSocketClient == null)
-                Debug.LogError("[RequestOrchestrator] WebSocketClient not found! API communication will not work.");
+                missingComponents.Add("WebSocketClient");
 
             if (speechInputHandler == null)
-                Debug.LogWarning("[RequestOrchestrator] SpeechInputHandler not found. Audio requests will not work.");
+                missingComponents.Add("SpeechInputHandler");
 
+            if (missingComponents.Count > 0)
+            {
+                var errorMsg = $"❌❌❌ CRITICAL ERROR ❌❌❌\n\n" +
+                              $"RequestOrchestrator is missing REQUIRED components:\n" +
+                              $"  • {string.Join("\n  • ", missingComponents)}\n\n" +
+                              $"➡️ AI Bridge will NOT work without these components!\n" +
+                              $"➡️ Add missing GameObjects to the scene immediately!\n\n" +
+                              $"GameObject: {gameObject.name}";
+
+                Debug.LogError(errorMsg, this);
+
+                // Also log individual errors for each missing component
+                if (_webSocketClient == null)
+                    Debug.LogError("❌ WebSocketClient not found! API communication will NOT work.", this);
+
+                if (speechInputHandler == null)
+                    Debug.LogError("❌ SpeechInputHandler not found! Audio requests will NOT work.", this);
+
+#if UNITY_EDITOR
+                // Pause the editor to force attention
+                Debug.Break();
+#endif
+            }
+
+            // Optional component - just info
             if (interruptionManager == null)
                 Debug.Log("[RequestOrchestrator] InterruptionManager not set. Interruption detection disabled.");
         }
@@ -418,23 +572,18 @@ namespace Tsc.AIBridge.Core
             {
                 Debug.Log($"[RequestOrchestrator] Processing audio request for {request.NpcConfig.Name}");
 
-                // Determine if we should buffer audio
-                bool shouldBuffer = ShouldBufferAudioForRequest();
+                // CRITICAL: Recording is ALREADY started by SpeechInputHandler at PTT press
+                // Audio is being encoded by AudioStreamProcessor and buffered until we approve
 
-                // Start recording with appropriate mode
-                if (shouldBuffer)
+                // Start buffering mode - audio will be queued in AudioStreamProcessor
+                if (speechInputHandler?.AudioStreamProcessor != null)
                 {
-                    Debug.Log("[RequestOrchestrator] Starting buffered audio recording");
-                    // StartRecordingWithBuffer not implemented yet
-                    speechInputHandler?.StartRecording();
-
-                    // Wait a bit for audio to accumulate
-                    yield return new WaitForSeconds(0.5f);
+                    speechInputHandler.AudioStreamProcessor.StartBuffering();
+                    Debug.Log("[RequestOrchestrator] Started audio buffering - waiting for RuleSystem approval");
                 }
                 else
                 {
-                    Debug.Log("[RequestOrchestrator] Starting direct audio streaming");
-                    speechInputHandler?.StartRecording();
+                    Debug.LogError("[RequestOrchestrator] Cannot start buffering - AudioStreamProcessor not found!");
                 }
 
                 // Create session parameters
@@ -449,6 +598,17 @@ namespace Tsc.AIBridge.Core
                 // Register this request with the NPC router so messages are routed correctly
                 var npcName = _activeNpcClient?.NpcName ?? request.NpcConfig.Name;
                 NpcMessageRouter.Instance.SetActiveRequest(request.RequestId, npcName);
+
+                // CRITICAL: Register the NPC handler with WebSocketClient to receive responses
+                if (_activeNpcClient is INpcMessageHandler handler)
+                {
+                    _webSocketClient.RegisterNpc(request.RequestId, handler);
+                    Debug.Log($"[RequestOrchestrator] Registered NPC handler for RequestId: {request.RequestId}");
+                }
+                else
+                {
+                    Debug.LogError("[RequestOrchestrator] Cannot register NPC handler - _activeNpcClient is null or doesn't implement INpcMessageHandler!");
+                }
 
                 var messages = GetChatHistory();
 
@@ -482,7 +642,23 @@ namespace Tsc.AIBridge.Core
                 };
 
                 // Start the conversation via WebSocket
-                yield return _webSocketClient.SendSessionStartAsync(sessionStartMessage);
+                var sendTask = _webSocketClient.SendSessionStartAsync(sessionStartMessage);
+                yield return new WaitUntil(() => sendTask.IsCompleted);
+
+                if (sendTask.IsFaulted)
+                {
+                    Debug.LogError($"[RequestOrchestrator] Failed to send SessionStart: {sendTask.Exception?.GetBaseException().Message}");
+                    yield break;
+                }
+
+                Debug.Log($"[RequestOrchestrator] SessionStart message sent successfully");
+
+                // RuleSystem has approved - flush buffered audio to WebSocket
+                if (speechInputHandler?.AudioStreamProcessor != null)
+                {
+                    speechInputHandler.AudioStreamProcessor.FlushBuffer();
+                    Debug.Log("[RequestOrchestrator] RuleSystem approved - flushed buffered audio to WebSocket");
+                }
 
                 Debug.Log($"[RequestOrchestrator] Audio request started. Session: {_currentSession.SessionId}");
             }
@@ -505,6 +681,17 @@ namespace Tsc.AIBridge.Core
                 {
                     SessionId = request.RequestId,
                 };
+
+                // CRITICAL: Register the NPC handler with WebSocketClient to receive responses
+                if (_activeNpcClient is INpcMessageHandler textHandler)
+                {
+                    _webSocketClient.RegisterNpc(request.RequestId, textHandler);
+                    Debug.Log($"[RequestOrchestrator] Registered NPC handler for text request: {request.RequestId}");
+                }
+                else
+                {
+                    Debug.LogError("[RequestOrchestrator] Cannot register NPC handler for text request - _activeNpcClient is null or doesn't implement INpcMessageHandler!");
+                }
 
                 var messages = GetChatHistory();
 
@@ -595,12 +782,12 @@ namespace Tsc.AIBridge.Core
                 Temperature = npcConfig.Temperature,   // Temperature from NPC configuration
                 MaxTokens = npcConfig.MaxTokens,
                 TtsStreamingMode = npcConfig.TtsStreamingMode,
-                // Audio format settings for DOWNSTREAM (TTS playback)
-                // Note: This is 48kHz for high-quality NPC voice output
-                // Different from UPSTREAM microphone capture (16kHz for STT)
+                // Audio format settings for UPSTREAM (Microphone → Backend)
+                // IMPORTANT: These parameters are used for SessionStart message which configures INPUT audio
+                // DOWNSTREAM (TTS output) uses 48kHz PCM, configured separately in backend
                 AudioFormat = "opus",
-                SampleRate = 48000,  // DOWNSTREAM: High quality TTS audio
-                Bitrate = 64000,
+                SampleRate = MicrophoneCapture.Frequency,  // UPSTREAM: 16kHz for STT
+                Bitrate = MicrophoneCapture.UPSTREAM_OPUS_BITRATE,  // UPSTREAM: 16kbps
                 ChannelCount = 1,
                 // Enable metrics if configured
                 EnableMetrics = enableMetrics

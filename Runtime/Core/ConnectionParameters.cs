@@ -83,29 +83,6 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public bool EnableMetrics { get; set; }
 
-        /// <summary>
-        /// Create default connection parameters
-        /// </summary>
-        public static ConnectionParameters CreateDefault()
-        {
-            return new ConnectionParameters
-            {
-                SessionId = Guid.NewGuid().ToString(),
-                VoiceId = "onyx",
-                Model = "eleven_turbo_v2_5",
-                Language = "nl-NL",
-                SttProvider = "google",
-                LlmProvider = "openai",
-                LlmModel = "gpt-4o-mini",
-                Temperature = 0.7f,
-                MaxTokens = 500,
-                TtsStreamingMode = "batch",
-                AudioFormat = "opus",
-                SampleRate = 48000,
-                Bitrate = 64000,
-                ChannelCount = 1,
-                EnableMetrics = true
-            };
-        }
+        
     }
 }

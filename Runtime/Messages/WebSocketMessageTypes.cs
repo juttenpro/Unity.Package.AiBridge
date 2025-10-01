@@ -60,12 +60,12 @@ namespace Tsc.AIBridge.Messages
         public const byte JsonMessageMarker = 0x7B; // '{' character
 
         /// <summary>
-        /// Default sample rate for audio
+        /// Default sample rate for audio (UPSTREAM)
         /// </summary>
         public const int DefaultSampleRate = 16000;
 
         /// <summary>
-        /// Default Opus bitrate
+        /// Default Opus bitrate for UPSTREAM (64kbps - good quality for voice recognition)
         /// </summary>
         public const int DefaultOpusBitrate = 64000;
     }

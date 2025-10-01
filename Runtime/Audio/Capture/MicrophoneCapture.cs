@@ -69,6 +69,11 @@ namespace Tsc.AIBridge.Audio.Capture
         //
         // DO NOT CONFUSE THESE TWO DIFFERENT STREAMS!
         private const int SAMPLE_RATE = 16000;  // UPSTREAM: Microphone capture for STT
+
+        // Opus encoding bitrate for upstream audio (microphone → backend)
+        // 64kbps provides good quality for voice recognition
+        public const int UPSTREAM_OPUS_BITRATE = 64000;
+
         private const int RECORDING_LENGTH = 10; // 10 seconds circular buffer like RecorderBase
         private const float MUTE_CHECK_TIMEOUT = 0.5f; // Check if mic is muted after 0.5s
 

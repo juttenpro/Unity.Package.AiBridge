@@ -85,17 +85,17 @@ namespace Tsc.AIBridge.Tests.Runtime
                 // No-op for testing
             }
 
-            public List<ChatMessage> GetApiHistoryAsChatMessages()
+            public override List<ChatMessage> GetApiHistoryAsChatMessages()
             {
                 return new List<ChatMessage>(_history);
             }
 
-            public void ClearHistory()
+            public override void ClearHistory()
             {
                 _history.Clear();
             }
 
-            public void AddPlayerMessage(string message)
+            public override void AddPlayerMessage(string message)
             {
                 _history.Add(new ChatMessage { Role = "user", Content = message });
             }
