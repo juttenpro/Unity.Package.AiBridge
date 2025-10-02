@@ -113,6 +113,11 @@ namespace Tsc.AIBridge.Core
         // For tracking whether we're waiting for audio to finish
         private bool _isWaitingForAudioStart;
 
+        // DEBUG: Audio flow tracking
+        private float _pttPressTime;
+        private int _audioChunksSent;
+        private int _totalBytesSent;
+
         #endregion
 
         #region Unity Lifecycle
@@ -421,15 +426,11 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         private void ProcessAudioChunk(byte[] encodedAudio)
         {
-            Debug.Log($"[RequestOrchestrator] ProcessAudioChunk called with {encodedAudio?.Length ?? 0} bytes");
-
             if (encodedAudio == null || encodedAudio.Length == 0)
             {
                 Debug.LogWarning("[RequestOrchestrator] ProcessAudioChunk received null or empty data!");
                 return;
             }
-
-            Debug.Log($"[RequestOrchestrator] _isRequestActive={_isRequestActive}");
 
             // Simple check: Is there an active request accepting audio?
             // This covers both buffering phase (before session) and active session phase
@@ -439,11 +440,17 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
+            // DEBUG: Track audio flow
+            _audioChunksSent++;
+            _totalBytesSent += encodedAudio.Length;
+            var elapsedMs = (Time.time - _pttPressTime) * 1000f;
+
+            Debug.Log($"[AUDIO-SEND] Chunk #{_audioChunksSent}: {encodedAudio.Length} bytes at T+{elapsedMs:F1}ms (total: {_totalBytesSent} bytes)");
+
             // Audio is sent directly to WebSocket
             // Buffering is handled by AudioStreamProcessor itself (StartBuffering/FlushBuffer)
             if (_webSocketClient != null && _webSocketClient.IsConnected)
             {
-                Debug.Log($"[RequestOrchestrator] Sending {encodedAudio.Length} bytes to WebSocket");
                 _ = _webSocketClient.SendBinaryAsync(encodedAudio);
             }
             else
@@ -567,6 +574,11 @@ namespace Tsc.AIBridge.Core
         private IEnumerator ProcessAudioRequest(AudioRequest request)
         {
             _isProcessingRequest = true;
+
+            // DEBUG: Reset audio tracking
+            _pttPressTime = Time.time;
+            _audioChunksSent = 0;
+            _totalBytesSent = 0;
 
             try
             {
