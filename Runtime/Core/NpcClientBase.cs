@@ -130,6 +130,12 @@ namespace Tsc.AIBridge.Core
             // Subscribe to SessionStarted event and forward to public OnSessionStarted event
             _metadataHandler.OnSessionStarted += () => OnSessionStarted?.Invoke();
 
+            // Subscribe to AI response event and call OnAiResponseReceived method
+            _metadataHandler.OnAIResponse += (response) =>
+            {
+                OnAiResponseReceived(response);
+            };
+
             // Register with the message router to receive WebSocket messages
             NpcMessageRouter.Instance.RegisterNpc(this);
         }
@@ -145,6 +151,9 @@ namespace Tsc.AIBridge.Core
             {
                 orchestrator.RaiseTranscriptionReceived(transcript);
             }
+
+            // Fire static event for test UI (LatencyLogUI)
+            OnTranscriptionReceivedStatic?.Invoke(NpcName, transcript);
 
             Debug.Log($"[{NpcName}] Transcription: {transcript}");
         }
@@ -203,6 +212,16 @@ namespace Tsc.AIBridge.Core
         /// Event fired when conversation ends
         /// </summary>
         public event Action OnConversationEnded;
+
+        /// <summary>
+        /// Static event for transcription received - for test UI (LatencyLogUI)
+        /// </summary>
+        public static event Action<string, string> OnTranscriptionReceivedStatic; // (personaName, transcript)
+
+        /// <summary>
+        /// Static event for AI response received - for test UI (LatencyLogUI)
+        /// </summary>
+        public static event Action<string, string> OnAIResponseReceivedStatic; // (personaName, response)
 
         /// <summary>
         /// Unity event fired when NPC responds with text
@@ -327,6 +346,9 @@ namespace Tsc.AIBridge.Core
 
             // Store last response
             LastResponseText = response;
+
+            // Fire static event for test UI (LatencyLogUI)
+            OnAIResponseReceivedStatic?.Invoke(NpcName, response);
 
             // Fire events
             OnResponseReceived?.Invoke(response);
