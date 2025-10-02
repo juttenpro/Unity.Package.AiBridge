@@ -285,8 +285,9 @@ namespace Tsc.AIBridge.Input
 
             _isRecording = true;
 
-            // Start microphone capture
-            _microphoneCapture.StartCapture();
+            // IMPORTANT: Microphone is already running (started in MicrophoneCapture.Start())
+            // This prevents hardware switching delays (headset mode, ANC adjustment, etc.)
+            // We only need to start encoding here
 
             // Start audio encoding - buffering is controlled by RequestOrchestrator
             if (_audioStreamProcessor == null)
@@ -325,7 +326,10 @@ namespace Tsc.AIBridge.Input
                 return;
 
             _isRecording = false;
-            _microphoneCapture.StopCapture();
+
+            // IMPORTANT: Keep microphone running (don't call StopCapture())
+            // This maintains headset mode and enables VAD calibration between turns
+            // Microphone only stops when scene is destroyed (OnDestroy)
 
             // Stop audio encoding
             _audioStreamProcessor?.StopEncoding();
@@ -333,7 +337,7 @@ namespace Tsc.AIBridge.Input
             OnRecordingStopped?.Invoke();
 
             if (enableVerboseLogging)
-                Debug.Log("[SpeechInputHandler] Recording and encoding stopped");
+                Debug.Log("[SpeechInputHandler] Recording and encoding stopped (microphone still running)");
         }
 
         /// <summary>

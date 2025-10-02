@@ -169,6 +169,38 @@ namespace Tsc.AIBridge.Audio.Capture
 #endif
         }
 
+        private IEnumerator Start()
+        {
+            // CRITICAL: Start microphone immediately at scene start (like old RecorderBase behavior)
+            // This prevents hardware delays when PTT is pressed:
+            // - Bluetooth headsets need time to switch from playback to headset mode (~100-300ms)
+            // - Active Noise Cancellation (ANC) needs time to adjust (~50-200ms)
+            // - Microphone gain adjustment takes time (~50-150ms)
+            // Starting early ensures hardware is "warm" and ready for immediate recording
+
+#if UNITY_IOS || UNITY_ANDROID
+            // Wait for microphone permission on mobile platforms
+            float timeout = 5f;
+            float elapsed = 0f;
+            while (!Application.HasUserAuthorization(UserAuthorization.Microphone) && elapsed < timeout)
+            {
+                yield return new WaitForSeconds(0.1f);
+                elapsed += 0.1f;
+            }
+
+            if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
+            {
+                Debug.LogError("[MicrophoneCapture] Microphone permission not granted after timeout!");
+                yield break;
+            }
+#else
+            yield return null; // Wait one frame for Awake to complete
+#endif
+
+            Debug.Log("[MicrophoneCapture] Starting microphone at scene start (prevents hardware switching delays)");
+            StartCapture();
+        }
+
         private void OnDestroy()
         {
             if (IsCapturing)
