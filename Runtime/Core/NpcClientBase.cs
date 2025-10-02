@@ -12,7 +12,7 @@ namespace Tsc.AIBridge.Core
     /// Extended by SimpleNpcClient (core) and ExtendedNpcClient (with PersonaSO).
     /// Implements IConversationHistory with virtual methods for flexible overriding.
     /// </summary>
-    public abstract class NpcClientBase : MonoBehaviour, INpcClient, IConversationHistory, INpcMessageHandler
+    public abstract class NpcClientBase : MonoBehaviour, IConversationHistory, INpcMessageHandler
     {
         #region Properties
 
@@ -54,7 +54,7 @@ namespace Tsc.AIBridge.Core
 
         #endregion
 
-        #region INpcClient Implementation
+        #region Public API
 
         /// <summary>
         /// Check if the NPC is currently speaking
@@ -70,10 +70,6 @@ namespace Tsc.AIBridge.Core
         /// Get the NPC's unique identifier
         /// </summary>
         public virtual string NpcId => gameObject.GetInstanceID().ToString();
-
-        // History management methods removed - now optional via IConversationHistory interface
-        // This allows RuleSystem-based implementations to provide messages directly
-        // while still supporting third-party implementations that manage their own history
 
         /// <summary>
         /// Stop any ongoing audio playback
@@ -131,6 +127,9 @@ namespace Tsc.AIBridge.Core
             // Subscribe to transcription events to forward to RequestOrchestrator
             _metadataHandler.OnTranscription += HandleTranscription;
 
+            // Subscribe to SessionStarted event and forward to public OnSessionStarted event
+            _metadataHandler.OnSessionStarted += () => OnSessionStarted?.Invoke();
+
             // Register with the message router to receive WebSocket messages
             NpcMessageRouter.Instance.RegisterNpc(this);
         }
@@ -158,6 +157,7 @@ namespace Tsc.AIBridge.Core
             if (_metadataHandler != null)
             {
                 _metadataHandler.OnTranscription -= HandleTranscription;
+                // Note: OnSessionStarted uses lambda, automatically cleaned up when _metadataHandler is disposed
             }
 
             // Unregister from message router (only if it exists, don't create new one during cleanup)
@@ -172,6 +172,12 @@ namespace Tsc.AIBridge.Core
         #endregion
 
         #region Events
+
+        /// <summary>
+        /// Event fired when backend confirms session started.
+        /// Used by RequestOrchestrator to know when STT stream is ready.
+        /// </summary>
+        public event Action OnSessionStarted;
 
         /// <summary>
         /// Event fired when response is received

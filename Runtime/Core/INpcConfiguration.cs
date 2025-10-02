@@ -109,6 +109,6 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Get NPC client instance by ID
         /// </summary>
-        INpcClient GetNpcClient(string npcId);
+        NpcClientBase GetNpcClient(string npcId);
     }
 }

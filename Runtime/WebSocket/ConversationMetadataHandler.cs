@@ -62,30 +62,37 @@ namespace Tsc.AIBridge.WebSocket
         public virtual void ProcessMessage(string message)
         {
             // Don't log here - StreamingApiClient handles logging to avoid duplication
-            
+
             try
             {
+                if (string.IsNullOrEmpty(message))
+                {
+                    Debug.LogWarning($"[{_personaName ?? "Unknown"}] Received null or empty message");
+                    return;
+                }
+
                 // First parse as JObject to get the type field without deserializing
                 // Try both "type" (backend format) and "Type" (Unity format) for compatibility
                 var jsonObj = Newtonsoft.Json.Linq.JObject.Parse(message);
                 var typeToken = jsonObj["type"] ?? jsonObj["Type"];
-                
+
                 if (typeToken != null)
                 {
                     var messageType = typeToken.ToString();
-                    
+
                     if (!string.IsNullOrEmpty(messageType))
                     {
                         HandleTypedMessage(messageType, message);
                         return;
                     }
                 }
-                
-                Debug.LogWarning($"[{_personaName}] Message without Type field: {message}");
+
+                Debug.LogWarning($"[{_personaName ?? "Unknown"}] Message without Type field: {message}");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[{_personaName}] Error processing message: {ex.Message}");
+                // Log full exception details for better debugging
+                Debug.LogError($"[{_personaName ?? "Unknown"}] Error processing message: {ex.Message}\nStack trace: {ex.StackTrace}\nMessage: {message}");
             }
         }
         

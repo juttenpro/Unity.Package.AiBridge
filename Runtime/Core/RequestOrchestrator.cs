@@ -104,7 +104,7 @@ namespace Tsc.AIBridge.Core
         private WebSocketClient _webSocketClient;
         private ConversationSession _currentSession;
         private INpcConfiguration _activeNpcConfig;
-        private INpcClient _activeNpcClient; // Cache to avoid FindObjectsByType
+        private NpcClientBase _activeNpcClient; // Cache to avoid FindObjectsByType
         private bool _isProcessingRequest; // Queue management - prevents concurrent request STARTS
         private bool _isRequestActive; // Request lifecycle - true from StartAudioRequest until EndAudioRequest/Cancel
         private bool _isInterrupting;
@@ -579,7 +579,7 @@ namespace Tsc.AIBridge.Core
                 if (speechInputHandler?.AudioStreamProcessor != null)
                 {
                     speechInputHandler.AudioStreamProcessor.StartBuffering();
-                    Debug.Log("[RequestOrchestrator] Started audio buffering - waiting for RuleSystem approval");
+                    Debug.Log("[RequestOrchestrator] Started audio buffering - waiting for backend SessionStarted confirmation");
                 }
                 else
                 {
@@ -653,11 +653,47 @@ namespace Tsc.AIBridge.Core
 
                 Debug.Log($"[RequestOrchestrator] SessionStart message sent successfully");
 
-                // RuleSystem has approved - flush buffered audio to WebSocket
+                // CRITICAL FIX: Wait for SessionStarted confirmation from backend before flushing
+                // This ensures STT stream is initialized before we send audio chunks
+                // Subscribe to SessionStarted event from NpcClientBase
+                var sessionStartedReceived = false;
+                System.Action sessionStartedHandler = () => { sessionStartedReceived = true; };
+
+                if (_activeNpcClient != null)
+                {
+                    _activeNpcClient.OnSessionStarted += sessionStartedHandler;
+                    Debug.Log("[RequestOrchestrator] Waiting for SessionStarted confirmation from backend...");
+
+                    // Wait for SessionStarted confirmation (max 5 seconds)
+                    var timeout = 5.0f;
+                    var elapsed = 0f;
+                    while (!sessionStartedReceived && elapsed < timeout)
+                    {
+                        yield return null;
+                        elapsed += Time.deltaTime;
+                    }
+
+                    _activeNpcClient.OnSessionStarted -= sessionStartedHandler;
+
+                    if (sessionStartedReceived)
+                    {
+                        Debug.Log($"[RequestOrchestrator] SessionStarted confirmed after {elapsed:F3}s - now flushing audio buffer");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[RequestOrchestrator] SessionStarted confirmation timeout after {timeout}s - flushing anyway (may cause STT issues)");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning("[RequestOrchestrator] Cannot wait for SessionStarted - no active NPC client, flushing immediately (may cause STT issues)");
+                }
+
+                // Now flush buffered audio to WebSocket (after backend is ready)
                 if (speechInputHandler?.AudioStreamProcessor != null)
                 {
                     speechInputHandler.AudioStreamProcessor.FlushBuffer();
-                    Debug.Log("[RequestOrchestrator] RuleSystem approved - flushed buffered audio to WebSocket");
+                    Debug.Log("[RequestOrchestrator] Backend confirmed ready - flushed buffered audio to WebSocket");
                 }
 
                 Debug.Log($"[RequestOrchestrator] Audio request started. Session: {_currentSession.SessionId}");

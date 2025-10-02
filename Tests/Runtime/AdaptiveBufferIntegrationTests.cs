@@ -38,7 +38,6 @@ namespace Tsc.AIBridge.Tests.Runtime
     /// </summary>
     public class AdaptiveBufferIntegrationTests
     {
-        private GameObject _routerObject;
         private GameObject _monitorObject;
         private GameObject _bufferManagerObject;
         private GameObject _audioPlayerObject;
@@ -54,9 +53,9 @@ namespace Tsc.AIBridge.Tests.Runtime
             // Enable test mode to suppress initialization warnings
             StreamingAudioPlayer.SetGlobalTestMode(true);
 
-            // Create all components
-            _routerObject = new GameObject("Router");
-            _router = _routerObject.AddComponent<NpcMessageRouter>();
+            // Get singleton router instance and reset state
+            _router = NpcMessageRouter.Instance;
+            _router.Reset(); // Clear any previous test data
 
             _monitorObject = new GameObject("NetworkMonitor");
             _networkMonitor = _monitorObject.AddComponent<NetworkQualityMonitor>();
@@ -80,7 +79,10 @@ namespace Tsc.AIBridge.Tests.Runtime
         {
             // Destroy in reverse order to avoid dependency issues
             if (_audioPlayerObject) Object.DestroyImmediate(_audioPlayerObject);
-            if (_routerObject) Object.DestroyImmediate(_routerObject);
+
+            // Reset router state (singleton doesn't need GameObject cleanup)
+            _router.Reset();
+
             if (_monitorObject) Object.DestroyImmediate(_monitorObject);
             if (_bufferManagerObject) Object.DestroyImmediate(_bufferManagerObject);
 

@@ -36,7 +36,6 @@ namespace Tsc.AIBridge.Tests.Runtime
     public class NpcMessageRouterTests
     {
         private NpcMessageRouter _router;
-        private GameObject _routerObject;
         private GameObject _monitorObject;
         private NetworkQualityMonitor _networkMonitor;
         private GameObject _bufferManagerObject;
@@ -126,9 +125,9 @@ namespace Tsc.AIBridge.Tests.Runtime
             _bufferManagerObject = new GameObject("TestBufferManager");
             _bufferManager = _bufferManagerObject.AddComponent<AdaptiveBufferManager>();
 
-            // Create router
-            _routerObject = new GameObject("TestRouter");
-            _router = _routerObject.AddComponent<NpcMessageRouter>();
+            // Get singleton router instance and reset state
+            _router = NpcMessageRouter.Instance;
+            _router.Reset(); // Clear any previous test data
 
             // Create network monitor
             _monitorObject = new GameObject("TestNetworkMonitor");
@@ -146,8 +145,9 @@ namespace Tsc.AIBridge.Tests.Runtime
                     Object.DestroyImmediate(go);
             }
 
-            if (_routerObject != null)
-                Object.DestroyImmediate(_routerObject);
+            // Reset router state (singleton doesn't need GameObject cleanup)
+            _router.Reset();
+
             if (_monitorObject != null)
                 Object.DestroyImmediate(_monitorObject);
             if (_bufferManagerObject != null)

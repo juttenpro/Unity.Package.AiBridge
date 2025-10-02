@@ -5,35 +5,50 @@ namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Routes WebSocket messages to the correct NPC based on RequestId.
-    /// Replaces the old NpcMessageHandler functionality.
+    /// Thread-safe singleton that manages message routing without MonoBehaviour overhead.
     /// </summary>
-    public class NpcMessageRouter : MonoBehaviour
+    public class NpcMessageRouter
     {
         #region Singleton
 
+        private static readonly object _lock = new object();
         private static NpcMessageRouter _instance;
+
         /// <summary>
         /// Check if an instance exists without creating one
         /// </summary>
         public static bool HasInstance => _instance != null;
 
+        /// <summary>
+        /// Thread-safe singleton instance
+        /// </summary>
         public static NpcMessageRouter Instance
         {
             get
             {
-                if (_instance == null && Application.isPlaying)
+                if (_instance == null)
                 {
-                    _instance = FindFirstObjectByType<NpcMessageRouter>();
-
-                    if (_instance == null)
+                    lock (_lock)
                     {
-                        var go = new GameObject("NpcMessageRouter");
-                        _instance = go.AddComponent<NpcMessageRouter>();
-                        Debug.Log("[NpcMessageRouter] Created singleton instance");
+                        if (_instance == null)
+                        {
+                            _instance = new NpcMessageRouter();
+                            Debug.Log("[NpcMessageRouter] Created singleton instance");
+                        }
                     }
                 }
                 return _instance;
             }
+        }
+
+        /// <summary>
+        /// Private constructor for singleton pattern
+        /// </summary>
+        private NpcMessageRouter()
+        {
+            // Initialize dictionaries
+            _activeNpcsByRequestId = new Dictionary<string, NpcClientBase>();
+            _npcsByName = new Dictionary<string, NpcClientBase>();
         }
 
         #endregion
@@ -41,30 +56,8 @@ namespace Tsc.AIBridge.Core
         #region Private Fields
 
         // Track active NPCs and their current RequestId
-        private Dictionary<string, NpcClientBase> _activeNpcsByRequestId = new Dictionary<string, NpcClientBase>();
-        private Dictionary<string, NpcClientBase> _npcsByName = new Dictionary<string, NpcClientBase>();
-
-        #endregion
-
-        #region Lifecycle
-
-        private void Awake()
-        {
-            if (_instance != null && _instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
-            _instance = this;
-        }
-
-        private void OnDestroy()
-        {
-            if (_instance == this)
-            {
-                _instance = null;
-            }
-        }
+        private Dictionary<string, NpcClientBase> _activeNpcsByRequestId;
+        private Dictionary<string, NpcClientBase> _npcsByName;
 
         #endregion
 
@@ -194,6 +187,17 @@ namespace Tsc.AIBridge.Core
                 _activeNpcsByRequestId.Remove(requestId);
                 Debug.Log($"[NpcMessageRouter] Cleared request: {requestId}");
             }
+        }
+
+        /// <summary>
+        /// Clear all registrations and reset state.
+        /// Useful for testing or when entering/exiting play mode.
+        /// </summary>
+        public void Reset()
+        {
+            _activeNpcsByRequestId.Clear();
+            _npcsByName.Clear();
+            Debug.Log("[NpcMessageRouter] Reset - all NPCs and requests cleared");
         }
 
         #endregion
