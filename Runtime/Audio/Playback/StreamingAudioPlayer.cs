@@ -460,10 +460,10 @@ namespace Tsc.AIBridge.Audio.Playback
                     // ALWAYS log playback start - critical for latency metrics debugging
                     Debug.Log($"[{_cachedGameObjectName}] ✅ Playback started with buffer: {bufferThreshold / (float)_sampleRate:F3}s ({bufferThreshold} samples), Priming: {_isPrimingBuffer}");
                 }
-                else if (enableVerboseLogging && _totalSamplesReceived % (_sampleRate) < samples.Length)
+                else if (_totalSamplesReceived % (_sampleRate) < samples.Length)
                 {
-                    // Debug: Log why playback didn't start
-                    Debug.Log($"[{_cachedGameObjectName}] Waiting for playback start - Buffer: {_audioBuffer.Count}/{bufferThreshold} samples, AlreadyStarted: {_isPlaybackStarted}");
+                    // ALWAYS log why playback didn't start - critical for debugging turn 2+ metrics issue
+                    Debug.Log($"[{_cachedGameObjectName}] ⏳ Waiting for playback start - Buffer: {_audioBuffer.Count}/{bufferThreshold} samples, AlreadyStarted: {_isPlaybackStarted}");
                 }
 
                 // Log buffer status periodically

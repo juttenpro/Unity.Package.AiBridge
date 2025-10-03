@@ -706,10 +706,15 @@ namespace Tsc.AIBridge.WebSocket
             if (data == null || data.Length == 0)
                 return;
 
+            // CRITICAL DEBUG: Always log binary message arrival for turn 2+ metrics debugging
+            Debug.Log($"[UnifiedWebSocket] 🔊 HandleBinaryMessage called with {data.Length} bytes");
+
             try
             {
                 // Unwrap audio to extract RequestId (REQUIRED)
                 var (requestId, audioData) = BinaryAudioWrapper.UnwrapAudioChunk(data);
+
+                Debug.Log($"[UnifiedWebSocket] Unwrapped audio - RequestId: {requestId}, Audio: {audioData.Length} bytes");
 
                 lock (_routingLock)
                 {
