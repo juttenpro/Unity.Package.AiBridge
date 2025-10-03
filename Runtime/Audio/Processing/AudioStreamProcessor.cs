@@ -172,12 +172,12 @@ namespace Tsc.AIBridge.Audio.Processing
             {
                 // Session replacement is normal when quickly pressing PTT - not a warning condition
                 if (_isVerboseLogging)
-                    Debug.Log($"[AudioStreamProcessor] Replacing session {_currentSession.SessionId} with {session?.SessionId}");
+                    Debug.Log($"[AudioStreamProcessor] Replacing session {_currentSession.RequestId} with {session?.RequestId}");
             }
 
             _currentSession = session;
             if (_isVerboseLogging && session != null)
-                Debug.Log($"[AudioStreamProcessor] 📌 SESSION SET: {session.SessionId} for NPC: {session.NpcName}");
+                Debug.Log($"[AudioStreamProcessor] 📌 SESSION SET: {session.RequestId} for NPC: {session.NpcName}");
         }
         
         /// <summary>

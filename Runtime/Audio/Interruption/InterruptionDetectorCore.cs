@@ -568,7 +568,7 @@ namespace Tsc.AIBridge.Audio.Interruption
                 PartialResponseHeard = partialResponse,
                 FullResponseGenerated = _currentNpcResponse,
                 ResponseCompletionPercentage = _responseProgress,
-                SessionId = _currentSessionId,
+                RequestId = _currentSessionId,
                 UrgencyLevel = _currentUrgencyLevel
             };
         }
@@ -904,7 +904,7 @@ namespace Tsc.AIBridge.Audio.Interruption
         public string PartialResponseHeard { get; set; }
         public string FullResponseGenerated { get; set; }
         public float ResponseCompletionPercentage { get; set; }
-        public string SessionId { get; set; }
+        public string RequestId { get; set; }
         public UrgencyLevel UrgencyLevel { get; set; }
     }
 

@@ -56,7 +56,7 @@ namespace Tsc.AIBridge.Controllers
             List<ChatMessage> messages,
             ConversationParameters parameters)
         {
-            Debug.Log($"[{_personaName}] SendSessionStartAsync called for session: {session?.SessionId ?? "NULL"}");
+            Debug.Log($"[{_personaName}] SendSessionStartAsync called for session: {session?.RequestId ?? "NULL"}");
             
             if (session == null)
             {
@@ -78,7 +78,7 @@ namespace Tsc.AIBridge.Controllers
             var sessionStartMsg = new SessionStartMessage
             {
                 Type = WebSocketMessageTypes.SessionStart,
-                RequestId = session.SessionId,  // Use RequestId field for session ID
+                RequestId = session.RequestId,  // Use RequestId field for session ID
                 Messages = messages,  // Now directly uses ChatMessage list
                 LanguageCode = parameters?.language ?? "nl-NL",
                 VoiceId = parameters?.voiceId,
@@ -97,17 +97,17 @@ namespace Tsc.AIBridge.Controllers
             };
             
             // Use WebSocketClient for SessionStart - Fire and forget (event-driven!)
-            Debug.Log($"[{_personaName}] Calling SendSessionStartAsync for {session.SessionId}");
+            Debug.Log($"[{_personaName}] Calling SendSessionStartAsync for {session.RequestId}");
             
             // CRITICAL: Wait for SessionStart to be sent (including JWT auth and WebSocket connection)
             try
             {
                 await clientInstance.SendSessionStartAsync(sessionStartMsg);
                 
-                OnSessionStartSent?.Invoke(session.SessionId);
+                OnSessionStartSent?.Invoke(session.RequestId);
                 
                 // Always log SessionStart for debugging
-                Debug.Log($"[{_personaName}] SessionStart successfully sent for {session.SessionId} with {sessionStartMsg.Messages?.Count ?? 0} messages");
+                Debug.Log($"[{_personaName}] SessionStart successfully sent for {session.RequestId} with {sessionStartMsg.Messages?.Count ?? 0} messages");
                 
                 // Log critical audio configuration
                 Debug.Log($"[{_personaName}] Audio config: Format={sessionStartMsg.AudioFormat}, SampleRate={sessionStartMsg.SampleRate}, Bitrate={sessionStartMsg.OpusBitrate}");
@@ -141,7 +141,7 @@ namespace Tsc.AIBridge.Controllers
             var textInputMsg = new TextInputMessage
             {
                 Type = "textinput",  // Lowercase per protocol
-                RequestId = session.SessionId,
+                RequestId = session.RequestId,
                 Text = text,
                 IsNpcInitiated = false,
                 Context = new ConversationContext
@@ -167,7 +167,7 @@ namespace Tsc.AIBridge.Controllers
             if (_enableVerboseLogging)
                 Debug.Log($"[{_personaName}] Sending TextInput: '{text}'");
             
-            OnTextInputSent?.Invoke(session.SessionId);
+            OnTextInputSent?.Invoke(session.RequestId);
             
             if (_enableVerboseLogging)
                 Debug.Log($"[{_personaName}] TextInput sent: '{text}'");
@@ -196,7 +196,7 @@ namespace Tsc.AIBridge.Controllers
             var directTtsMsg = new DirectTTSMessage
             {
                 Type = "directtts",  // Lowercase per protocol
-                RequestId = session.SessionId,
+                RequestId = session.RequestId,
                 Text = text,
                 Voice = voice,  // Optional - null means use default
                 Model = model   // Optional - null means use default
@@ -209,7 +209,7 @@ namespace Tsc.AIBridge.Controllers
                 Debug.Log($"[{_personaName}] Sending DirectTTS: '{text}' (voice: {voice ?? "default"}, model: {model ?? "default"})");
 
             // Signal that DirectTTS was sent (could add event if needed)
-            OnTextInputSent?.Invoke(session.SessionId);
+            OnTextInputSent?.Invoke(session.RequestId);
 
             if (_enableVerboseLogging)
                 Debug.Log($"[{_personaName}] DirectTTS sent: '{text}'");
@@ -235,13 +235,13 @@ namespace Tsc.AIBridge.Controllers
             }
             
             // Use WebSocketClient for EndOfSpeech - Fire and forget (event-driven!)
-            Debug.Log($"[{_personaName}] Calling SendEndOfSpeechAsync for {session.SessionId}");
-            _ = WebSocketClient.Instance.SendEndOfSpeechAsync(session.SessionId);
+            Debug.Log($"[{_personaName}] Calling SendEndOfSpeechAsync for {session.RequestId}");
+            _ = WebSocketClient.Instance.SendEndOfSpeechAsync(session.RequestId);
             
-            OnEndOfSpeechSent?.Invoke(session.SessionId);
+            OnEndOfSpeechSent?.Invoke(session.RequestId);
             
             // Always log EndOfSpeech for debugging
-            Debug.Log($"[{_personaName}] EndOfSpeech sent for {session.SessionId}");
+            Debug.Log($"[{_personaName}] EndOfSpeech sent for {session.RequestId}");
         }
         
         /// <summary>

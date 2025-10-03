@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 8673740376687747922}
   - component: {fileID: 7992926775583201076}
+  - component: {fileID: 8976894198535387740}
   m_Layer: 0
   m_Name: AIServices
   m_TagString: Untagged
@@ -51,3 +52,25 @@ MonoBehaviour:
   enableVerboseLogging: 0
   persistAcrossScenes: 1
   orchestratorApiKey: 
+--- !u!114 &8976894198535387740
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8839389159301444262}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d3c88ce0d00e8b43b5a40ee9cb659cf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Tsc.AIBridge::Tsc.AIBridge.Audio.Playback.AdaptiveBufferManager
+  targetBufferDuration: 0.1
+  minBufferDuration: 0.05
+  maxBufferDuration: 0.5
+  enableAdaptiveBuffering: 1
+  excellentThresholdMs: 500
+  goodThresholdMs: 1000
+  fairThresholdMs: 2000
+  improvementRate: 0.5
+  degradationRate: 0.8
+  enableVerboseLogging: 0

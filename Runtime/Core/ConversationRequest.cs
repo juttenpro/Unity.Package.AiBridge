@@ -12,7 +12,7 @@ namespace Tsc.AIBridge.Core
         public string NpcId { get; set; }
 
         // Conversation content (determined by RuleSystem)
-        public string SystemPrompt { get; set; }
+        // Messages array includes system prompt as first message with role="system"
         public List<Messages.ChatMessage> Messages { get; set; }
 
         // API Configuration (determined by RuleSystem per conversation)

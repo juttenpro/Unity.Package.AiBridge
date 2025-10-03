@@ -36,9 +36,9 @@ namespace Tsc.AIBridge.Core
     public class ConversationSession
     {
         /// <summary>
-        /// Unique identifier for this session (used as RequestId)
+        /// Unique identifier for this request (matches WebSocket requestId field)
         /// </summary>
-        public string SessionId { get; }
+        public string RequestId { get; }
         
         /// <summary>
         /// When the session started
@@ -100,9 +100,11 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Create a new conversation session
         /// </summary>
-        public ConversationSession(string npcName = null)
+        /// <param name="npcName">Name of the NPC</param>
+        /// <param name="requestId">Optional request ID. If null, a new GUID will be generated</param>
+        public ConversationSession(string npcName = null, string requestId = null)
         {
-            SessionId = Guid.NewGuid().ToString();
+            RequestId = requestId ?? Guid.NewGuid().ToString();
             StartTime = DateTime.Now;
             State = SessionState.Active;  // Sessions start active
             IsListening = false;  // NPC starts not listening until PTT is pressed
@@ -136,7 +138,7 @@ namespace Tsc.AIBridge.Core
             IsRecording = false;
             
             // REMOVED: Queue clearing - no longer needed
-            //Debug.Log($"[Session {SessionId}] Completed - Chunks sent: {ChunksSent}, Streams received: {StreamsReceived}");
+            //Debug.Log($"[Session {RequestId}] Completed - Chunks sent: {ChunksSent}, Streams received: {StreamsReceived}");
         }
         
         /// <summary>
@@ -148,8 +150,8 @@ namespace Tsc.AIBridge.Core
             IsRecording = false;
             
             // REMOVED: Queue clearing - no longer needed
-            
-            //Debug.Log($"[Session {SessionId}] Cancelled");
+
+            //Debug.Log($"[Session {RequestId}] Cancelled");
         }
     }
 }

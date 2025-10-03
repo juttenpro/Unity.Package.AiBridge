@@ -24,6 +24,12 @@ namespace Tsc.AIBridge.Core
         string SystemPrompt { get; }
 
         /// <summary>
+        /// Optional chat history/messages for the conversation.
+        /// If null, the orchestrator will get history from the NPC client.
+        /// </summary>
+        System.Collections.Generic.List<Messages.ChatMessage> Messages { get; }
+
+        /// <summary>
         /// TTS streaming mode (e.g., "batch", "streaming")
         /// </summary>
         string TtsStreamingMode { get; }

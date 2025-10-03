@@ -10,7 +10,6 @@ GameObject:
   m_Component:
   - component: {fileID: 4439971475070882742}
   - component: {fileID: 2486001137172460936}
-  - component: {fileID: 3907455685573791084}
   m_Layer: 0
   m_Name: AIBridgeComponents
   m_TagString: Untagged
@@ -50,28 +49,6 @@ MonoBehaviour:
   interruptionManager: {fileID: 5081136985733067195}
   npcProviderComponent: {fileID: 0}
   enableMetrics: 1
---- !u!114 &3907455685573791084
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7602764456647948814}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6d3c88ce0d00e8b43b5a40ee9cb659cf, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Tsc.Conversation.Audio.Playback.AdaptiveBufferManager
-  targetBufferDuration: 0.1
-  minBufferDuration: 0.05
-  maxBufferDuration: 0.5
-  enableAdaptiveBuffering: 1
-  excellentThresholdMs: 500
-  goodThresholdMs: 1000
-  fairThresholdMs: 2000
-  improvementRate: 0.5
-  degradationRate: 0.8
-  enableVerboseLogging: 0
 --- !u!1 &8102201241617361769
 GameObject:
   m_ObjectHideFlags: 0

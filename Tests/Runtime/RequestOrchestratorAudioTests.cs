@@ -8,6 +8,7 @@ using Tsc.AIBridge.Core;
 using Tsc.AIBridge.Input;
 using Tsc.AIBridge.WebSocket;
 using Tsc.AIBridge.Audio.Processing;
+using Tsc.AIBridge.Messages;
 
 namespace Tsc.AIBridge.Tests.Runtime
 {
@@ -153,7 +154,10 @@ namespace Tsc.AIBridge.Tests.Runtime
             var request = new ConversationRequest
             {
                 NpcId = "TestNPC",
-                SystemPrompt = "Test",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Test" }
+                },
                 LlmProvider = "openai",
                 LlmModel = "gpt-4"
             };
@@ -222,7 +226,10 @@ namespace Tsc.AIBridge.Tests.Runtime
             var request = new ConversationRequest
             {
                 NpcId = "TestNPC",
-                SystemPrompt = "Test",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Test" }
+                },
                 LlmProvider = "openai",
                 LlmModel = "gpt-4"
             };
@@ -271,7 +278,10 @@ namespace Tsc.AIBridge.Tests.Runtime
             var request = new ConversationRequest
             {
                 NpcId = "TestNPC",
-                SystemPrompt = "Test",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Test" }
+                },
                 LlmProvider = "openai",
                 LlmModel = "gpt-4"
             };
@@ -319,7 +329,10 @@ namespace Tsc.AIBridge.Tests.Runtime
             var request = new ConversationRequest
             {
                 NpcId = "TestNPC",
-                SystemPrompt = "Test",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Test" }
+                },
                 LlmProvider = "openai",
                 LlmModel = "gpt-4"
             };
@@ -369,7 +382,10 @@ namespace Tsc.AIBridge.Tests.Runtime
             var request = new ConversationRequest
             {
                 NpcId = "TestNPC",
-                SystemPrompt = "Test",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Test" }
+                },
                 LlmProvider = "openai",
                 LlmModel = "gpt-4"
             };
@@ -416,7 +432,10 @@ namespace Tsc.AIBridge.Tests.Runtime
             var request1 = new ConversationRequest
             {
                 NpcId = "TestNPC1",
-                SystemPrompt = "Test 1",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Test 1" }
+                },
                 LlmProvider = "openai",
                 LlmModel = "gpt-4"
             };
@@ -435,7 +454,10 @@ namespace Tsc.AIBridge.Tests.Runtime
             var request2 = new ConversationRequest
             {
                 NpcId = "TestNPC2",
-                SystemPrompt = "Test 2",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Test 2" }
+                },
                 LlmProvider = "openai",
                 LlmModel = "gpt-4"
             };
@@ -476,7 +498,10 @@ namespace Tsc.AIBridge.Tests.Runtime
             var request = new ConversationRequest
             {
                 NpcId = "TestNPC",
-                SystemPrompt = "Test",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Test" }
+                },
                 LlmProvider = "openai",
                 LlmModel = "gpt-4"
             };

@@ -265,24 +265,24 @@ namespace Tsc.AIBridge.WebSocket
                     
                 case "conversationComplete":
                     //Debug.Log($"[{_personaName}] Conversation completed - checking if cleanup needed");
-                    
-                    // Check if audio was received
-                    var sessionManager = SessionManager.Instance;
+
+                    // Check if audio was received via RequestOrchestrator
+                    var orchestrator = RequestOrchestrator.Instance;
                     var audioReceived = false;
-                    if (sessionManager != null && sessionManager.CurrentSession != null)
+                    if (orchestrator != null)
                     {
-                        audioReceived = sessionManager.CurrentSession.StreamsReceived > 0;
-                        
+                        audioReceived = orchestrator.GetCurrentSessionStreamsReceived() > 0;
+
                         // If no audio was received (e.g. NoTranscript case), we need to clean up the session
                         // With audio, AudioStreamEnd handles cleanup. Without audio, we do it here.
                         if (!audioReceived)
                         {
                             //Debug.Log($"[{_personaName}] No audio received for session - completing session now");
-                            sessionManager.CompleteCurrentSession();
+                            orchestrator.CompleteCurrentSession();
                         }
                         //else
                         //{
-                        //    Debug.Log($"[{_personaName}] Audio was received ({sessionManager.CurrentSession.StreamsReceived} streams) - AudioStreamEnd will handle cleanup");
+                        //    Debug.Log($"[{_personaName}] Audio was received ({orchestrator.GetCurrentSessionStreamsReceived()} streams) - AudioStreamEnd will handle cleanup");
                         //}
                     }
                     
@@ -306,11 +306,26 @@ namespace Tsc.AIBridge.WebSocket
                     var bufferHintMsg = JsonConvert.DeserializeObject<BufferHintMessage>(json);
                     if (bufferHintMsg != null)
                     {
-                        //Debug.Log($"[{_personaName}] Buffer hint received - Latency: {bufferHintMsg.TtsLatencyMs}ms ({bufferHintMsg.LatencyLevel}), " +
-                        //         $"Recommended buffer: {bufferHintMsg.RecommendedBufferSize}, Network quality: {bufferHintMsg.NetworkQuality}");
-                        
+                        Debug.Log($"[{_personaName}] ✅ BufferHint received - TTS Latency: {bufferHintMsg.TtsLatencyMs}ms ({bufferHintMsg.LatencyLevel}), " +
+                                 $"Buffer: {bufferHintMsg.RecommendedBufferSize}, Network: {bufferHintMsg.NetworkQuality}");
+
+                        // Update TTS latency in tracker (required for metrics reporting)
+                        if (_latencyTracker != null && bufferHintMsg.TtsLatencyMs > 0)
+                        {
+                            _latencyTracker.UpdateTtsLatency(bufferHintMsg.TtsLatencyMs, bufferHintMsg.LatencyLevel ?? "Unknown");
+                            Debug.Log($"[{_personaName}] Updated LatencyTracker with TTS latency: {bufferHintMsg.TtsLatencyMs}ms");
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"[{_personaName}] Cannot update TTS latency - LatencyTracker is null or TTS latency is 0");
+                        }
+
                         // Notify adaptive audio buffering system
                         OnBufferHint?.Invoke(bufferHintMsg);
+                    }
+                    else
+                    {
+                        Debug.LogError($"[{_personaName}] Failed to deserialize BufferHint message: {json}");
                     }
                     break;
                 

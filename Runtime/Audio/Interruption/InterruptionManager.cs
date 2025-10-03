@@ -60,20 +60,37 @@ namespace Tsc.AIBridge.Audio.Interruption
         }
 
         /// <summary>
-        /// Get the currently active NPC configuration
+        /// Get the currently active NPC configuration from RequestOrchestrator
         /// </summary>
         private INpcConfiguration GetActiveNpc()
         {
-            if (_npcProvider == null) return null;
+            // Get active NPC from RequestOrchestrator
+            var orchestrator = RequestOrchestrator.Instance;
+            if (orchestrator == null)
+            {
+                if (enableVerboseLogging)
+                {
+                    Debug.LogWarning("[InterruptionManager] RequestOrchestrator.Instance is null");
+                }
+                return null;
+            }
 
-            // In a real implementation, you'd track which NPC is active
-            // For now, we'll check all NPCs and find the active one
-            // This would need to be implemented based on your game logic
+            // Use reflection to get _activeNpcConfig (it's private)
+            var activeNpcConfigField = typeof(RequestOrchestrator)
+                .GetField("_activeNpcConfig", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
-            // Example: RequestOrchestrator could tell us which NPC is active
-            // Or we could have a SetActiveNpc method
+            if (activeNpcConfigField != null)
+            {
+                var activeNpcConfig = activeNpcConfigField.GetValue(orchestrator) as INpcConfiguration;
+                return activeNpcConfig;
+            }
 
-            return null; // Placeholder
+            if (enableVerboseLogging)
+            {
+                Debug.LogWarning("[InterruptionManager] Failed to get _activeNpcConfig via reflection");
+            }
+
+            return null;
         }
 
         private void Update()

@@ -361,7 +361,7 @@ namespace Tsc.AIBridge.Audio.Playback
 
                 _sampleRate = sampleRate;
                 _isStreamActive = true;
-                _isPlaybackStarted = false;
+                _isPlaybackStarted = false; // CRITICAL: Reset for each stream to trigger OnPlaybackStarted event
                 _streamComplete = false;
                 _isReceivingResponse = true; // NEW: Mark that we're receiving a response
                 _isPrimingBuffer = true; // PRIMING BUFFER: Enable larger initial buffer for first chunks
@@ -457,10 +457,13 @@ namespace Tsc.AIBridge.Audio.Playback
                     StartPlayback();
                     _isPrimingBuffer = false; // Disable priming buffer after first playback starts
 
-                    if (enableVerboseLogging)
-                    {
-                        Debug.Log($"[{_cachedGameObjectName}] Playback started with priming buffer: {bufferThreshold / (float)_sampleRate:F3}s ({bufferThreshold} samples)");
-                    }
+                    // ALWAYS log playback start - critical for latency metrics debugging
+                    Debug.Log($"[{_cachedGameObjectName}] ✅ Playback started with buffer: {bufferThreshold / (float)_sampleRate:F3}s ({bufferThreshold} samples), Priming: {_isPrimingBuffer}");
+                }
+                else if (enableVerboseLogging && _totalSamplesReceived % (_sampleRate) < samples.Length)
+                {
+                    // Debug: Log why playback didn't start
+                    Debug.Log($"[{_cachedGameObjectName}] Waiting for playback start - Buffer: {_audioBuffer.Count}/{bufferThreshold} samples, AlreadyStarted: {_isPlaybackStarted}");
                 }
 
                 // Log buffer status periodically

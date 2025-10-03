@@ -35,12 +35,8 @@ namespace Tsc.AIBridge.Audio.Playback
                 if (_instance == null)
                 {
                     _instance = FindFirstObjectByType<AdaptiveBufferManager>();
-                    if (_instance == null)
-                    {
-                        Debug.LogError("[AdaptiveBufferManager] Not found in scene! Please add AdaptiveBufferManager to your scene.\n" +
-                                      "GameObject > Create Empty > Add Component > AdaptiveBufferManager\n" +
-                                      "Configure the buffer settings in the Inspector.");
-                    }
+                    // Note: No error logged here - use HasInstance to check before accessing
+                    // This allows graceful fallback to defaults when AdaptiveBufferManager is optional
                 }
                 return _instance;
             }

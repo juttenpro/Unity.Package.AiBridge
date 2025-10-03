@@ -9,9 +9,9 @@ namespace Tsc.AIBridge.Core
     public class ConnectionParameters
     {
         /// <summary>
-        /// Unique session identifier
+        /// Unique request identifier (matches WebSocket requestId field)
         /// </summary>
-        public string SessionId { get; set; }
+        public string RequestId { get; set; }
 
         /// <summary>
         /// TTS voice ID

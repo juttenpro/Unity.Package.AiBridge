@@ -17,7 +17,7 @@ namespace Tsc.AIBridge.Core
     /// - LLM latency (AI response generation time)
     /// - Perceived latency (user stops speaking → AI starts speaking)
     /// </summary>
-    public class LatencyTracker : ILatencyTracker
+    public class LatencyTracker
     {
         private readonly Stopwatch _stopwatch = new();
         private readonly List<long> _latencyHistory = new();

@@ -28,9 +28,27 @@ namespace Tsc.AIBridge.Core
         public string Name => _request.NpcId;
 
         /// <summary>
-        /// System prompt that defines the NPC's personality and behavior
+        /// System prompt - extracted from Messages[0] if role="system"
+        /// For RuleSystem path, Messages already contains system prompt as first message
         /// </summary>
-        public string SystemPrompt => _request.SystemPrompt;
+        public string SystemPrompt
+        {
+            get
+            {
+                if (_request.Messages != null && _request.Messages.Count > 0 &&
+                    _request.Messages[0].Role?.ToLower() == "system")
+                {
+                    return _request.Messages[0].Content;
+                }
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Chat history messages for the conversation
+        /// Messages array includes system prompt as first message with role="system"
+        /// </summary>
+        public System.Collections.Generic.List<Messages.ChatMessage> Messages => _request.Messages;
 
         /// <summary>
         /// TTS streaming mode

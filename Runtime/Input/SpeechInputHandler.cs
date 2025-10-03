@@ -526,8 +526,6 @@ namespace Tsc.AIBridge.Input
                 return;
             }
 
-            Debug.Log($"[SpeechInputHandler] HandleAudioData received {samples.Length} samples, _isRecording={_isRecording}");
-
             // Update VAD
             var pttDuration = _isPttPressed ? Time.time - _pttPressTime : 0f;
             var isSpeaking = _vadManager?.ProcessAudioFrame(samples, pttDuration) ?? false;
@@ -542,17 +540,12 @@ namespace Tsc.AIBridge.Input
             // Forward audio if recording
             if (_isRecording)
             {
-                Debug.Log($"[SpeechInputHandler] Forwarding {samples.Length} samples to AudioStreamProcessor");
                 // Send to AudioStreamProcessor for encoding
                 // Buffering is controlled by RequestOrchestrator via AudioStreamProcessor.StartBuffering()
                 _audioStreamProcessor?.ProcessRecordingData(samples);
 
                 // Also fire event for other listeners (e.g., InterruptionManager)
                 OnAudioDataReceived?.Invoke(samples);
-            }
-            else
-            {
-                Debug.LogWarning($"[SpeechInputHandler] NOT forwarding audio - _isRecording is false");
             }
 
             // Track silence for smart offset

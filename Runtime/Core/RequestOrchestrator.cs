@@ -113,11 +113,6 @@ namespace Tsc.AIBridge.Core
         // For tracking whether we're waiting for audio to finish
         private bool _isWaitingForAudioStart;
 
-        // DEBUG: Audio flow tracking
-        private float _pttPressTime;
-        private int _audioChunksSent;
-        private int _totalBytesSent;
-
         #endregion
 
         #region Unity Lifecycle
@@ -231,6 +226,17 @@ namespace Tsc.AIBridge.Core
 
             Debug.Log($"[RequestOrchestrator] Starting conversation request - NPC: {request.NpcId}, STT: {request.SttProvider}, LLM: {request.LlmModel}");
 
+            // DEBUG: Log message count in request
+            Debug.Log($"[RequestOrchestrator] ConversationRequest has {request.Messages?.Count ?? 0} messages before adapter");
+            if (request.Messages != null)
+            {
+                foreach (var msg in request.Messages)
+                {
+                    var preview = msg.Content?.Length > 50 ? msg.Content.Substring(0, 50) + "..." : msg.Content;
+                    Debug.Log($"  - [{msg.Role}] {preview}");
+                }
+            }
+
             // Create a temporary configuration wrapper for the request
             var config = new ConversationRequestAdapter(request);
             StartAudioRequest(config);
@@ -258,9 +264,6 @@ namespace Tsc.AIBridge.Core
 
             _activeNpcConfig = npcConfig;
 
-            // Mark request as active - audio chunks can now be accepted
-            _isRequestActive = true;
-
             // Try to find the NPC client
             if (_npcProvider != null)
             {
@@ -271,6 +274,33 @@ namespace Tsc.AIBridge.Core
                 // Fallback: try to find any NPC client in scene
                 var allClients = FindObjectsByType<NpcClientBase>(FindObjectsSortMode.None);
                 _activeNpcClient = allClients.FirstOrDefault();
+            }
+
+            // CRITICAL: Start buffering BEFORE marking request as active
+            // This prevents audio chunks from being sent before SessionStarted confirmation
+            if (speechInputHandler?.AudioStreamProcessor != null)
+            {
+                speechInputHandler.AudioStreamProcessor.StartBuffering();
+                Debug.Log("[RequestOrchestrator] Started audio buffering - waiting for backend SessionStarted confirmation");
+            }
+            else
+            {
+                Debug.LogError("[RequestOrchestrator] Cannot start buffering - AudioStreamProcessor not found!");
+            }
+
+            // Mark request as active - audio chunks can now be accepted (they will be buffered)
+            _isRequestActive = true;
+
+            // Start PTT duration tracking in latency tracker (after we have _activeNpcClient)
+            var tracker = GetLatencyTracker(_activeNpcClient);
+            if (tracker != null)
+            {
+                tracker.MarkRecordingStart();
+                Debug.Log($"[RequestOrchestrator] MarkRecordingStart() called for {_activeNpcClient?.NpcName}");
+            }
+            else
+            {
+                Debug.LogWarning($"[RequestOrchestrator] Could not call MarkRecordingStart() - LatencyTracker is null");
             }
 
             // Note: Animation events should be triggered via the NPC client, not directly
@@ -362,7 +392,7 @@ namespace Tsc.AIBridge.Core
         {
             if (_currentSession != null)
             {
-                Debug.Log($"[RequestOrchestrator] Cancelling session {_currentSession.SessionId}: {reason}");
+                Debug.Log($"[RequestOrchestrator] Cancelling session {_currentSession.RequestId}: {reason}");
 
                 // Discard any buffered audio (RuleSystem rejection or interruption)
                 if (speechInputHandler?.AudioStreamProcessor != null)
@@ -407,6 +437,59 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
+        /// Check if an interruption is currently active in the current session
+        /// </summary>
+        public bool IsInterruptionActive()
+        {
+            return _currentSession?.IsInterruptionActive ?? false;
+        }
+
+        /// <summary>
+        /// Mark that an interruption has started in the current session
+        /// </summary>
+        public void StartInterruption()
+        {
+            if (_currentSession != null)
+            {
+                _currentSession.IsInterruptionActive = true;
+                Debug.Log($"[RequestOrchestrator] Interruption started for session {_currentSession.RequestId}");
+            }
+        }
+
+        /// <summary>
+        /// Mark that an interruption has ended in the current session
+        /// </summary>
+        public void EndInterruption()
+        {
+            if (_currentSession != null)
+            {
+                _currentSession.IsInterruptionActive = false;
+                Debug.Log($"[RequestOrchestrator] Interruption ended for session {_currentSession.RequestId}");
+            }
+        }
+
+        /// <summary>
+        /// Get the number of audio streams received in the current session
+        /// </summary>
+        public int GetCurrentSessionStreamsReceived()
+        {
+            return _currentSession?.StreamsReceived ?? 0;
+        }
+
+        /// <summary>
+        /// Complete the current session (used when no audio received)
+        /// </summary>
+        public void CompleteCurrentSession()
+        {
+            if (_currentSession != null)
+            {
+                _currentSession.Complete();
+                Debug.Log($"[RequestOrchestrator] Session {_currentSession.RequestId} completed");
+                _currentSession = null;
+            }
+        }
+
+        /// <summary>
         /// Raise the OnTranscriptionReceived event
         /// Called by NpcClientBase when transcription is received from WebSocket
         /// </summary>
@@ -439,13 +522,6 @@ namespace Tsc.AIBridge.Core
                 Debug.LogWarning($"[RequestOrchestrator] Received {encodedAudio.Length} bytes but no active request! Audio dropped.");
                 return;
             }
-
-            // DEBUG: Track audio flow
-            _audioChunksSent++;
-            _totalBytesSent += encodedAudio.Length;
-            var elapsedMs = (Time.time - _pttPressTime) * 1000f;
-
-            Debug.Log($"[AUDIO-SEND] Chunk #{_audioChunksSent}: {encodedAudio.Length} bytes at T+{elapsedMs:F1}ms (total: {_totalBytesSent} bytes)");
 
             // Audio is sent directly to WebSocket
             // Buffering is handled by AudioStreamProcessor itself (StartBuffering/FlushBuffer)
@@ -480,15 +556,27 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
+            // Start latency measurement - from PTT release to audio playback start
+            var tracker = GetLatencyTracker(_activeNpcClient);
+            if (tracker != null)
+            {
+                tracker.StartMeasurement();
+                Debug.Log($"[RequestOrchestrator] StartMeasurement() called for {_activeNpcClient?.NpcName} at PTT release");
+            }
+            else
+            {
+                Debug.LogWarning($"[RequestOrchestrator] Could not call StartMeasurement() - LatencyTracker is null");
+            }
+
             try
             {
                 // Send EndOfSpeech - indicates user stopped speaking
-                await _webSocketClient.SendEndOfSpeechAsync(_currentSession.SessionId);
-                Debug.Log($"[RequestOrchestrator] EndOfSpeech sent for session: {_currentSession.SessionId}");
+                await _webSocketClient.SendEndOfSpeechAsync(_currentSession.RequestId);
+                Debug.Log($"[RequestOrchestrator] EndOfSpeech sent for session: {_currentSession.RequestId}");
 
                 // Send EndOfAudio - indicates all audio data has been transmitted
-                await _webSocketClient.SendEndOfAudioAsync(_currentSession.SessionId);
-                Debug.Log($"[RequestOrchestrator] EndOfAudio sent for session: {_currentSession.SessionId}");
+                await _webSocketClient.SendEndOfAudioAsync(_currentSession.RequestId);
+                Debug.Log($"[RequestOrchestrator] EndOfAudio sent for session: {_currentSession.RequestId}");
             }
             catch (Exception ex)
             {
@@ -575,40 +663,23 @@ namespace Tsc.AIBridge.Core
         {
             _isProcessingRequest = true;
 
-            // DEBUG: Reset audio tracking
-            _pttPressTime = Time.time;
-            _audioChunksSent = 0;
-            _totalBytesSent = 0;
-
             try
             {
                 Debug.Log($"[RequestOrchestrator] Processing audio request for {request.NpcConfig.Name}");
 
                 // CRITICAL: Recording is ALREADY started by SpeechInputHandler at PTT press
-                // Audio is being encoded by AudioStreamProcessor and buffered until we approve
-
-                // Start buffering mode - audio will be queued in AudioStreamProcessor
-                if (speechInputHandler?.AudioStreamProcessor != null)
-                {
-                    speechInputHandler.AudioStreamProcessor.StartBuffering();
-                    Debug.Log("[RequestOrchestrator] Started audio buffering - waiting for backend SessionStarted confirmation");
-                }
-                else
-                {
-                    Debug.LogError("[RequestOrchestrator] Cannot start buffering - AudioStreamProcessor not found!");
-                }
+                // Audio is being encoded by AudioStreamProcessor
+                // Buffering was already started in StartAudioRequest() to prevent early audio chunks
+                // from being sent before SessionStarted confirmation
 
                 // Create session parameters
                 var parameters = BuildSessionParameters(request.NpcConfig);
 
                 // Start WebSocket session
-                _currentSession = new ConversationSession
-                {
-                    SessionId = request.RequestId,
-                };
+                var npcName = _activeNpcClient?.NpcName ?? request.NpcConfig.Name;
+                _currentSession = new ConversationSession(npcName, request.RequestId);
 
                 // Register this request with the NPC router so messages are routed correctly
-                var npcName = _activeNpcClient?.NpcName ?? request.NpcConfig.Name;
                 NpcMessageRouter.Instance.SetActiveRequest(request.RequestId, npcName);
 
                 // CRITICAL: Register the NPC handler with WebSocketClient to receive responses
@@ -708,7 +779,15 @@ namespace Tsc.AIBridge.Core
                     Debug.Log("[RequestOrchestrator] Backend confirmed ready - flushed buffered audio to WebSocket");
                 }
 
-                Debug.Log($"[RequestOrchestrator] Audio request started. Session: {_currentSession.SessionId}");
+                // Session might have been completed already (race condition with conversationComplete)
+                if (_currentSession != null)
+                {
+                    Debug.Log($"[RequestOrchestrator] Audio request started. Session: {_currentSession.RequestId}");
+                }
+                else
+                {
+                    Debug.LogWarning("[RequestOrchestrator] Audio request started but session was already completed (possible race condition)");
+                }
             }
             finally
             {
@@ -725,10 +804,8 @@ namespace Tsc.AIBridge.Core
                 Debug.Log($"[RequestOrchestrator] Processing text request: {request.Text}");
 
                 // Start WebSocket session with text input
-                _currentSession = new ConversationSession
-                {
-                    SessionId = request.RequestId,
-                };
+                var npcName = _activeNpcClient?.NpcName ?? request.NpcConfig.Name;
+                _currentSession = new ConversationSession(npcName, request.RequestId);
 
                 // CRITICAL: Register the NPC handler with WebSocketClient to receive responses
                 if (_activeNpcClient is INpcMessageHandler textHandler)
@@ -769,7 +846,7 @@ namespace Tsc.AIBridge.Core
                 // Send text input via WebSocket
                 yield return _webSocketClient.SendTextInputAsync(textInputMessage);
 
-                Debug.Log($"[RequestOrchestrator] Text request started. Session: {_currentSession.SessionId}");
+                Debug.Log($"[RequestOrchestrator] Text request started. Session: {_currentSession.RequestId}");
             }
             finally
             {
@@ -820,7 +897,7 @@ namespace Tsc.AIBridge.Core
             // Build connection parameters from NPC configuration
             var parameters = new ConnectionParameters
             {
-                SessionId = Guid.NewGuid().ToString(),
+                RequestId = Guid.NewGuid().ToString(),
                 VoiceId = npcConfig.VoiceId,
                 Model = npcConfig.TtsModel,
                 Language = npcConfig.Language,
@@ -844,21 +921,89 @@ namespace Tsc.AIBridge.Core
             return parameters;
         }
 
+        /// <summary>
+        /// Get chat history for the current conversation.
+        /// RuleSystem path: Messages already includes system prompt as first message
+        /// SimpleNpcClient path: Convert SystemPrompt to Messages[0] with role="system"
+        /// </summary>
         private List<ChatMessage> GetChatHistory()
         {
-            // Get chat history from active NPC client (if it supports history)
+            if (_activeNpcConfig == null)
+            {
+                Debug.LogWarning("[RequestOrchestrator] No active NPC config - returning empty messages");
+                return new List<ChatMessage>();
+            }
+
+            // Priority 1: Use Messages if provided (RuleSystem path - already complete with system prompt)
+            if (_activeNpcConfig.Messages != null && _activeNpcConfig.Messages.Count > 0)
+            {
+                Debug.Log($"[RequestOrchestrator] Using {_activeNpcConfig.Messages.Count} messages from config (includes system prompt)");
+                return new List<ChatMessage>(_activeNpcConfig.Messages);
+            }
+
+            // Priority 2: Build Messages from SystemPrompt + NPC client history (SimpleNpcClient path)
+            var messages = new List<ChatMessage>();
+
+            // Add system prompt as first message if available
+            if (!string.IsNullOrEmpty(_activeNpcConfig.SystemPrompt))
+            {
+                messages.Add(new ChatMessage
+                {
+                    Role = "system",
+                    Content = _activeNpcConfig.SystemPrompt
+                });
+            }
+
+            // Add chat history from NPC client if available
             if (_activeNpcClient != null && _activeNpcClient is IConversationHistory historyProvider)
             {
                 var history = historyProvider.GetApiHistoryAsChatMessages();
                 if (history != null && history.Count > 0)
                 {
-                    return history;
+                    messages.AddRange(history);
                 }
             }
 
-            // No history available - return empty list
-            // Client MUST provide system prompt if needed
-            return new List<ChatMessage>();
+            if (messages.Count > 0)
+            {
+                Debug.Log($"[RequestOrchestrator] Built {messages.Count} messages from SystemPrompt + history");
+            }
+            else
+            {
+                Debug.Log("[RequestOrchestrator] No messages available - using empty array");
+            }
+
+            return messages;
+        }
+
+        /// <summary>
+        /// Helper method to get LatencyTracker from NpcClientBase via reflection.
+        /// LatencyTracker is internal in ConversationMetadataHandler, so we need reflection to access it.
+        /// </summary>
+        private LatencyTracker GetLatencyTracker(NpcClientBase npcClient)
+        {
+            if (npcClient == null)
+            {
+                Debug.LogWarning("[RequestOrchestrator] GetLatencyTracker: npcClient is NULL");
+                return null;
+            }
+
+            if (npcClient.MetadataHandler == null)
+            {
+                Debug.LogWarning($"[RequestOrchestrator] GetLatencyTracker: MetadataHandler is NULL for NPC: {npcClient.NpcName}");
+                return null;
+            }
+
+            var latencyTracker = typeof(ConversationMetadataHandler)
+                .GetField("_latencyTracker", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.GetValue(npcClient.MetadataHandler) as LatencyTracker;
+
+            if (latencyTracker == null)
+            {
+                Debug.LogWarning($"[RequestOrchestrator] GetLatencyTracker: Failed to get LatencyTracker via reflection for NPC: {npcClient.NpcName}");
+            }
+
+            return latencyTracker;
         }
 
         #endregion
@@ -878,10 +1023,6 @@ namespace Tsc.AIBridge.Core
             public string RequestId;
         }
 
-        private class ConversationSession
-        {
-            public string SessionId;
-        }
 
         #endregion
     }

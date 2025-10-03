@@ -44,6 +44,7 @@ namespace Tsc.AIBridge.Core
         public string Id => id;
         public string Name => name;
         public string SystemPrompt => systemPrompt;
+        public System.Collections.Generic.List<Messages.ChatMessage> Messages => null; // No messages - orchestrator will get history from NPC client
         public string TtsStreamingMode => ttsStreamingMode;
         public string TtsModel => ttsModel;
         public string VoiceId => ttsVoice;

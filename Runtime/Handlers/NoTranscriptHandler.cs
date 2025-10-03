@@ -46,8 +46,7 @@ namespace Tsc.AIBridge.Handlers
             // CRITICAL: Check if this is during an interruption attempt
             // If an interruption just occurred, the session should continue for the NPC response
             // The "no transcript" is expected during interruption (user briefly speaks to trigger it)
-            var centralManager = SessionManager.Instance;
-            if (IsInterruptionActive(centralManager))
+            if (IsInterruptionActive())
             {
                 Debug.Log($"[{_personaName}] No transcript during interruption - session continues for NPC response");
                 // DON'T complete the session - it needs to continue for the response
@@ -63,25 +62,19 @@ namespace Tsc.AIBridge.Handlers
         }
         
         /// <summary>
-        /// Check if an interruption is currently active
+        /// Check if an interruption is currently active via RequestOrchestrator
         /// </summary>
-        private bool IsInterruptionActive(SessionManager centralManager)
+        private bool IsInterruptionActive()
         {
-            if (centralManager == null)
+            var orchestrator = RequestOrchestrator.Instance;
+            if (orchestrator == null)
             {
                 if (_enableVerboseLogging)
-                    Debug.Log($"[{_personaName}] No central session manager - assuming no interruption");
+                    Debug.Log($"[{_personaName}] No RequestOrchestrator - assuming no interruption");
                 return false;
             }
-            
-            if (centralManager.CurrentSession == null)
-            {
-                if (_enableVerboseLogging)
-                    Debug.Log($"[{_personaName}] No current session - assuming no interruption");
-                return false;
-            }
-            
-            return centralManager.CurrentSession.IsInterruptionActive;
+
+            return orchestrator.IsInterruptionActive();
         }
     }
 }

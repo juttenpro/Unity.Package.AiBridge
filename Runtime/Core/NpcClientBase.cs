@@ -145,6 +145,10 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         protected virtual void HandleTranscription(string transcript)
         {
+            // DEBUG: Track how many times this is called
+            Debug.Log($"[{NpcName}] HandleTranscription called with: {transcript}");
+            Debug.Log($"[{NpcName}] Stack trace: {System.Environment.StackTrace}");
+
             // Forward to RequestOrchestrator if it exists
             var orchestrator = RequestOrchestrator.Instance;
             if (orchestrator != null)
@@ -458,8 +462,13 @@ namespace Tsc.AIBridge.Core
         public virtual void OnTextMessage(string json)
         {
             // Handle text messages - typically JSON messages like AiResponse, AudioStreamStart, etc.
-            // This is usually handled by the NpcMessageRouter, but we need to implement it for the interface
             Debug.Log($"[{GetType().Name}] Received text message: {json}");
+
+            // Forward to metadata handler for processing
+            if (_metadataHandler != null)
+            {
+                _metadataHandler.ProcessMessage(json);
+            }
         }
 
         /// <summary>
