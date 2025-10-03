@@ -551,9 +551,30 @@ namespace Tsc.AIBridge.WebSocket
             // SPECIAL HANDLING: BufferHint messages need to go to AdaptiveBufferManager
             // Use NpcMessageRouter with bufferHintOnly=true to prevent duplicate NPC routing
             // BufferHint will go to BOTH AdaptiveBufferManager (via NpcMessageRouter) AND NPC (via handler.OnTextMessage below)
-            if (json.Contains("\"type\":\"bufferHint\"") || json.Contains("\"type\":\"BufferHint\""))
+            var isBufferHint = json.Contains("\"type\":\"bufferHint\"") || json.Contains("\"type\":\"BufferHint\"");
+            if (isBufferHint)
             {
                 NpcMessageRouter.Instance.RouteMessage(json, requestId: null, bufferHintOnly: true);
+
+                // CRITICAL FIX: BufferHint must reach ALL NPCs for TTS latency tracking (required for metrics)
+                // Broadcast to all handlers regardless of RequestId to ensure LatencyTracker gets updated
+                lock (_routingLock)
+                {
+                    foreach (var handler in _npcHandlers.Values)
+                    {
+                        try
+                        {
+                            handler.OnTextMessage(json);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.LogError($"[UnifiedWebSocket] Error broadcasting BufferHint to NPC handler: {ex.Message}");
+                        }
+                    }
+                }
+
+                // BufferHint has been handled, don't process further
+                return;
             }
 
             // Check for error messages and log them prominently
