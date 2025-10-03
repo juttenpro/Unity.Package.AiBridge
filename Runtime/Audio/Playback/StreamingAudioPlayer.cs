@@ -61,6 +61,7 @@ namespace Tsc.AIBridge.Audio.Playback
         private bool _isPaused;
         private bool _isReceivingResponse; // NEW: Track if we're still receiving response from backend
         private bool _forceStop; // CRITICAL: Force audio to stop immediately for interruptions
+        private bool _isPrimingBuffer; // PRIMING BUFFER: Use larger buffer for first chunks to prevent "catching up"
         private int _totalSamplesReceived;
         private int _totalSamplesPlayed;
         private readonly object _stateLock = new();
@@ -68,6 +69,12 @@ namespace Tsc.AIBridge.Audio.Playback
         // Cached values
         private string _cachedGameObjectName;
         private int _minBufferSamples;
+
+        // PRIMING BUFFER CONFIGURATION
+        // Use a larger buffer for the first audio stream to prevent "catching up" audio playback
+        // This accounts for initial overhead: WebSocket arrival, RequestId header stripping, OGG/Opus decoder init
+        // After first playback starts, falls back to normal adaptive buffering
+        private const float PRIMING_BUFFER_DURATION = 0.25f; // 250ms vs normal 100ms
 
         // Statistics
         private float _lastBufferLevel;
@@ -78,9 +85,13 @@ namespace Tsc.AIBridge.Audio.Playback
         public bool HasBufferedAudio => _audioBuffer.Count > 0;
         public float BufferLevel => _audioBuffer.Count / (float)_sampleRate; // In seconds
 
-        // Get buffer settings from centralized manager
-        public float MinBufferDuration => AdaptiveBufferManager.Instance?.CurrentBufferDuration ?? 0.1f;
-        public bool IsAdaptiveBufferingEnabled => AdaptiveBufferManager.Instance?.IsAdaptiveBufferingEnabled ?? true;
+        // Get buffer settings from centralized manager (if it exists)
+        public float MinBufferDuration => AdaptiveBufferManager.HasInstance
+            ? (AdaptiveBufferManager.Instance?.CurrentBufferDuration ?? 0.1f)
+            : 0.1f;
+        public bool IsAdaptiveBufferingEnabled => AdaptiveBufferManager.HasInstance
+            ? (AdaptiveBufferManager.Instance?.IsAdaptiveBufferingEnabled ?? true)
+            : true;
 
         /// <summary>
         /// Gets the AudioFilterRelay component (read-only access)
@@ -167,19 +178,32 @@ namespace Tsc.AIBridge.Audio.Playback
                 StartCoroutine(InitializeWithRetry());
             }
 
-            // Subscribe to buffer updates from centralized manager
-            var bufferManager = AdaptiveBufferManager.Instance;
-            if (bufferManager != null)
-            {
-                bufferManager.OnBufferUpdateEvent += OnBufferUpdateReceived;
-                if (enableVerboseLogging)
-                    Debug.Log($"[{_cachedGameObjectName}] Subscribed to centralized buffer update events");
-            }
-
             #if UNITY_EDITOR
             // Subscribe to editor pause state changes
             UnityEditor.EditorApplication.pauseStateChanged += OnEditorPauseStateChanged;
             #endif
+        }
+
+        protected virtual void Start()
+        {
+            // Subscribe to buffer updates from centralized manager (optional component)
+            // NOTE: In Editor, Main scene may load before Initializer scene (development workflow)
+            // In Build, Initializer always loads first (production workflow)
+            // HasInstance check handles both scenarios gracefully
+            if (AdaptiveBufferManager.HasInstance)
+            {
+                var bufferManager = AdaptiveBufferManager.Instance;
+                if (bufferManager != null)
+                {
+                    bufferManager.OnBufferUpdateEvent += OnBufferUpdateReceived;
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{_cachedGameObjectName}] Subscribed to centralized buffer update events");
+                }
+            }
+            else if (enableVerboseLogging)
+            {
+                Debug.Log($"[{_cachedGameObjectName}] AdaptiveBufferManager not found - using default buffer settings");
+            }
         }
 
         #if UNITY_EDITOR
@@ -267,8 +291,12 @@ namespace Tsc.AIBridge.Audio.Playback
         /// </summary>
         private void UpdateBufferSizes()
         {
-            // Get buffer from centralized AdaptiveBufferManager
-            var bufferDuration = AdaptiveBufferManager.Instance?.CurrentBufferDuration ?? 0.1f;
+            // Get buffer from centralized AdaptiveBufferManager (if it exists)
+            float bufferDuration = 0.1f; // Default fallback
+            if (AdaptiveBufferManager.HasInstance)
+            {
+                bufferDuration = AdaptiveBufferManager.Instance?.CurrentBufferDuration ?? 0.1f;
+            }
             _minBufferSamples = Mathf.RoundToInt(bufferDuration * _sampleRate);
             // No max buffer limit anymore - buffer grows dynamically
         }
@@ -336,6 +364,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 _isPlaybackStarted = false;
                 _streamComplete = false;
                 _isReceivingResponse = true; // NEW: Mark that we're receiving a response
+                _isPrimingBuffer = true; // PRIMING BUFFER: Enable larger initial buffer for first chunks
                 _totalSamplesReceived = 0;
                 _totalSamplesPlayed = 0;
                 _underrunCount = 0;
@@ -344,10 +373,15 @@ namespace Tsc.AIBridge.Audio.Playback
                 // (Should already be cleared by StopPlaybackInternal but this is a safety check)
                 while (_audioBuffer.TryDequeue(out _)) { }
 
-                // Get buffer recommendation from centralized AdaptiveBufferManager
-                // Get buffer settings from centralized manager
-                var bufferManager = AdaptiveBufferManager.Instance;
-                var currentBuffer = bufferManager?.CurrentBufferDuration ?? 0.1f;
+                // Get buffer recommendation from centralized AdaptiveBufferManager (if it exists)
+                float currentBuffer = 0.1f; // Default fallback
+                AdaptiveBufferManager bufferManager = null;
+
+                if (AdaptiveBufferManager.HasInstance)
+                {
+                    bufferManager = AdaptiveBufferManager.Instance;
+                    currentBuffer = bufferManager?.CurrentBufferDuration ?? 0.1f;
+                }
 
                 // Log the buffer being used for this stream (verbose only to reduce spam)
                 if (enableVerboseLogging)
@@ -403,10 +437,30 @@ namespace Tsc.AIBridge.Audio.Playback
 
                 _totalSamplesReceived += samples.Length;
 
+                // PRIMING BUFFER: Use larger buffer for first stream to prevent "catching up"
+                // Calculate buffer threshold: priming buffer (250ms) for first chunks, then normal adaptive buffer (100ms)
+                int bufferThreshold;
+                if (_isPrimingBuffer)
+                {
+                    // Use priming buffer for first chunks - accounts for WebSocket/decoder overhead
+                    bufferThreshold = Mathf.RoundToInt(PRIMING_BUFFER_DURATION * _sampleRate);
+                }
+                else
+                {
+                    // Use normal adaptive buffer from AdaptiveBufferManager
+                    bufferThreshold = _minBufferSamples;
+                }
+
                 // Start playback if we have enough buffered
-                if (!_isPlaybackStarted && _audioBuffer.Count >= _minBufferSamples)
+                if (!_isPlaybackStarted && _audioBuffer.Count >= bufferThreshold)
                 {
                     StartPlayback();
+                    _isPrimingBuffer = false; // Disable priming buffer after first playback starts
+
+                    if (enableVerboseLogging)
+                    {
+                        Debug.Log($"[{_cachedGameObjectName}] Playback started with priming buffer: {bufferThreshold / (float)_sampleRate:F3}s ({bufferThreshold} samples)");
+                    }
                 }
 
                 // Log buffer status periodically
