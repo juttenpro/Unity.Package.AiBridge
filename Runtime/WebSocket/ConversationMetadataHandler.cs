@@ -264,6 +264,11 @@ namespace Tsc.AIBridge.WebSocket
                     break;
                     
                 case "conversationComplete":
+                    // CRITICAL FIX: Extract RequestId from conversationComplete message to verify it matches current session
+                    // Without this check, turn 1's conversationComplete can complete turn 2's session during overlapping turns!
+                    var completeMsg = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
+                    var completeRequestId = completeMsg.ContainsKey("requestId") ? completeMsg["requestId"].ToString() : null;
+
                     //Debug.Log($"[{_personaName}] Conversation completed - checking if cleanup needed");
 
                     // Check if audio was received via RequestOrchestrator
@@ -271,21 +276,31 @@ namespace Tsc.AIBridge.WebSocket
                     var audioReceived = false;
                     if (orchestrator != null)
                     {
-                        audioReceived = orchestrator.GetCurrentSessionStreamsReceived() > 0;
-
-                        // If no audio was received (e.g. NoTranscript case), we need to clean up the session
-                        // With audio, AudioStreamEnd handles cleanup. Without audio, we do it here.
-                        if (!audioReceived)
+                        // CRITICAL: Only check/complete if this message is for the CURRENT session
+                        // This prevents turn 1's conversationComplete from completing turn 2's session
+                        var currentSessionId = orchestrator.GetCurrentSessionId();
+                        if (currentSessionId == completeRequestId)
                         {
-                            //Debug.Log($"[{_personaName}] No audio received for session - completing session now");
-                            orchestrator.CompleteCurrentSession();
+                            audioReceived = orchestrator.GetCurrentSessionStreamsReceived() > 0;
+
+                            // If no audio was received (e.g. NoTranscript case), we need to clean up the session
+                            // With audio, AudioStreamEnd handles cleanup. Without audio, we do it here.
+                            if (!audioReceived)
+                            {
+                                Debug.Log($"[{_personaName}] No audio received for session {completeRequestId} - completing session now");
+                                orchestrator.CompleteCurrentSession();
+                            }
+                            else
+                            {
+                                Debug.Log($"[{_personaName}] Audio was received ({orchestrator.GetCurrentSessionStreamsReceived()} streams) for session {completeRequestId} - AudioStreamEnd will handle cleanup");
+                            }
                         }
-                        //else
-                        //{
-                        //    Debug.Log($"[{_personaName}] Audio was received ({orchestrator.GetCurrentSessionStreamsReceived()} streams) - AudioStreamEnd will handle cleanup");
-                        //}
+                        else
+                        {
+                            Debug.Log($"[{_personaName}] conversationComplete for old session {completeRequestId}, current is {currentSessionId} - ignoring cleanup");
+                        }
                     }
-                    
+
                     // Notify listeners
                     OnConversationComplete?.Invoke(audioReceived);
                     break;

@@ -477,6 +477,14 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
+        /// Get the current session RequestId (null if no active session)
+        /// </summary>
+        public string GetCurrentSessionId()
+        {
+            return _currentSession?.RequestId;
+        }
+
+        /// <summary>
         /// Complete the current session (used when no audio received)
         /// </summary>
         public void CompleteCurrentSession()
