@@ -518,6 +518,7 @@ namespace Tsc.AIBridge.Audio.Playback
         private void StopPlaybackInternal(bool wasInterrupted = false)
         {
             _isStreamActive = false;
+            _isPlaybackStarted = false; // CRITICAL: Reset to allow StartPlayback() for next turn
             _streamComplete = true;
             _isReceivingResponse = false; // NEW: Mark that response is stopped
             _forceStop = true; // Ensure force stop is set
