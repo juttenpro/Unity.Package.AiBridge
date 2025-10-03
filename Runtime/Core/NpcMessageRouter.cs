@@ -130,17 +130,31 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Route a WebSocket message to the appropriate NPC or system handler
         /// </summary>
-        public void RouteMessage(string json, string requestId = null)
+        /// <param name="json">The JSON message to route</param>
+        /// <param name="requestId">Optional RequestId for targeted routing</param>
+        /// <param name="bufferHintOnly">If true, only process BufferHint messages and skip NPC routing</param>
+        public void RouteMessage(string json, string requestId = null, bool bufferHintOnly = false)
         {
             if (string.IsNullOrEmpty(json))
                 return;
 
-            // Check if this is a BufferHint message - route to NetworkQualityMonitor instead of NPC
-            if (IsBufferHintMessage(json))
+            // Check if this is a BufferHint message - route to AdaptiveBufferManager
+            // AdaptiveBufferManager: Adjusts audio buffer based on network quality
+            var isBufferHint = IsBufferHintMessage(json);
+            if (isBufferHint)
             {
-                RouteBufferHintToNetworkMonitor(json);
-                return; // Don't route to NPCs
+                RouteBufferHintToAdaptiveBuffer(json);
+
+                // If bufferHintOnly flag is set, don't route to NPC (prevents duplicate routing)
+                if (bufferHintOnly)
+                    return;
+
+                // Otherwise continue to also route to NPC for TTS latency tracking
             }
+
+            // Skip NPC routing if bufferHintOnly flag is set
+            if (bufferHintOnly)
+                return;
 
             // Try to extract RequestId from message if not provided
             if (string.IsNullOrEmpty(requestId))
@@ -244,31 +258,36 @@ namespace Tsc.AIBridge.Core
         private bool IsBufferHintMessage(string json)
         {
             // Quick check without full deserialization
-            return json.Contains("\"type\":\"bufferhint\"") ||
+            // Backend sends "bufferHint" (camelCase)
+            return json.Contains("\"type\":\"bufferHint\"") ||
                    json.Contains("\"type\":\"BufferHint\"");
         }
 
         /// <summary>
-        /// Route BufferHint messages to the centralized NetworkQualityMonitor
+        /// Route BufferHint messages directly to AdaptiveBufferManager
+        /// Backend already calculates optimal buffer recommendations - we just apply them
         /// </summary>
-        private void RouteBufferHintToNetworkMonitor(string json)
+        private void RouteBufferHintToAdaptiveBuffer(string json)
         {
             try
             {
-                // Get the NetworkQualityMonitor singleton
-                var networkMonitor = Network.NetworkQualityMonitor.Instance;
-                if (networkMonitor != null)
+                // Only process if AdaptiveBufferManager exists (optional component)
+                if (!Audio.Playback.AdaptiveBufferManager.HasInstance)
                 {
-                    // Deserialize the BufferHint message
-                    var bufferHint = Newtonsoft.Json.JsonConvert.DeserializeObject<Messages.BufferHintMessage>(json);
-                    if (bufferHint != null)
-                    {
-                        networkMonitor.ProcessBufferHint(bufferHint);
-                    }
+                    return; // Silently skip - AdaptiveBufferManager is optional
                 }
-                else
+
+                // Deserialize the BufferHint message
+                var bufferHint = Newtonsoft.Json.JsonConvert.DeserializeObject<Messages.BufferHintMessage>(json);
+                if (bufferHint != null)
                 {
-                    Debug.LogWarning("[NpcMessageRouter] NetworkQualityMonitor not available for BufferHint message");
+                    // Route directly to AdaptiveBufferManager - it knows what to do with backend recommendations
+                    var bufferManager = Audio.Playback.AdaptiveBufferManager.Instance;
+                    bufferManager?.ProcessBufferHint(
+                        bufferHint.NetworkQuality,
+                        bufferHint.RecommendedBufferSize,
+                        bufferHint.TtsLatencyMs
+                    );
                 }
             }
             catch (System.Exception ex)

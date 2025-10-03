@@ -548,8 +548,13 @@ namespace Tsc.AIBridge.WebSocket
             if (string.IsNullOrEmpty(json))
                 return;
 
-            // Route message to appropriate NPC via the message router
-            NpcMessageRouter.Instance.RouteMessage(json);
+            // SPECIAL HANDLING: BufferHint messages need to go to AdaptiveBufferManager
+            // Use NpcMessageRouter with bufferHintOnly=true to prevent duplicate NPC routing
+            // BufferHint will go to BOTH AdaptiveBufferManager (via NpcMessageRouter) AND NPC (via handler.OnTextMessage below)
+            if (json.Contains("\"type\":\"bufferHint\"") || json.Contains("\"type\":\"BufferHint\""))
+            {
+                NpcMessageRouter.Instance.RouteMessage(json, requestId: null, bufferHintOnly: true);
+            }
 
             // Check for error messages and log them prominently
             if (json.Contains("\"type\":\"Error\"") || json.Contains("\"type\":\"error\"") || json.Contains("\"type\":\"ConfigurationError\""))
@@ -560,9 +565,19 @@ namespace Tsc.AIBridge.WebSocket
                     if (errorData != null)
                     {
                         var errorType = errorData.ContainsKey("type") ? errorData["type"].ToString() : "Error";
-                        var errorMessage = errorData.ContainsKey("message") ? errorData["message"].ToString() : json;
-                        var service = errorData.ContainsKey("service") ? errorData["service"].ToString() : "Unknown";
+
+                        // Backend can send error in either "message" or "error" field
+                        var errorMessage = errorData.ContainsKey("message") && !string.IsNullOrEmpty(errorData["message"].ToString())
+                            ? errorData["message"].ToString()
+                            : errorData.ContainsKey("error") ? errorData["error"].ToString() : "Unknown error";
+
+                        // Service can be explicit field, or derived from type/error
+                        var service = errorData.ContainsKey("service") && !string.IsNullOrEmpty(errorData["service"].ToString())
+                            ? errorData["service"].ToString()
+                            : errorType; // Use error type as service identifier
+
                         var suggestion = errorData.ContainsKey("suggestion") ? errorData["suggestion"].ToString() : "";
+                        var errorRequestId = errorData.ContainsKey("requestId") ? errorData["requestId"].ToString() : "No request ID";
 
                         // Special handling for configuration errors
                         if (errorType == "ConfigurationError")
@@ -572,7 +587,8 @@ namespace Tsc.AIBridge.WebSocket
                                 $"════════════════════════════════════════════════════════\n" +
                                 $"⚠️ CONFIGURATION ERROR - {service}\n" +
                                 $"════════════════════════════════════════════════════════\n" +
-                                $"\n{errorMessage}\n");
+                                $"\n{errorMessage}\n" +
+                                $"Request ID: {errorRequestId}\n");
 
                             if (!string.IsNullOrEmpty(suggestion))
                             {
@@ -582,8 +598,8 @@ namespace Tsc.AIBridge.WebSocket
                         }
                         else
                         {
-                            // Regular error logging
-                            Debug.LogError($"[BACKEND ERROR - {service}] {errorMessage}");
+                            // Regular error logging with request ID for debugging
+                            Debug.LogError($"[BACKEND ERROR - {service}] {errorMessage} (RequestId: {errorRequestId})");
                             if (!string.IsNullOrEmpty(suggestion))
                             {
                                 Debug.LogWarning($"[SUGGESTION] {suggestion}");
