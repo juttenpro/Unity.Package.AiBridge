@@ -34,6 +34,9 @@ namespace Tsc.AIBridge.Tests.Runtime
         [SetUp]
         public void Setup()
         {
+            // Suppress expected error log when InterruptionManager doesn't find SpeechInputHandler
+            LogAssert.Expect(LogType.Error, "[InterruptionManager] SpeechInputHandler is required!");
+
             // Create player GameObject with required components
             _playerGameObject = new GameObject("Player");
             _speechInputHandler = _playerGameObject.AddComponent<SpeechInputHandler>();
