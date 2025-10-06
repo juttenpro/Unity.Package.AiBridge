@@ -119,24 +119,31 @@ namespace Tsc.AIBridge.WebSocket
                 var startTime = DateTime.UtcNow;
                 var timeout = TimeSpan.FromSeconds(10);
 
-                while (_webSocket.State == WebSocketState.Connecting &&
+                // CRITICAL FIX: Store local reference to avoid race condition with Cleanup()
+                // If HandleClose is called during connection, Cleanup() sets _webSocket = null
+                // which would cause NullReferenceException in the while loop condition
+                var ws = _webSocket;
+
+                while (ws != null && ws.State == WebSocketState.Connecting &&
                        DateTime.UtcNow - startTime < timeout)
                 {
                     await Task.Delay(100); // Check every 100ms
+                    ws = _webSocket; // Re-check in case it changed
                 }
 
                 //var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
-                //Debug.Log($"[WebSocketConnection] Connection attempt completed after {elapsed:F1}s, state: {_webSocket.State}");
+                //Debug.Log($"[WebSocketConnection] Connection attempt completed after {elapsed:F1}s, state: {ws?.State}");
 
-                // Check connection result
-                if (_webSocket.State == WebSocketState.Open)
+                // Check connection result - use local reference and null-check
+                if (ws != null && ws.State == WebSocketState.Open)
                 {
                     //Debug.Log($"[WebSocketConnection] Connection successful");
                     return true;
                 }
 
                 // Connection failed or timed out
-                Debug.LogError($"[WebSocketConnection] Connection failed, final state: {_webSocket.State}");
+                var finalState = ws?.State.ToString() ?? "null (cleaned up)";
+                Debug.LogError($"[WebSocketConnection] Connection failed, final state: {finalState}");
                 _cancellationTokenSource?.Cancel();
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;

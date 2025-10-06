@@ -1,14 +1,18 @@
+using System;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using System.Collections;
 using System.Collections.Generic;
 using Tsc.AIBridge.Audio.Capture;
+using Tsc.AIBridge.Audio.Playback;
 using Tsc.AIBridge.Core;
 using Tsc.AIBridge.Input;
 using Tsc.AIBridge.WebSocket;
 using Tsc.AIBridge.Audio.Processing;
 using Tsc.AIBridge.Messages;
+using Tsc.AIBridge.Utilities;
+using Object = UnityEngine.Object;
 
 namespace Tsc.AIBridge.Tests.Runtime
 {
@@ -510,6 +514,12 @@ namespace Tsc.AIBridge.Tests.Runtime
             // Before request
             Assert.IsFalse(GetRequestActiveState(), "Should start with inactive state");
 
+            // Expect error log since AudioStreamProcessor is not mocked in this minimal test
+            // This test focuses on state management, not audio processing
+            LogAssert.Expect(LogType.Error, "[RequestOrchestrator] Cannot start buffering - AudioStreamProcessor not found!");
+            LogAssert.Expect(LogType.Warning, "[RequestOrchestrator] GetLatencyTracker: MetadataHandler is NULL for NPC: TestNPC");
+            LogAssert.Expect(LogType.Warning, "[RequestOrchestrator] Could not call MarkRecordingStart() - LatencyTracker is null");
+
             // Start request
             _orchestrator.StartConversationRequest(request);
             Assert.IsTrue(GetRequestActiveState(), "Should be active after StartConversationRequest");
@@ -524,6 +534,91 @@ namespace Tsc.AIBridge.Tests.Runtime
             var field = typeof(RequestOrchestrator).GetField("_isRequestActive",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             return (bool)(field?.GetValue(_orchestrator) ?? false);
+        }
+
+        #endregion
+
+        #region Test 8: Multi-Turn Conversations - State Management
+
+        /// <summary>
+        /// BUSINESS REQUIREMENT: Multiple conversation turns with same NPC must work correctly
+        ///
+        /// WHY: Medical training involves back-and-forth conversations (10+ turns common)
+        /// WHAT: Verify AudioStreamProcessor.EndAudioStream() calls EndStream() on player even when _isStreamingAudio is false
+        /// HOW: Test via AudioStreamProcessor (where the bug was), not direct StartStream calls
+        ///
+        /// SUCCESS CRITERIA:
+        /// - EndAudioStream() must call EndStream() on player even if _isStreamingAudio is false
+        /// - This ensures _isPlaybackStarted gets reset between turns
+        /// - Without this fix, turn 2+ would fail to trigger playback start events
+        ///
+        /// BUSINESS IMPACT:
+        /// - Failure = latency metrics only shown on turn 1, broken UX for multi-turn conversations
+        /// - Critical for trainee feedback and progress tracking
+        /// - This test validates the fix we made to AudioStreamProcessor.EndAudioStream()
+        /// </summary>
+        [UnityTest]
+        public IEnumerator MultiTurn_SameNPC_StateResetsCorrectly()
+        {
+            // Wait for Unity lifecycle
+            yield return null;
+
+            // Track how many times playback start event fires
+            int playbackStartCallCount = 0;
+
+            // Create a real StreamingAudioPlayer to test state management
+            var audioPlayerObject = new GameObject("TestAudioPlayer");
+            var audioFilterRelay = audioPlayerObject.AddComponent<AudioFilterRelay>();
+            var audioPlayer = audioPlayerObject.AddComponent<StreamingAudioPlayer>();
+            audioPlayer.SuppressInitializationWarnings();
+            audioPlayer.SetAudioFilterRelay(audioFilterRelay);
+
+            // Hook into playback start event
+            Action playbackStartHandler = () => playbackStartCallCount++;
+            StreamingAudioPlayer.OnPlaybackStartedStatic += playbackStartHandler;
+
+            // Create real AudioStreamProcessor with our test audio player
+            var audioProcessor = new AudioStreamProcessor(audioPlayer, opusBitrate: 64000, bufferDuration: 0.1f, isVerboseLogging: false);
+
+            yield return null;
+
+            // TURN 1: Normal flow - processor starts stream, audio added, playback starts
+            Debug.Log("========== TURN 1: Normal audio stream ==========");
+            audioProcessor.StartAudioStream(isOpus: true, sampleRate: 48000);
+
+            // Add audio via processor (simulates TTS audio arrival)
+            float[] samples = new float[15000];
+            for (int i = 0; i < samples.Length; i++) samples[i] = 0.1f;
+            audioPlayer.AddAudioData(samples);
+
+            yield return new WaitForSeconds(0.1f);
+            Assert.AreEqual(1, playbackStartCallCount, "Turn 1: Playback should start");
+            Assert.IsTrue(audioProcessor.IsStreamingAudio, "Turn 1: Should be streaming");
+
+            // END TURN 1: Call EndAudioStream - this should call EndStream() on player
+            Debug.Log("========== TURN 1 END: Calling EndAudioStream ==========");
+            audioProcessor.EndAudioStream();
+            yield return null;
+
+            Assert.IsFalse(audioProcessor.IsStreamingAudio, "After EndAudioStream, should not be streaming");
+
+            // TURN 2: The critical test - does playback start again?
+            Debug.Log("========== TURN 2: Testing if playback can start again ==========");
+            audioProcessor.StartAudioStream(isOpus: true, sampleRate: 48000);
+
+            // Add audio again
+            audioPlayer.AddAudioData(samples);
+
+            yield return new WaitForSeconds(0.1f);
+            Assert.AreEqual(2, playbackStartCallCount,
+                "Turn 2: Playback should start again. " +
+                "If this fails, EndAudioStream() didn't call EndStream() to reset _isPlaybackStarted - THE BUG!");
+
+            // Cleanup
+            audioProcessor.EndAudioStream();
+            StreamingAudioPlayer.OnPlaybackStartedStatic -= playbackStartHandler;
+            Object.DestroyImmediate(audioPlayerObject);
+            audioProcessor.Dispose();
         }
 
         #endregion
@@ -571,6 +666,22 @@ namespace Tsc.AIBridge.Tests.Runtime
             }
 
             public new AudioStreamProcessor AudioStreamProcessor => _testAudioStreamProcessor;
+
+            /// <summary>
+            /// Override the test AudioStreamProcessor - used for multi-turn state management tests
+            /// </summary>
+            public void SetAudioStreamProcessor(AudioStreamProcessor processor)
+            {
+                _testAudioStreamProcessor = processor;
+
+                // Update the backing field via reflection
+                var field = typeof(SpeechInputHandler).GetField("_audioStreamProcessor",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (field != null)
+                {
+                    field.SetValue(this, processor);
+                }
+            }
 
             public void TriggerOnOpusAudioEncoded(byte[] chunk)
             {

@@ -41,6 +41,7 @@ namespace Tsc.AIBridge.Messages
         public const string BufferHint = "BufferHint";
         public const string LatencyMetrics = "LatencyMetrics";
         public const string SentenceMetadata = "SentenceMetadata"; // Real-time character animation metadata
+        public const string ConversationComplete = "conversationComplete"; // Lowercase per protocol
     }
 
     /// <summary>

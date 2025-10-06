@@ -246,6 +246,7 @@ namespace Tsc.AIBridge.Messages
     [Serializable]
     public class PauseStateMessage : WebSocketMessageBase
     {
+        [JsonProperty("isPaused")]
         public bool IsPaused;
 
         public PauseStateMessage()
@@ -262,9 +263,6 @@ namespace Tsc.AIBridge.Messages
     [Serializable]
     public class SessionCancelMessage : WebSocketMessageBase
     {
-        /// <summary>
-        /// Reason for cancelling the session (for debugging and logging)
-        /// </summary>
         [JsonProperty("reason")]
         public string Reason;
 
@@ -416,7 +414,10 @@ namespace Tsc.AIBridge.Messages
     [Serializable]
     public class ConnectionEstablishedMessage : WebSocketMessageBase
     {
+        [JsonProperty("connectionId")]
         public string ConnectionId;
+
+        [JsonProperty("networkQuality")]
         public string NetworkQuality;
     }
 
@@ -436,8 +437,13 @@ namespace Tsc.AIBridge.Messages
     [Serializable]
     public class TranscriptionMessage : WebSocketMessageBase
     {
+        [JsonProperty("text")]
         public string Text;
+
+        [JsonProperty("isFinal")]
         public bool IsFinal;
+
+        [JsonProperty("timing")]
         public SttTiming Timing;
     }
 
@@ -448,13 +454,28 @@ namespace Tsc.AIBridge.Messages
     [Serializable]
     public class SttTiming
     {
+        [JsonProperty("serviceCreationMs")]
         public double ServiceCreationMs;
+
+        [JsonProperty("configurationMs")]
         public double ConfigurationMs;
+
+        [JsonProperty("firstResultMs")]
         public double FirstResultMs;
+
+        [JsonProperty("totalProcessingMs")]
         public double TotalProcessingMs;
+
+        [JsonProperty("pttToAudioMs")]
         public double PttToAudioMs; // Unity-side PTT timing
+
+        [JsonProperty("provider")]
         public string Provider;
+
+        [JsonProperty("audioChunks")]
         public int AudioChunks;
+
+        [JsonProperty("audioBytes")]
         public long AudioBytes;
     }
 
@@ -465,14 +486,22 @@ namespace Tsc.AIBridge.Messages
     [Serializable]
     public class LlmTiming
     {
+        [JsonProperty("firstResponseMs")]
         public double FirstResponseMs;
+
+        [JsonProperty("totalResponseMs")]
         public double TotalResponseMs;
 
         [JsonProperty("llmWaitMs")]
         public double? LlmWaitMs;  // Time from LLM start to first TTS request (user-perceived wait)
 
+        [JsonProperty("model")]
         public string Model;
+
+        [JsonProperty("chunkCount")]
         public int ChunkCount;
+
+        [JsonProperty("totalTokens")]
         public int TotalTokens;
     }
 
@@ -485,7 +514,10 @@ namespace Tsc.AIBridge.Messages
     [Serializable]
     public class AiResponseMessage : WebSocketMessageBase
     {
+        [JsonProperty("text")]
         public string Text;
+
+        [JsonProperty("timing")]
         public LlmTiming Timing;
 
         [JsonProperty("llmResponse")]
@@ -499,9 +531,16 @@ namespace Tsc.AIBridge.Messages
     [Serializable]
     public class AudioStreamStartMessage : WebSocketMessageBase
     {
+        [JsonProperty("format")]
         public string Format; // "opus" or "pcm"
+
+        [JsonProperty("sampleRate")]
         public int SampleRate;
+
+        [JsonProperty("bitrate")]
         public int? Bitrate; // For opus
+
+        [JsonProperty("timing")]
         public TtsTiming Timing; // TTS timing info
 
         // REMOVED: Interruptable field - managed locally via PersonaSO
@@ -517,9 +556,16 @@ namespace Tsc.AIBridge.Messages
     [Serializable]
     public class TtsTiming
     {
+        [JsonProperty("firstAudioMs")]
         public double? FirstAudioMs;
+
+        [JsonProperty("totalProcessingMs")]
         public double? TotalProcessingMs;
+
+        [JsonProperty("latencyMs")]
         public double? LatencyMs;
+
+        [JsonProperty("latencyLevel")]
         public string LatencyLevel;
     }
 
@@ -570,14 +616,20 @@ namespace Tsc.AIBridge.Messages
     [Serializable]
     public class ErrorMessage : WebSocketMessageBase
     {
+        [JsonProperty("code")]
         public string Code;
+
+        [JsonProperty("message")]
         public string Message;
+
+        [JsonProperty("details")]
         public string Details;
     }
 
     [Serializable]
     public class SimpleNotificationMessage : WebSocketMessageBase
     {
+        [JsonProperty("data")]
         public string Data;
     }
 
@@ -698,5 +750,24 @@ namespace Tsc.AIBridge.Messages
         /// </summary>
         [JsonProperty("estimatedTimingMs")]
         public int EstimatedTimingMs;
+    }
+
+    /// <summary>
+    /// Message sent when a full conversation turn is complete.
+    /// Used to signal end of processing and trigger cleanup if needed.
+    /// </summary>
+    [Serializable]
+    public class ConversationCompleteMessage : WebSocketMessageBase
+    {
+        /// <summary>
+        /// Optional performance metrics for this conversation turn
+        /// </summary>
+        [JsonProperty("metrics")]
+        public object Metrics;
+
+        public ConversationCompleteMessage()
+        {
+            Type = "conversationComplete";
+        }
     }
 }

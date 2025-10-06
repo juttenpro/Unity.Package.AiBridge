@@ -244,9 +244,9 @@ namespace Tsc.AIBridge.Core
             // Mark LLM as completed
             _hasLlmCompleted = true;
             //UnityEngine.Debug.Log($"[{_personaName}] ✓ LLM complete - latency: {_llmLatency}ms");
-            
-            // Check if we have all timing data to report
-            CheckAndReportIfComplete();
+
+            // SIMPLE APPROACH: Try to report immediately (in case TTS timing already arrived)
+            TryReportMetricsNow();
         }
         
         /// <summary>
@@ -279,14 +279,39 @@ namespace Tsc.AIBridge.Core
             _ttsLatencyLevel = latencyLevel;
             _hasTtsTimingReceived = true;
             //UnityEngine.Debug.Log($"[{_personaName}] ✓ TTS timing received: {ttsLatencyMs}ms ({latencyLevel})");
-            
-            // Check if we now have all timing data to report
+
+            // SIMPLE APPROACH: Report metrics immediately when TTS timing arrives
+            // This is more reliable than waiting for playback start (race conditions!)
+            TryReportMetricsNow();
+        }
+
+        /// <summary>
+        /// Try to report metrics immediately based on backend timing data.
+        /// DISABLED: Backend timings (STT + LLM + TTS) are NOT accurate for perceived latency due to streaming/parallelism.
+        /// Real perceived latency MUST be measured with stopwatch from PTT release to AudioSource.Play()
+        /// This is now handled by MarkPlaybackStart() which provides accurate user-perceived latency.
+        /// This method only logs component timings and triggers CheckAndReportIfComplete().
+        /// </summary>
+        public void TryReportMetricsNow()
+        {
+            // Check if we have the essential backend timings
+            if (!_hasLlmCompleted || !_hasTtsTimingReceived)
+            {
+                UnityEngine.Debug.Log($"[{_personaName}] Cannot report yet - LLM: {_hasLlmCompleted}, TTS: {_hasTtsTimingReceived}");
+                return;
+            }
+
+            // Log component timings for debugging (but don't use as perceived latency)
+            UnityEngine.Debug.Log($"[{_personaName}] Backend timings received - STT:{_sttLatency}ms, LLM:{_llmLatency}ms, TTS:{_ttsLatency}ms (sum: {_sttLatency + _llmLatency + _ttsLatency}ms, but NOT perceived latency due to streaming)");
+
+            // Check if playback has already started and report if we have everything
             CheckAndReportIfComplete();
         }
         
         /// <summary>
-        /// Mark playback start (audio actually playing) 
+        /// Mark playback start (audio actually playing)
         /// This measures the total perceived latency from PTT release to audio start
+        /// SIMPLE: Reports immediately - no waiting for other timings (no race conditions!)
         /// </summary>
         public void MarkPlaybackStart(float bufferDurationSeconds = 0)
         {
@@ -295,28 +320,27 @@ namespace Tsc.AIBridge.Core
                 UnityEngine.Debug.LogWarning($"[{_personaName}] MarkPlaybackStart called but stopwatch not running! This prevents latency metrics from being reported.");
                 return;
             }
-            
+
             // The ONLY measurement that matters: PTT release → Audio playback start
             var totalPerceivedLatency = _stopwatch.ElapsedMilliseconds;
-            
+
             _stopwatch.Stop();
-            
+
             // Add buffer duration to account for actual audio output delay
             if (bufferDurationSeconds > 0)
             {
                 totalPerceivedLatency += (long)(bufferDurationSeconds * 1000);
             }
-            
+
             // Store for history
             _latencyHistory.Add(totalPerceivedLatency);
-            
+
             // Mark playback as started
             _hasPlaybackStarted = true;
             _pendingPerceivedLatency = totalPerceivedLatency;
-            //UnityEngine.Debug.Log($"[{_personaName}] ✓ Playback started - perceived latency: {totalPerceivedLatency}ms");
-            
-            // Check if we have all timing data to report
-            CheckAndReportIfComplete();
+
+            // SIMPLE: Report immediately! No waiting for backend timings (avoids race conditions)
+            ReportLatencyStats(totalPerceivedLatency);
         }
         
         /// <summary>

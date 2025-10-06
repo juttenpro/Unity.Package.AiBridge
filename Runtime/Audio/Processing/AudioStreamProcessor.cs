@@ -446,6 +446,8 @@ namespace Tsc.AIBridge.Audio.Processing
         
         /// <summary>
         /// End the audio stream
+        /// CRITICAL FIX: ALWAYS call AudioPlayer.EndStream() to reset playback state!
+        /// This fixes turn 2+ metrics not being displayed due to _isPlaybackStarted staying true.
         /// </summary>
         public void EndAudioStream()
         {
@@ -453,7 +455,17 @@ namespace Tsc.AIBridge.Audio.Processing
             {
                 if (!_isStreamingAudio)
                 {
-                    Debug.LogWarning("[AudioStreamProcessor] EndAudioStream called without active stream");
+                    // CRITICAL FIX: Still call EndStream() on AudioPlayer to reset playback state!
+                    // Without this, _isPlaybackStarted stays true from previous turn, breaking turn 2+ metrics
+                    if (_audioPlayer != null)
+                    {
+                        _audioPlayer.EndStream();
+                        Debug.Log("[AudioStreamProcessor] EndAudioStream called without active stream - still calling EndStream() to reset playback state");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[AudioStreamProcessor] EndAudioStream called without active stream and no AudioPlayer");
+                    }
                     return;
                 }
                 

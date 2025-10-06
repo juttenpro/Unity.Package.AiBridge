@@ -68,7 +68,7 @@ namespace Tsc.AIBridge.Core
         #region Required Components
 
         [Header("Required Components")]
-        [SerializeField] private SpeechInputHandler speechInputHandler;
+        [SerializeField] public SpeechInputHandler speechInputHandler;
 
         [Header("Optional Components")]
         [SerializeField] private InterruptionManager interruptionManager; // Optional interruption support

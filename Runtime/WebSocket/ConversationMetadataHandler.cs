@@ -129,28 +129,9 @@ namespace Tsc.AIBridge.WebSocket
                     
                 case WebSocketMessageTypes.Transcription:
                 case "transcript": // Backend sends lowercase "transcript"
-                    // Try to parse with the correct field names
-                    TranscriptionMessage transcMsg;
-                    try 
-                    {
-                        // First try Unity format
-                        transcMsg = JsonConvert.DeserializeObject<TranscriptionMessage>(json);
-                    }
-                    catch
-                    {
-                        // Try backend format with different field names
-                        var backendMsg = JsonConvert.DeserializeObject<dynamic>(json);
-                        transcMsg = new TranscriptionMessage
-                        {
-                            Text = backendMsg.transcript?.ToString() ?? backendMsg.Text?.ToString() ?? "",
-                            IsFinal = backendMsg.IsFinal ?? backendMsg.IsFinal ?? false,
-                            Type = "Transcription",
-                            RequestId = backendMsg.RequestId?.ToString() ?? backendMsg.RequestId?.ToString(),
-                            Timing = backendMsg.Timing != null ? JsonConvert.DeserializeObject<SttTiming>(backendMsg.Timing.ToString()) : null
-                        };
-                    }
-                    
-                    if (transcMsg.IsFinal)
+                    var transcMsg = JsonConvert.DeserializeObject<TranscriptionMessage>(json);
+
+                    if (transcMsg != null && transcMsg.IsFinal)
                     {
                         // Log timing data if available
                         //if (transcMsg.Timing != null)
@@ -263,11 +244,11 @@ namespace Tsc.AIBridge.WebSocket
                     Debug.Log($"[{_personaName}] {messageType}");
                     break;
                     
-                case "conversationComplete":
+                case WebSocketMessageTypes.ConversationComplete:
                     // CRITICAL FIX: Extract RequestId from conversationComplete message to verify it matches current session
                     // Without this check, turn 1's conversationComplete can complete turn 2's session during overlapping turns!
-                    var completeMsg = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
-                    var completeRequestId = completeMsg.ContainsKey("requestId") ? completeMsg["requestId"].ToString() : null;
+                    var completeMsg = JsonConvert.DeserializeObject<ConversationCompleteMessage>(json);
+                    var completeRequestId = completeMsg?.RequestId;
 
                     //Debug.Log($"[{_personaName}] Conversation completed - checking if cleanup needed");
 

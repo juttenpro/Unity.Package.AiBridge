@@ -52,6 +52,14 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         protected LatencyTracker _latencyTracker;
 
+        /// <summary>
+        /// Override this in derived classes to provide access to the downstream AudioStreamProcessor
+        /// (the one used for TTS audio playback, not microphone encoding).
+        /// This is needed for proper state management between conversation turns.
+        /// Returns null by default for NPCs without audio playback.
+        /// </summary>
+        protected virtual Audio.Processing.AudioStreamProcessor DownstreamAudioProcessor => null;
+
         #endregion
 
         #region Public API
@@ -136,8 +144,35 @@ namespace Tsc.AIBridge.Core
                 OnAiResponseReceived(response);
             };
 
+            // Subscribe to AudioStreamEnd event to properly end the audio stream
+            // CRITICAL FIX: Without this, _isStreamingAudio stays true between turns,
+            // preventing StartAudioStream() from being called for turn 2+, which blocks latency metrics
+            _metadataHandler.OnAudioStreamEnd += HandleAudioStreamEnd;
+
             // Register with the message router to receive WebSocket messages
             NpcMessageRouter.Instance.RegisterNpc(this);
+        }
+
+        /// <summary>
+        /// Handle AudioStreamEnd message from backend.
+        /// Calls EndAudioStream() on the DOWNSTREAM AudioStreamProcessor (for TTS playback) to reset streaming state.
+        /// CRITICAL: This must call the downstream processor (with audioPlayer), not the upstream processor (microphone encoding).
+        /// </summary>
+        private void HandleAudioStreamEnd(AudioStreamEndMessage message)
+        {
+            // CRITICAL FIX: Use the downstream AudioStreamProcessor (for TTS playback), not the upstream one (microphone encoding)
+            // The downstream processor has the audioPlayer and needs to call EndStream() to reset _isPlaybackStarted
+            var audioProcessor = DownstreamAudioProcessor;
+
+            if (audioProcessor != null)
+            {
+                audioProcessor.EndAudioStream();
+                Debug.Log($"[{NpcName}] AudioStreamEnd handled - called EndAudioStream() on downstream AudioStreamProcessor");
+            }
+            else
+            {
+                Debug.LogWarning($"[{NpcName}] AudioStreamEnd received but DownstreamAudioProcessor is null - state may not be reset properly!");
+            }
         }
 
         /// <summary>
@@ -170,7 +205,8 @@ namespace Tsc.AIBridge.Core
             if (_metadataHandler != null)
             {
                 _metadataHandler.OnTranscription -= HandleTranscription;
-                // Note: OnSessionStarted uses lambda, automatically cleaned up when _metadataHandler is disposed
+                _metadataHandler.OnAudioStreamEnd -= HandleAudioStreamEnd;
+                // Note: OnSessionStarted and OnAIResponse use lambdas, automatically cleaned up when _metadataHandler is disposed
             }
 
             // Unregister from message router (only if it exists, don't create new one during cleanup)

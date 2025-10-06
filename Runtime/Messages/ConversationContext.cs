@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 using UnityEngine;
 
 namespace Tsc.AIBridge.Messages
@@ -16,58 +17,69 @@ namespace Tsc.AIBridge.Messages
         /// System prompt that defines the AI's behavior and role
         /// </summary>
         [TextArea(3, 10)]
+        [JsonProperty("systemPrompt")]
         public string systemPrompt;
 
         /// <summary>
         /// Complete chat history including previous messages
         /// </summary>
+        [JsonProperty("messages")]
         public List<ChatMessage> messages;
 
         /// <summary>
         /// Voice ID for text-to-speech generation
         /// </summary>
+        [JsonProperty("voiceId")]
         public string voiceId;
 
         /// <summary>
         /// LLM model to use (e.g., "gpt-4", "gpt-4o-mini", "gemini-pro")
         /// </summary>
+        [JsonProperty("llmModel")]
         public string llmModel;
 
         /// <summary>
         /// LLM provider (e.g., "openai", "azure-openai", "vertexai")
         /// </summary>
+        [JsonProperty("llmProvider")]
         public string llmProvider;
 
         /// <summary>
         /// Temperature for LLM response generation (0.0-1.0)
         /// </summary>
         [Range(0f, 2f)]
+        [JsonProperty("temperature")]
         public float temperature;
 
         /// <summary>
         /// Maximum tokens for LLM response
         /// </summary>
         [Min(1)]
+        [JsonProperty("maxTokens")]
         public int maxTokens;
 
         /// <summary>
         /// Language for the conversation (e.g., "nl-NL", "en-US")
         /// </summary>
+        [JsonProperty("language")]
         public string language;
 
         /// <summary>
         /// TTS streaming mode ("batch" or "sentence")
         /// </summary>
+        [JsonProperty("ttsStreamingMode")]
         public string ttsStreamingMode;
 
         /// <summary>
         /// TTS model to use
         /// </summary>
+        [JsonProperty("ttsModel")]
         public string ttsModel;
 
         /// <summary>
         /// Speech-to-text provider ("google", "azure")
         /// </summary>
+        [JsonProperty("sttProvider")]
         public string sttProvider;
 
         // REMOVED: audioFormat, sampleRate, opusBitrate
