@@ -113,30 +113,6 @@ namespace Tsc.AIBridge.Tests.Runtime
             Assert.IsFalse(_interruptionManager.HasDetectedInterruption());
         }
 
-        [Test]
-        public void HasDetectedInterruption_ReturnsTrue_AfterInterruptionDetected()
-        {
-            // Suppress expected errors when RequestOrchestrator not in scene
-            LogAssert.Expect(LogType.Error, "[RequestOrchestrator] No instance found in scene!");
-            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No active NPC configuration to interrupt");
-
-            // Act
-            _interruptionManager.OnInterruptionDetected();
-
-            // Assert
-            // NOTE: This test is limited because _hasValidInterruption is only set when
-            // an NPC client is found, which requires full scene setup with RequestOrchestrator
-            // In production, this would be true, but in unit test isolation it remains false
-            Assert.Inconclusive("Flag setting requires RequestOrchestrator and NPC client - use integration test instead");
-        }
-
-        [Test]
-        public void ClearInterruptionFlag_ResetsInterruptionState()
-        {
-            // NOTE: This test cannot be properly validated without full scene setup
-            // because _hasValidInterruption flag is only set when NPC client exists
-            Assert.Inconclusive("Flag management requires RequestOrchestrator and NPC client - use integration test instead");
-        }
 
         [UnityTest]
         public IEnumerator CheckForInterruption_WithTestParameters_DetectsAfterPersistenceTime()
