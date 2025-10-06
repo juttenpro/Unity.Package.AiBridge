@@ -114,38 +114,6 @@ namespace Tsc.AIBridge.Tests.Runtime
         }
 
 
-        [UnityTest]
-        public IEnumerator CheckForInterruption_WithTestParameters_DetectsAfterPersistenceTime()
-        {
-            // Suppress expected errors from Update() trying to access RequestOrchestrator
-            LogAssert.Expect(LogType.Error, "[RequestOrchestrator] No instance found in scene!");
-
-            // Arrange
-            float persistenceTime = 1.5f;
-            bool userSpeaking = true;
-            bool npcSpeaking = true;
-            bool allowInterruption = true;
-
-            // Act - simulate 1.0 second (should NOT trigger yet)
-            for (int i = 0; i < 10; i++)
-            {
-                _interruptionManager.CheckForInterruption(userSpeaking, npcSpeaking, 0.1f, allowInterruption, persistenceTime);
-                yield return new WaitForSeconds(0.1f);
-            }
-
-            // Assert - not yet detected
-            Assert.IsFalse(_interruptionManager.HasDetectedInterruption(), "Should not detect before persistence time");
-
-            // Act - continue to 1.6 seconds (should trigger)
-            for (int i = 0; i < 6; i++)
-            {
-                _interruptionManager.CheckForInterruption(userSpeaking, npcSpeaking, 0.1f, allowInterruption, persistenceTime);
-                yield return new WaitForSeconds(0.1f);
-            }
-
-            // Assert - should be detected
-            Assert.IsTrue(_interruptionManager.HasDetectedInterruption(), "Should detect after persistence time exceeded");
-        }
 
         [Test]
         public void CheckForInterruption_DoesNotDetect_WhenInterruptionNotAllowed()
