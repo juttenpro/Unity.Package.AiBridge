@@ -30,6 +30,12 @@ namespace Tsc.AIBridge.Audio.Interruption
         // Using object to avoid PersonaSO dependency in Core package
         public event Action<object, string> OnInterruptionDetectedEvent;
 
+        /// <summary>
+        /// Public event fired when interruption is detected.
+        /// AIBridgeRulesHandler can subscribe to this to send PlayerInterruptedNPC to RuleSystem.
+        /// </summary>
+        public event Action OnInterruption;
+
         private INpcProvider _npcProvider;
         private float _overlapTimer;
         private bool _hasValidInterruption;
@@ -272,15 +278,75 @@ namespace Tsc.AIBridge.Audio.Interruption
         /// </summary>
         public void OnInterruptionDetected()
         {
+            if (enableVerboseLogging)
+            {
+                Debug.Log("[InterruptionManager] Interruption detected - notifying active NPC to stop playback");
+            }
+
+            // Fire public event for AIBridgeRulesHandler to send PlayerInterruptedNPC to RuleSystem
+            OnInterruption?.Invoke();
+
             // Fire event for tests (using null for persona object to avoid dependency)
             OnInterruptionDetectedEvent?.Invoke(null, "Interruption detected");
 
-            // Notify RequestOrchestrator or other systems
-            // This could be an event or direct call
-            var orchestrator = RequestOrchestrator.Instance;
-            if (orchestrator != null)
+            // Get active NPC configuration
+            var activeNpcConfig = GetActiveNpc();
+            if (activeNpcConfig == null)
             {
-                // orchestrator.HandleInterruption();
+                Debug.LogWarning("[InterruptionManager] No active NPC configuration to interrupt");
+                return;
+            }
+
+            if (enableVerboseLogging)
+            {
+                Debug.Log($"[InterruptionManager] Active NPC: {activeNpcConfig.Name}, IsTalking: {activeNpcConfig.IsTalking}");
+            }
+
+            // Try to get NPC client via provider first
+            NpcClientBase npcClient = null;
+            if (_npcProvider != null)
+            {
+                npcClient = _npcProvider.GetNpcClient(activeNpcConfig.Id);
+            }
+
+            // Fallback: Find all NPC clients in scene and match by name
+            if (npcClient == null)
+            {
+                var allNpcClients = UnityEngine.Object.FindObjectsByType<NpcClientBase>(UnityEngine.FindObjectsSortMode.None);
+                foreach (var client in allNpcClients)
+                {
+                    if (client.NpcName == activeNpcConfig.Name)
+                    {
+                        npcClient = client;
+                        break;
+                    }
+                }
+            }
+
+            if (npcClient != null)
+            {
+                if (enableVerboseLogging)
+                {
+                    Debug.Log($"[InterruptionManager] Stopping audio for {activeNpcConfig.Name}");
+                }
+
+                // Stop the NPC's audio playback
+                npcClient.StopAudio();
+
+                // Mark interruption in RequestOrchestrator
+                var orchestrator = RequestOrchestrator.Instance;
+                if (orchestrator != null)
+                {
+                    orchestrator.StartInterruption();
+                    if (enableVerboseLogging)
+                    {
+                        Debug.Log("[InterruptionManager] Marked interruption in RequestOrchestrator");
+                    }
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[InterruptionManager] NPC client not found for {activeNpcConfig.Name}");
             }
         }
 
