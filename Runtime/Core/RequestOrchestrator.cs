@@ -754,6 +754,17 @@ namespace Tsc.AIBridge.Core
                     EnableMetrics = enableMetrics
                 };
 
+                // CRITICAL FIX: Subscribe to SessionStarted BEFORE sending SessionStart
+                // This prevents race condition where SessionStarted arrives before we subscribe
+                var sessionStartedReceived = false;
+                System.Action sessionStartedHandler = () => { sessionStartedReceived = true; };
+
+                if (_activeNpcClient != null)
+                {
+                    _activeNpcClient.OnSessionStarted += sessionStartedHandler;
+                    Debug.Log("[RequestOrchestrator] Subscribed to SessionStarted event - ready to receive confirmation");
+                }
+
                 // Start the conversation via WebSocket
                 var sendTask = _webSocketClient.SendSessionStartAsync(sessionStartMessage);
                 yield return new WaitUntil(() => sendTask.IsCompleted);
@@ -761,20 +772,19 @@ namespace Tsc.AIBridge.Core
                 if (sendTask.IsFaulted)
                 {
                     Debug.LogError($"[RequestOrchestrator] Failed to send SessionStart: {sendTask.Exception?.GetBaseException().Message}");
+                    // Unsubscribe on error
+                    if (_activeNpcClient != null)
+                    {
+                        _activeNpcClient.OnSessionStarted -= sessionStartedHandler;
+                    }
                     yield break;
                 }
 
                 Debug.Log($"[RequestOrchestrator] SessionStart message sent successfully");
 
-                // CRITICAL FIX: Wait for SessionStarted confirmation from backend before flushing
-                // This ensures STT stream is initialized before we send audio chunks
-                // Subscribe to SessionStarted event from NpcClientBase
-                var sessionStartedReceived = false;
-                System.Action sessionStartedHandler = () => { sessionStartedReceived = true; };
-
+                // Wait for SessionStarted confirmation from backend before flushing
                 if (_activeNpcClient != null)
                 {
-                    _activeNpcClient.OnSessionStarted += sessionStartedHandler;
                     Debug.Log("[RequestOrchestrator] Waiting for SessionStarted confirmation from backend...");
 
                     // Wait for SessionStarted confirmation (max 5 seconds)
