@@ -42,6 +42,12 @@ namespace Tsc.AIBridge.Core
         private static RequestOrchestrator _instance;
         private static bool _isQuitting;
 
+        /// <summary>
+        /// Check if an instance exists without creating one or throwing errors.
+        /// Safe to use during OnDestroy() for cleanup.
+        /// </summary>
+        public static bool HasInstance => _instance != null && !_isQuitting;
+
         public static RequestOrchestrator Instance
         {
             get
@@ -109,6 +115,13 @@ namespace Tsc.AIBridge.Core
         private bool _isRequestActive; // Request lifecycle - true from StartAudioRequest until EndAudioRequest/Cancel
         private bool _isInterrupting;
         private Coroutine _processQueueCoroutine;
+
+        /// <summary>
+        /// Event fired when the active NPC changes.
+        /// Used by InterruptionManager to track which NPC is currently active without reflection.
+        /// Parameters: (activeNpcClient, activeNpcConfig)
+        /// </summary>
+        public event Action<NpcClientBase, INpcConfiguration> OnActiveNpcChanged;
 
         // For tracking whether we're waiting for audio to finish
         private bool _isWaitingForAudioStart;
@@ -276,6 +289,9 @@ namespace Tsc.AIBridge.Core
                 _activeNpcClient = allClients.FirstOrDefault();
             }
 
+            // Notify listeners (e.g., InterruptionManager) about active NPC change
+            OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
+
             // CRITICAL: Start buffering BEFORE marking request as active
             // This prevents audio chunks from being sent before SessionStarted confirmation
             if (speechInputHandler?.AudioStreamProcessor != null)
@@ -359,6 +375,9 @@ namespace Tsc.AIBridge.Core
                 _activeNpcClient = _npcProvider.GetNpcClient(npcConfig.Id);
             }
 
+            // Notify listeners (e.g., InterruptionManager) about active NPC change
+            OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
+
             var request = new TextRequest
             {
                 NpcConfig = npcConfig,
@@ -414,6 +433,9 @@ namespace Tsc.AIBridge.Core
                 _activeNpcConfig = null;
                 _activeNpcClient = null;
                 _isProcessingRequest = false;
+
+                // Notify listeners that there's no active NPC anymore
+                OnActiveNpcChanged?.Invoke(null, null);
                 _isRequestActive = false;
                 _isInterrupting = false;
             }

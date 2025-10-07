@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using Tsc.AIBridge.Core;
 using Tsc.AIBridge.Input;
+using Tsc.AIBridge.Audio.Playback;
 
 namespace Tsc.AIBridge.Audio.Interruption
 {
@@ -36,7 +37,10 @@ namespace Tsc.AIBridge.Audio.Interruption
         /// </summary>
         public event Action OnInterruption;
 
-        private INpcProvider _npcProvider;
+        // Cached active NPC references (set via RequestOrchestrator event)
+        private NpcClientBase _activeNpcClient;
+        private INpcConfiguration _activeNpcConfig;
+
         private float _overlapTimer;
         private bool _hasValidInterruption;
         private float _npcResponseStartTime;
@@ -52,51 +56,85 @@ namespace Tsc.AIBridge.Audio.Interruption
             }
         }
 
-        /// <summary>
-        /// Initialize with an NPC provider for accessing configurations
-        /// </summary>
-        public void Initialize(INpcProvider npcProvider)
+        private void Start()
         {
-            _npcProvider = npcProvider;
-
-            if (enableVerboseLogging)
+            // Subscribe to RequestOrchestrator event to track active NPC
+            // This replaces reflection-based lookups with direct event-driven updates
+            var orchestrator = RequestOrchestrator.Instance;
+            if (orchestrator != null)
             {
-                Debug.Log("[InterruptionManager] Initialized with NPC provider");
+                orchestrator.OnActiveNpcChanged += HandleActiveNpcChanged;
+                if (enableVerboseLogging)
+                {
+                    Debug.Log("[InterruptionManager] Subscribed to RequestOrchestrator.OnActiveNpcChanged");
+                }
+            }
+            else
+            {
+                Debug.LogWarning("[InterruptionManager] RequestOrchestrator not found - interruption detection may not work");
+            }
+        }
+
+        private void OnDestroy()
+        {
+            // Unsubscribe from RequestOrchestrator event
+            // Use HasInstance to avoid errors during scene cleanup when RequestOrchestrator might already be destroyed
+            if (RequestOrchestrator.HasInstance)
+            {
+                RequestOrchestrator.Instance.OnActiveNpcChanged -= HandleActiveNpcChanged;
             }
         }
 
         /// <summary>
-        /// Get the currently active NPC configuration from RequestOrchestrator
+        /// Handle active NPC change from RequestOrchestrator.
+        /// Replaces expensive reflection calls with simple event-driven updates.
         /// </summary>
-        private INpcConfiguration GetActiveNpc()
+        private void HandleActiveNpcChanged(NpcClientBase npcClient, INpcConfiguration npcConfig)
         {
-            // Get active NPC from RequestOrchestrator
-            var orchestrator = RequestOrchestrator.Instance;
-            if (orchestrator == null)
-            {
-                if (enableVerboseLogging)
-                {
-                    Debug.LogWarning("[InterruptionManager] RequestOrchestrator.Instance is null");
-                }
-                return null;
-            }
-
-            // Use reflection to get _activeNpcConfig (it's private)
-            var activeNpcConfigField = typeof(RequestOrchestrator)
-                .GetField("_activeNpcConfig", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-            if (activeNpcConfigField != null)
-            {
-                var activeNpcConfig = activeNpcConfigField.GetValue(orchestrator) as INpcConfiguration;
-                return activeNpcConfig;
-            }
+            _activeNpcClient = npcClient;
+            _activeNpcConfig = npcConfig;
 
             if (enableVerboseLogging)
             {
-                Debug.LogWarning("[InterruptionManager] Failed to get _activeNpcConfig via reflection");
+                if (npcClient != null)
+                {
+                    Debug.Log($"[InterruptionManager] Active NPC changed: {npcClient.NpcName}");
+                }
+                else
+                {
+                    Debug.Log("[InterruptionManager] Active NPC cleared");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Get whether the NPC is actually producing audible speech (not just in response phase).
+        /// Uses StreamingAudioPlayer's VAD to detect pauses within the response.
+        /// CRITICAL: This is different from IsTalking which tracks response start/end.
+        /// </summary>
+        /// <param name="npcClient">NPC client to check</param>
+        /// <returns>True if NPC is currently producing audible speech, false during pauses</returns>
+        private bool GetNpcActualSpeech(NpcClientBase npcClient)
+        {
+            if (npcClient == null)
+                return false;
+
+            // Try to find StreamingAudioPlayer on the NPC client or its children
+            var audioPlayer = npcClient.GetComponent<StreamingAudioPlayer>();
+            if (audioPlayer == null)
+            {
+                audioPlayer = npcClient.GetComponentInChildren<StreamingAudioPlayer>();
             }
 
-            return null;
+            if (audioPlayer != null)
+            {
+                // Use VAD-based speech detection for accurate pause detection
+                return audioPlayer.IsNPCSpeaking;
+            }
+
+            // Fallback: if no StreamingAudioPlayer found, assume NPC is speaking if response is active
+            // This maintains backwards compatibility with non-streaming audio systems
+            return npcClient.IsTalking;
         }
 
         private void Update()
@@ -104,58 +142,71 @@ namespace Tsc.AIBridge.Audio.Interruption
             if (speechInputHandler == null)
                 return;
 
-            var activeNpc = GetActiveNpc();
-            if (activeNpc == null)
+            // OPTIMIZATION: Check PTT state FIRST before any operations
+            bool pttActive = speechInputHandler.IsPushToTalkActive();
+
+            // Early return if PTT not active - no need for interruption detection
+            if (!pttActive)
+            {
+                _pttPressedDuringNpcSpeech = false;
+                _overlapTimer = 0f;
+                return;
+            }
+
+            // PTT is active - check if we have an active NPC
+            // _activeNpcClient is set via event subscription (no reflection!)
+            if (_activeNpcClient == null)
                 return;
 
-            bool pttActive = speechInputHandler.IsPushToTalkActive();
-            bool userSpeaking = DetectUserSpeech();
-            bool npcSpeaking = activeNpc.IsTalking;
+            // Get interruption settings from cached config (no reflection!)
+            bool allowInterruption = _activeNpcConfig?.AllowInterruption ?? true;
+            float persistenceTime = _activeNpcConfig?.InterruptionPersistenceTime ?? 1.5f;
 
-            // Track if PTT was pressed while NPC was speaking (crucial for buffer inclusion)
-            if (pttActive && npcSpeaking && !_pttPressedDuringNpcSpeech)
+            bool userSpeaking = DetectUserSpeech();
+
+            // IMPORTANT: Distinguish between response phase and actual speech
+            // npcResponding: LLM response started → TTS complete (IsTalking flag from NpcClientBase)
+            // npcActuallySpeaking: Actually producing audible speech (VAD from StreamingAudioPlayer)
+            bool npcResponding = _activeNpcClient.IsTalking;
+            bool npcActuallySpeaking = GetNpcActualSpeech(_activeNpcClient);
+
+            // Track if PTT was pressed while NPC was responding (crucial for buffer inclusion)
+            // Use npcResponding (not npcActuallySpeaking) because we want to include buffer even during pauses
+            if (npcResponding && !_pttPressedDuringNpcSpeech)
             {
                 _pttPressedDuringNpcSpeech = true;
                 if (enableVerboseLogging)
                 {
-                    Debug.Log("[InterruptionManager] PTT pressed during NPC speech - buffer will be included");
+                    Debug.Log("[InterruptionManager] PTT pressed during NPC response - buffer will be included");
                 }
             }
 
-            // Track NPC response time
-            if (npcSpeaking)
+            // Track NPC response time (use npcResponding for full response duration)
+            if (npcResponding)
             {
                 if (_npcResponseStartTime <= 0)
                 {
                     _npcResponseStartTime = Time.time;
                     if (enableVerboseLogging)
                     {
-                        Debug.Log($"[InterruptionManager] NPC started speaking at {_npcResponseStartTime:F2}");
+                        Debug.Log($"[InterruptionManager] NPC started responding at {_npcResponseStartTime:F2}");
                     }
                 }
-                _npcStoppedSpeakingTime = 0; // Reset stop time while speaking
+                _npcStoppedSpeakingTime = 0; // Reset stop time while responding
             }
             else if (_npcResponseStartTime > 0)
             {
-                // NPC just stopped speaking
+                // NPC just stopped responding
                 if (_npcStoppedSpeakingTime <= 0)
                 {
                     _npcStoppedSpeakingTime = Time.time;
                     if (enableVerboseLogging)
                     {
                         float duration = _npcStoppedSpeakingTime - _npcResponseStartTime;
-                        Debug.Log($"[InterruptionManager] NPC stopped after {duration:F2}s");
+                        Debug.Log($"[InterruptionManager] NPC stopped responding after {duration:F2}s");
                     }
                 }
                 _npcResponseStartTime = 0;
-            }
-
-            // If PTT not active, reset tracking
-            if (!pttActive)
-            {
-                _pttPressedDuringNpcSpeech = false;
-                _overlapTimer = 0f;
-                return;
             }
 
             // Calculate NPC speaking duration
@@ -174,7 +225,7 @@ namespace Tsc.AIBridge.Audio.Interruption
                 isNearEnd = isShortResponse || (npcSpeakingDuration >= nearEndThresholdSeconds);
 
                 // Also check if NPC recently stopped (within 500ms) - still counts as near-end
-                if (!npcSpeaking && _npcStoppedSpeakingTime > 0)
+                if (!npcResponding && _npcStoppedSpeakingTime > 0)
                 {
                     float timeSinceNpcStopped = Time.time - _npcStoppedSpeakingTime;
                     if (timeSinceNpcStopped < 0.5f) // 500ms grace period
@@ -189,7 +240,8 @@ namespace Tsc.AIBridge.Audio.Interruption
             }
 
             // Process interruption detection
-            if (userSpeaking)
+            // CRITICAL: Use npcActuallySpeaking for overlap detection to avoid false positives during pauses
+            if (userSpeaking && npcActuallySpeaking)
             {
                 _overlapTimer += Time.deltaTime;
 
@@ -214,10 +266,10 @@ namespace Tsc.AIBridge.Audio.Interruption
                         OnInterruptionDetected();
                     }
                 }
-                // NORMAL INTERRUPTION: Only if allowed and overlapping with NPC speech
-                else if (npcSpeaking && activeNpc.AllowInterruption)
+                // NORMAL INTERRUPTION: Only if allowed and actually overlapping with audible NPC speech
+                else if (allowInterruption)
                 {
-                    if (_overlapTimer >= activeNpc.InterruptionPersistenceTime && !_hasValidInterruption)
+                    if (_overlapTimer >= persistenceTime && !_hasValidInterruption)
                     {
                         _hasValidInterruption = true;
                         if (enableVerboseLogging)
@@ -230,6 +282,8 @@ namespace Tsc.AIBridge.Audio.Interruption
             }
             else
             {
+                // Reset overlap timer if user not speaking OR NPC not actually producing speech (pause)
+                // This ensures we don't count pauses as interruption overlap
                 _overlapTimer = 0f;
             }
         }
@@ -289,64 +343,35 @@ namespace Tsc.AIBridge.Audio.Interruption
             // Fire event for tests (using null for persona object to avoid dependency)
             OnInterruptionDetectedEvent?.Invoke(null, "Interruption detected");
 
-            // Get active NPC configuration
-            var activeNpcConfig = GetActiveNpc();
-            if (activeNpcConfig == null)
+            // Use cached active NPC client (no reflection!)
+            if (_activeNpcClient == null)
             {
-                Debug.LogWarning("[InterruptionManager] No active NPC configuration to interrupt");
+                Debug.LogWarning("[InterruptionManager] No active NPC client to interrupt");
                 return;
             }
 
             if (enableVerboseLogging)
             {
-                Debug.Log($"[InterruptionManager] Active NPC: {activeNpcConfig.Name}, IsTalking: {activeNpcConfig.IsTalking}");
+                Debug.Log($"[InterruptionManager] Active NPC: {_activeNpcClient.NpcName}, IsTalking: {_activeNpcClient.IsTalking}");
             }
 
-            // Try to get NPC client via provider first
-            NpcClientBase npcClient = null;
-            if (_npcProvider != null)
+            if (enableVerboseLogging)
             {
-                npcClient = _npcProvider.GetNpcClient(activeNpcConfig.Id);
+                Debug.Log($"[InterruptionManager] Stopping audio for {_activeNpcClient.NpcName}");
             }
 
-            // Fallback: Find all NPC clients in scene and match by name
-            if (npcClient == null)
-            {
-                var allNpcClients = UnityEngine.Object.FindObjectsByType<NpcClientBase>(UnityEngine.FindObjectsSortMode.None);
-                foreach (var client in allNpcClients)
-                {
-                    if (client.NpcName == activeNpcConfig.Name)
-                    {
-                        npcClient = client;
-                        break;
-                    }
-                }
-            }
+            // Stop the NPC's audio playback
+            _activeNpcClient.StopAudio();
 
-            if (npcClient != null)
+            // Mark interruption in RequestOrchestrator
+            var orchestrator = RequestOrchestrator.Instance;
+            if (orchestrator != null)
             {
+                orchestrator.StartInterruption();
                 if (enableVerboseLogging)
                 {
-                    Debug.Log($"[InterruptionManager] Stopping audio for {activeNpcConfig.Name}");
+                    Debug.Log("[InterruptionManager] Marked interruption in RequestOrchestrator");
                 }
-
-                // Stop the NPC's audio playback
-                npcClient.StopAudio();
-
-                // Mark interruption in RequestOrchestrator
-                var orchestrator = RequestOrchestrator.Instance;
-                if (orchestrator != null)
-                {
-                    orchestrator.StartInterruption();
-                    if (enableVerboseLogging)
-                    {
-                        Debug.Log("[InterruptionManager] Marked interruption in RequestOrchestrator");
-                    }
-                }
-            }
-            else
-            {
-                Debug.LogWarning($"[InterruptionManager] NPC client not found for {activeNpcConfig.Name}");
             }
         }
 
