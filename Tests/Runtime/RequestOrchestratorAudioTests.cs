@@ -514,9 +514,12 @@ namespace Tsc.AIBridge.Tests.Runtime
             // Before request
             Assert.IsFalse(GetRequestActiveState(), "Should start with inactive state");
 
-            // Expect error log since AudioStreamProcessor is not mocked in this minimal test
-            // This test focuses on state management, not audio processing
-            LogAssert.Expect(LogType.Error, "[RequestOrchestrator] Cannot start buffering - AudioStreamProcessor not found!");
+            // Note: AudioStreamProcessor IS mocked via MockSpeechInputHandler in Setup()
+            // Phase 1 fix: RequestOrchestrator now validates Inspector components in Start()
+            // and disables itself if critical components are missing. Since we have a proper
+            // mock setup, no "Cannot start buffering" error occurs anymore.
+
+            // Expect warnings for missing optional components (MetadataHandler for latency tracking)
             LogAssert.Expect(LogType.Warning, "[RequestOrchestrator] GetLatencyTracker: MetadataHandler is NULL for NPC: TestNPC");
             LogAssert.Expect(LogType.Warning, "[RequestOrchestrator] Could not call MarkRecordingStart() - LatencyTracker is null");
 

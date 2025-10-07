@@ -64,7 +64,7 @@ namespace Tsc.AIBridge.Tests.Runtime
         public void OnInterruption_EventFires_WhenInterruptionDetected()
         {
             // Suppress expected warning when no active NPC
-            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No active NPC configuration to interrupt");
+            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No active NPC client to interrupt");
 
             // Note: RequestOrchestrator.HasInstance now prevents error log when instance not found
             // This is correct behavior - no error should be logged
@@ -84,7 +84,7 @@ namespace Tsc.AIBridge.Tests.Runtime
         public void OnInterruptionDetectedEvent_Fires_WithCorrectParameters()
         {
             // Suppress expected warning when no active NPC
-            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No active NPC configuration to interrupt");
+            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No active NPC client to interrupt");
 
             // Note: RequestOrchestrator.HasInstance now prevents error log when instance not found
             // This is correct behavior - no error should be logged
