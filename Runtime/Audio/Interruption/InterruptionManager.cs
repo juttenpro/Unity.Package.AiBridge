@@ -162,7 +162,10 @@ namespace Tsc.AIBridge.Audio.Interruption
             bool allowInterruption = _activeNpcConfig?.AllowInterruption ?? true;
             float persistenceTime = _activeNpcConfig?.InterruptionPersistenceTime ?? 1.5f;
 
-            bool userSpeaking = DetectUserSpeech();
+            // SIMPLIFIED: If PTT is active (already checked above), assume user is speaking
+            // VAD can be unreliable during interruptions - PTT state is more reliable
+            // This ensures interruption detection works even if VAD is not configured
+            bool userSpeaking = true; // PTT is active, so user is attempting to speak
 
             // IMPORTANT: Distinguish between response phase and actual speech
             // npcResponding: LLM response started → TTS complete (IsTalking flag from NpcClientBase)
@@ -245,6 +248,12 @@ namespace Tsc.AIBridge.Audio.Interruption
             {
                 _overlapTimer += Time.deltaTime;
 
+                if (enableVerboseLogging && _overlapTimer > 0 && Mathf.Floor(_overlapTimer * 10) != Mathf.Floor((_overlapTimer - Time.deltaTime) * 10))
+                {
+                    // Log every 100ms during overlap
+                    Debug.Log($"[InterruptionManager] Overlap detected: {_overlapTimer:F2}s (isNearEnd: {isNearEnd}, persistence: {persistenceTime:F1}s)");
+                }
+
                 // NEAR-END: Quick trigger for buffer inclusion
                 if (isNearEnd)
                 {
@@ -284,6 +293,10 @@ namespace Tsc.AIBridge.Audio.Interruption
             {
                 // Reset overlap timer if user not speaking OR NPC not actually producing speech (pause)
                 // This ensures we don't count pauses as interruption overlap
+                if (enableVerboseLogging && _overlapTimer > 0)
+                {
+                    Debug.Log($"[InterruptionManager] Overlap ended - resetting timer (userSpeaking: {userSpeaking}, npcActuallySpeaking: {npcActuallySpeaking})");
+                }
                 _overlapTimer = 0f;
             }
         }
