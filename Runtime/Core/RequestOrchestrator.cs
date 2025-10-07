@@ -452,7 +452,7 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         private async System.Threading.Tasks.Task CancelSessionOnBackendAsync(string requestId, string reason)
         {
-            if (webSocketClient == null)
+            if (_webSocketClient == null)
             {
                 Debug.LogWarning("[RequestOrchestrator] Cannot send SessionCancel - WebSocketClient is null");
                 return;
@@ -466,7 +466,7 @@ namespace Tsc.AIBridge.Core
                     Reason = reason
                 };
 
-                await webSocketClient.SendSessionCancelAsync(cancelMessage);
+                await _webSocketClient.SendSessionCancelAsync(cancelMessage);
                 Debug.Log($"[RequestOrchestrator] Sent SessionCancel to backend for session {requestId} (reason: {reason})");
             }
             catch (System.Exception ex)
@@ -495,7 +495,7 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         private async System.Threading.Tasks.Task InterruptionOccurredOnBackendAsync(string requestId, string reason)
         {
-            if (webSocketClient == null)
+            if (_webSocketClient == null)
             {
                 Debug.LogWarning("[RequestOrchestrator] Cannot send InterruptionOccurred - WebSocketClient is null");
                 return;
@@ -509,7 +509,7 @@ namespace Tsc.AIBridge.Core
                     Reason = reason
                 };
 
-                await webSocketClient.SendInterruptionOccurredAsync(interruptionMessage);
+                await _webSocketClient.SendInterruptionOccurredAsync(interruptionMessage);
                 Debug.Log($"[RequestOrchestrator] Sent InterruptionOccurred to backend for session {requestId} (reason: {reason})");
             }
             catch (System.Exception ex)
