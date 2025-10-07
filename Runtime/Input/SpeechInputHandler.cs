@@ -221,6 +221,24 @@ namespace Tsc.AIBridge.Input
                 _microphoneCapture = gameObject.AddComponent<MicrophoneCapture>();
             }
 
+            // CRITICAL FIX: Initialize VADManager (was missing!)
+            // This was causing VAD to always return false
+            _vadManager = new VADManager(enableVerboseLogging);
+
+            // Apply VAD settings from Inspector
+            if (useAdaptiveVAD)
+            {
+                _vadManager.SetAdaptiveSettings(adaptiveMargin, minimumThreshold);
+                if (enableVerboseLogging)
+                    Debug.Log($"[SpeechInputHandler] VADManager initialized with ADAPTIVE settings - margin: {adaptiveMargin}, min: {minimumThreshold}");
+            }
+            else
+            {
+                _vadManager.SetFixedThreshold(fixedVadThreshold);
+                if (enableVerboseLogging)
+                    Debug.Log($"[SpeechInputHandler] VADManager initialized with FIXED threshold: {fixedVadThreshold}");
+            }
+
             // Setup pre-buffer for voice activation
             if (useVoiceActivation)
             {
@@ -244,6 +262,10 @@ namespace Tsc.AIBridge.Input
 
         private void Start()
         {
+            // VERBOSE: Log subscription
+            if (enableVerboseLogging)
+                Debug.Log($"[SpeechInputHandler] Start() - Subscribing to MicrophoneCapture events, _vadManager: {_vadManager != null}");
+
             // Subscribe to microphone events
             _microphoneCapture.OnAudioDataAvailable += HandleAudioData;
             _microphoneCapture.OnCaptureStarted += HandleCaptureStarted;
@@ -251,6 +273,13 @@ namespace Tsc.AIBridge.Input
 
             // Setup input actions
             SetupInputActions();
+
+            // VERBOSE: Verify subscription
+            if (enableVerboseLogging)
+            {
+                var listenerCount = _microphoneCapture.OnAudioDataAvailable?.GetInvocationList()?.Length ?? 0;
+                Debug.Log($"[SpeechInputHandler] Subscribed to OnAudioDataAvailable - Total listeners: {listenerCount}");
+            }
         }
 
         private void OnDestroy()
@@ -520,6 +549,10 @@ namespace Tsc.AIBridge.Input
 
         private void HandleAudioData(float[] samples)
         {
+            // VERBOSE: Log entry to track if this method is called
+            if (enableVerboseLogging)
+                Debug.Log($"[SpeechInputHandler] HandleAudioData called - samples: {samples?.Length ?? 0}, _vadManager: {_vadManager != null}, _isRecording: {_isRecording}");
+
             if (samples == null || samples.Length == 0)
             {
                 Debug.LogWarning("[SpeechInputHandler] HandleAudioData received null or empty samples!");
@@ -528,7 +561,17 @@ namespace Tsc.AIBridge.Input
 
             // Update VAD
             var pttDuration = _isPttPressed ? Time.time - _pttPressTime : 0f;
+
+            // VERBOSE: Log VAD state BEFORE processing
+            if (enableVerboseLogging)
+                Debug.Log($"[SpeechInputHandler] Before VAD - _vadManager null: {_vadManager == null}, pttDuration: {pttDuration:F2}s");
+
             var isSpeaking = _vadManager?.ProcessAudioFrame(samples, pttDuration) ?? false;
+
+            // VERBOSE: Log VAD result
+            if (enableVerboseLogging)
+                Debug.Log($"[SpeechInputHandler] After VAD - isSpeaking: {isSpeaking}, IsUserSpeaking property: {IsUserSpeaking}");
+
             // IsUserSpeaking is now a property that reads from _vadManager
 
             // Handle voice activation
