@@ -160,23 +160,23 @@ namespace Tsc.AIBridge.Core
         {
             ValidateRequiredComponents();
 
+            // ValidateRequiredComponents ensures speechInputHandler is not null
+            // If we reach here, all required components are present
+
             // Subscribe to SpeechInputHandler's AudioStreamProcessor for encoded audio
-            if (speechInputHandler != null && speechInputHandler.AudioStreamProcessor != null)
+            if (speechInputHandler.AudioStreamProcessor == null)
             {
-                speechInputHandler.AudioStreamProcessor.OnOpusAudioEncoded += ProcessAudioChunk;
-                Debug.Log("[RequestOrchestrator] Subscribed to AudioStreamProcessor.OnOpusAudioEncoded");
-            }
-            else
-            {
-                Debug.LogError("[RequestOrchestrator] SpeechInputHandler or AudioStreamProcessor is null! Audio encoding will not work!");
+                Debug.LogError("[RequestOrchestrator] AudioStreamProcessor is null! Audio encoding will not work!", this);
+                enabled = false;
+                return;
             }
 
+            speechInputHandler.AudioStreamProcessor.OnOpusAudioEncoded += ProcessAudioChunk;
+            Debug.Log("[RequestOrchestrator] Subscribed to AudioStreamProcessor.OnOpusAudioEncoded");
+
             // Subscribe to recording stopped event to send EndOfSpeech
-            if (speechInputHandler != null)
-            {
-                speechInputHandler.OnRecordingStopped += HandleRecordingStopped;
-                Debug.Log("[RequestOrchestrator] Subscribed to SpeechInputHandler.OnRecordingStopped");
-            }
+            speechInputHandler.OnRecordingStopped += HandleRecordingStopped;
+            Debug.Log("[RequestOrchestrator] Subscribed to SpeechInputHandler.OnRecordingStopped");
 
             _processQueueCoroutine = StartCoroutine(ProcessRequestQueues());
         }
@@ -292,17 +292,9 @@ namespace Tsc.AIBridge.Core
             // Notify listeners (e.g., InterruptionManager) about active NPC change
             OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
 
-            // CRITICAL: Start buffering BEFORE marking request as active
-            // This prevents audio chunks from being sent before SessionStarted confirmation
-            if (speechInputHandler?.AudioStreamProcessor != null)
-            {
-                speechInputHandler.AudioStreamProcessor.StartBuffering();
-                Debug.Log("[RequestOrchestrator] Started audio buffering - waiting for backend SessionStarted confirmation");
-            }
-            else
-            {
-                Debug.LogError("[RequestOrchestrator] Cannot start buffering - AudioStreamProcessor not found!");
-            }
+            // NOTE: Buffering is now handled automatically by AudioStreamProcessor.StartEncoding()
+            // Audio is ALWAYS buffered by default until FlushBuffer() is called after SessionStarted
+            // This handles all scenarios: normal requests, interruptions, RuleSystem delays, reconnects
 
             // Mark request as active - audio chunks can now be accepted (they will be buffered)
             _isRequestActive = true;
@@ -656,10 +648,17 @@ namespace Tsc.AIBridge.Core
                 if (speechInputHandler == null)
                     Debug.LogError("❌ SpeechInputHandler not found! Audio requests will NOT work.", this);
 
+                // CRITICAL FIX: Disable component to prevent silent failures in builds
+                // This ensures the component doesn't run with missing dependencies
+                enabled = false;
+                Debug.LogError($"[RequestOrchestrator] Component DISABLED due to missing dependencies. Fix configuration!", this);
+
 #if UNITY_EDITOR
                 // Pause the editor to force attention
                 Debug.Break();
 #endif
+
+                return; // Stop initialization
             }
 
             // Optional component - just info

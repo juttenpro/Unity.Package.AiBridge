@@ -16,9 +16,8 @@ namespace Tsc.AIBridge.Audio.Processing
     /// 
     /// WHAT THIS CLASS DOES:
     /// - Encodes microphone PCM to Opus (64kbps) for upload
-    /// - Wraps Opus in OGG container for STT compatibility
     /// - Decodes received Opus/OGG streams to PCM for playback
-    /// - Manages audio buffering for smooth playback
+    /// - Manages audio buffering for RuleSystem validation
     /// - Handles session-based audio state
     /// 
     /// WHAT THIS CLASS DOES NOT DO:
@@ -29,15 +28,13 @@ namespace Tsc.AIBridge.Audio.Processing
     /// 
     /// AUDIO FORMATS:
     /// - Input: 48kHz mono PCM from microphone
-    /// - Upload: Opus 64kbps in OGG container
-    /// - Download: Opus in OGG container from server
+    /// - Upload: Raw Opus frames (64kbps)
+    /// - Download: Opus/OGG stream from server
     /// - Output: 48kHz mono PCM to StreamingAudioPlayer
     /// 
     /// KEY COMPONENTS:
-    /// - OpusAudioEncoder: PCM to Opus encoding
-    /// - OggOpusEncoder: Wraps Opus in OGG container
-    /// - OpusStreamDecoder: Queue-based Opus to PCM decoding
-    /// - AudioRingBuffer: Circular buffer for audio chunks
+    /// - OpusAudioEncoder: PCM to Opus encoding (for upload)
+    /// - OpusStreamDecoder: Queue-based Opus to PCM decoding (for playback)
     /// 
     /// DEPENDENCIES:
     /// - StreamingAudioPlayer: For audio playback
@@ -55,7 +52,6 @@ namespace Tsc.AIBridge.Audio.Processing
         public event Action OnPlaybackComplete;
 
         private OpusAudioEncoder _opusEncoder;
-        private OggOpusEncoder _oggOpusEncoder; // For wrapping Opus in OGG container
         private OpusStreamDecoder _opusStreamDecoder; // Decoder - no stream boundaries!
         private StreamingAudioPlayer _audioPlayer;
         private AudioRingBuffer _audioBuffer;
@@ -91,21 +87,10 @@ namespace Tsc.AIBridge.Audio.Processing
                 // Initialize Opus encoder (normal class now)
                 _opusEncoder = new OpusAudioEncoder(MicrophoneCapture.Frequency, 1, opusBitrate, isVerboseLogging);
                 _opusEncoder.OnAudioEncoded += HandleEncodedAudio;
-                
+
                 if(_isVerboseLogging)
                     Debug.Log("[AudioStreamProcessor] OpusAudioEncoder initialized successfully");
-                
-                // Trigger initial event
-                //OnOpusAudioEncoded?.Invoke(Array.Empty<byte>());
-                
-                // Initialize OGG/Opus wrapper (already a regular class)
-                _oggOpusEncoder = new OggOpusEncoder();
-                _oggOpusEncoder.Initialize(MicrophoneCapture.Frequency, 1, isVerboseLogging);
-                _oggOpusEncoder.OnOggPacketReady += HandleOggPacketReady;
-                
-                if(_isVerboseLogging)
-                    Debug.Log("[AudioStreamProcessor] OggOpusEncoder initialized successfully");
-                
+
                 // Only initialize decoder and playback events if audioPlayer is provided
                 if (_audioPlayer != null)
                 {
@@ -136,7 +121,13 @@ namespace Tsc.AIBridge.Audio.Processing
         }
         
         /// <summary>
-        /// Start encoding audio with a new session
+        /// Start encoding audio with a new session.
+        /// ALWAYS starts in buffering mode to handle:
+        /// - RuleSystem approval delay (frames)
+        /// - WebSocket reconnect scenarios
+        /// - Session startup confirmation wait
+        /// - Interruption detection period
+        /// - Network latency compensation
         /// </summary>
         public ConversationSession StartEncoding()
         {
@@ -145,6 +136,16 @@ namespace Tsc.AIBridge.Audio.Processing
             // NOTE: Session is now created externally by ConversationSessionManager
             // We should NOT create our own session here anymore
             // The session will be set via SetCurrentSession()
+
+            // ALWAYS start in buffering mode
+            // This is the default behavior - audio is buffered until FlushBuffer() is called
+            lock (_bufferLock)
+            {
+                _isBuffering = true;
+                _audioQueue.Clear(); // Clear any leftover data from previous session
+                if (_isVerboseLogging)
+                    Debug.Log("[AudioStreamProcessor] Started in BUFFERING mode (default) - audio will be queued until FlushBuffer()");
+            }
 
             // Start Opus encoder
             if (_opusEncoder != null)
@@ -158,7 +159,7 @@ namespace Tsc.AIBridge.Audio.Processing
                 Debug.LogError("[AudioStreamProcessor] OpusEncoder is null - cannot start recording!");
             }
             // DON'T start OGG wrapper - we send raw Opus frames to backend
-            
+
             return _currentSession; // Return the externally set session
         }
         
@@ -192,16 +193,24 @@ namespace Tsc.AIBridge.Audio.Processing
         /// <summary>
         /// Enable audio buffering mode (for RuleSystem validation flow).
         /// Audio will be queued instead of fired via OnOpusAudioEncoded event.
+        /// NOTE: Since StartEncoding() now buffers by default, this method is idempotent
+        /// and safe to call multiple times. It does NOT clear the queue.
         /// </summary>
         public void StartBuffering()
         {
             lock (_bufferLock)
             {
-                _isBuffering = true;
-                _audioQueue.Clear(); // Clear any leftover data
-
-                if (_isVerboseLogging)
-                    Debug.Log("[AudioStreamProcessor] Buffering mode enabled - audio will be queued");
+                if (!_isBuffering)
+                {
+                    _isBuffering = true;
+                    if (_isVerboseLogging)
+                        Debug.Log("[AudioStreamProcessor] Buffering mode enabled - audio will be queued");
+                }
+                else
+                {
+                    if (_isVerboseLogging)
+                        Debug.Log($"[AudioStreamProcessor] Already buffering ({_audioQueue.Count} chunks) - ignoring duplicate call");
+                }
             }
         }
 
@@ -266,34 +275,27 @@ namespace Tsc.AIBridge.Audio.Processing
         
         /// <summary>
         /// Process audio data from recorder
+        /// HOT PATH: Called ~50x/second - NO Debug.Log allowed!
         /// </summary>
         public void ProcessRecordingData(float[] samples)
         {
-            // Debug: Check encoding state
+            // Fast path: Check encoding state
             if (_opusEncoder == null)
             {
-                Debug.LogWarning("[AudioStreamProcessor] OpusEncoder is null - audio will be ignored");
+                if (_isVerboseLogging)
+                    Debug.LogWarning("[AudioStreamProcessor] OpusEncoder is null - audio will be ignored");
                 return;
             }
-            
+
             if (!_opusEncoder.IsRecording)
             {
                 // This is normal after interruption - don't spam logs
                 // Samples keep coming in briefly after encoder stops
                 return;
             }
-            
-            // Always use Opus encoding
-            if (_opusEncoder != null && _opusEncoder.IsRecording)
-            {
-                // Process audio through Opus encoder
-                Debug.Log($"[AudioStreamProcessor] Calling _opusEncoder.ProcessAudioData with {samples?.Length ?? 0} samples");
-                _opusEncoder.ProcessAudioData(samples);
-            }
-            else
-            {
-                Debug.LogWarning($"[AudioStreamProcessor] NOT calling ProcessAudioData - encoder null or not recording (encoder={_opusEncoder != null}, recording={_opusEncoder?.IsRecording ?? false})");
-            }
+
+            // Always use Opus encoding - redundant check removed for performance
+            _opusEncoder.ProcessAudioData(samples);
         }
         
         // REMOVED: TryGetEncodedAudio - no longer needed after removing queue-based architecture
@@ -301,14 +303,14 @@ namespace Tsc.AIBridge.Audio.Processing
         
         /// <summary>
         /// Handle encoded audio from Opus encoder
+        /// HOT PATH: Called ~50x/second - NO Debug.Log allowed!
         /// </summary>
         private void HandleEncodedAudio(byte[] encodedData)
         {
-            Debug.Log($"[AudioStreamProcessor] HandleEncodedAudio called with {encodedData?.Length ?? 0} bytes");
-
             if (encodedData == null || encodedData.Length == 0)
             {
-                Debug.LogWarning("[AudioStreamProcessor] HandleEncodedAudio received null or empty data!");
+                if (_isVerboseLogging)
+                    Debug.LogWarning("[AudioStreamProcessor] HandleEncodedAudio received null or empty data!");
                 return;
             }
 
@@ -319,35 +321,26 @@ namespace Tsc.AIBridge.Audio.Processing
                     // Buffer mode: Queue audio for later validation
                     _audioQueue.Enqueue(encodedData);
 
-                    if (_isVerboseLogging && _audioQueue.Count % 10 == 0)
+                    // Periodic logging only (every 50 chunks = ~1 second)
+                    if (_isVerboseLogging && _audioQueue.Count % 50 == 0)
                     {
-                        Debug.Log($"[AudioStreamProcessor] Buffered audio chunk - Queue size: {_audioQueue.Count}");
+                        Debug.Log($"[AudioStreamProcessor] Buffered {_audioQueue.Count} audio chunks");
                     }
                     return;
                 }
             }
 
             // Direct mode: Fire event immediately (validation already approved or not needed)
-            Debug.Log($"[AudioStreamProcessor] Firing OnOpusAudioEncoded event with {encodedData.Length} bytes, _isBuffering={_isBuffering}");
             if (OnOpusAudioEncoded != null)
             {
                 OnOpusAudioEncoded.Invoke(encodedData);
             }
-            else
+            else if (_isVerboseLogging)
             {
                 Debug.LogError($"[AudioStreamProcessor] ❌ NO LISTENERS for OnOpusAudioEncoded - {encodedData.Length} bytes LOST!");
             }
         }
         
-        /// <summary>
-        /// Handle OGG packet from wrapper (NOT USED - we send raw Opus)
-        /// </summary>
-        private void HandleOggPacketReady(byte[] oggPacket)
-        {
-            // NOT USED - we send raw Opus frames, not OGG-wrapped
-            if (_isVerboseLogging)
-                Debug.LogWarning("[AudioStreamProcessor] OGG packet received but not used - we send raw Opus");
-        }
         
         /// <summary>
         /// Start streaming received audio
@@ -379,25 +372,17 @@ namespace Tsc.AIBridge.Audio.Processing
         
         /// <summary>
         /// Process received audio data
+        /// HOT PATH: Called for every incoming audio chunk - NO Debug.Log allowed!
         /// </summary>
         public void ProcessReceivedAudio(byte[] audioData)
         {
             if (audioData == null || audioData.Length == 0)
             {
-                Debug.LogWarning("[AudioStreamProcessor] ProcessReceivedAudio called with null/empty data");
+                if (_isVerboseLogging)
+                    Debug.LogWarning("[AudioStreamProcessor] ProcessReceivedAudio called with null/empty data");
                 return;
             }
-            
-            // Log first 4 bytes for OGG header detection
-            //if (audioData.Length >= 4 && audioData[0] == 0x4F && audioData[1] == 0x67 && audioData[2] == 0x67 && audioData[3] == 0x53)
-            //{
-            //    Debug.Log($"[AudioStreamProcessor] Received OGG header chunk: {audioData.Length} bytes");
-            //}
-            //else if (_isVerboseLogging)
-            //{
-            //    Debug.Log($"[AudioStreamProcessor] Received audio chunk: {audioData.Length} bytes (not OGG header)");
-            //}
-                
+
             lock (_streamLock)
             {
                 if (!_isStreamingAudio)
@@ -406,7 +391,7 @@ namespace Tsc.AIBridge.Audio.Processing
                         Debug.LogWarning($"[AudioStreamProcessor] Received audio but stream not started - ignoring data");
                     return;
                 }
-                
+
                 if (_isOpusStream)
                 {
                     if (_opusStreamDecoder == null)
@@ -414,7 +399,7 @@ namespace Tsc.AIBridge.Audio.Processing
                         Debug.LogError("[AudioStreamProcessor] OpusStreamDecoder is null!");
                         return;
                     }
-                    
+
                     // Process through Opus decoder
                     _opusStreamDecoder.ProcessData(audioData);
                 }
@@ -562,9 +547,14 @@ namespace Tsc.AIBridge.Audio.Processing
         /// <summary>
         /// Get decoder packet count for verification
         /// </summary>
+        /// <returns>Number of packets decoded</returns>
+        /// <exception cref="InvalidOperationException">Thrown when decoder is not initialized</exception>
         public int GetDecoderPacketCount()
         {
-            return _opusStreamDecoder?.GetPacketCount() ?? -1;
+            if (_opusStreamDecoder == null)
+                throw new InvalidOperationException("[AudioStreamProcessor] Cannot get packet count - decoder not initialized. Call StartAudioStream() first.");
+
+            return _opusStreamDecoder.GetPacketCount();
         }
         
         private void HandlePlaybackStarted()
@@ -587,12 +577,7 @@ namespace Tsc.AIBridge.Audio.Processing
                 _opusEncoder.OnAudioEncoded -= HandleEncodedAudio;
                 _opusEncoder.Dispose();
             }
-            
-            if (_oggOpusEncoder != null)
-            {
-                _oggOpusEncoder.OnOggPacketReady -= HandleOggPacketReady;
-            }
-            
+
             if (_opusStreamDecoder != null)
             {
                 _opusStreamDecoder.OnAudioDecoded -= HandleDecodedAudio;
