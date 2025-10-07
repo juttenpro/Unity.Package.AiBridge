@@ -222,20 +222,38 @@ namespace Tsc.AIBridge.Audio.Interruption
                 _npcResponseStartTime = 0;
             }
 
-            // Calculate NPC speaking duration
+            // Calculate NPC speaking duration (for logging only)
             float npcSpeakingDuration = _npcResponseStartTime > 0 ?
                 Time.time - _npcResponseStartTime : 0f;
 
-            // SMART NEAR-END DETECTION:
-            // 1. If NPC response was SHORT (<1s) and user pressed PTT during it, ALWAYS treat as near-end
-            // 2. Otherwise use the configured threshold
-            bool isShortResponse = npcSpeakingDuration > 0 && npcSpeakingDuration < nearEndThresholdSeconds;
+            // NEAR-END DETECTION:
+            // Near-end = AudioStreamEnd received (no more audio coming) + buffer almost empty
+            // This detects REAL near-end, not "after 1s of speaking"
             bool isNearEnd = false;
 
             if (_pttPressedDuringNpcSpeech)
             {
-                // If it was a short response OR we've reached the threshold, it's near-end
-                isNearEnd = isShortResponse || (npcSpeakingDuration >= nearEndThresholdSeconds);
+                // Get StreamingAudioPlayer to check stream completion and buffer level
+                var audioPlayer = _activeNpcClient?.GetComponent<StreamingAudioPlayer>();
+                if (audioPlayer == null)
+                {
+                    audioPlayer = _activeNpcClient?.GetComponentInChildren<StreamingAudioPlayer>();
+                }
+
+                if (audioPlayer != null)
+                {
+                    // CORRECT: Near-end = AudioStreamEnd received + BufferLevel < threshold
+                    // IsReceivingResponse becomes false when AudioStreamEnd is received
+                    bool streamCompleted = !audioPlayer.IsReceivingResponse;
+                    float bufferRemaining = audioPlayer.BufferLevel;
+
+                    isNearEnd = streamCompleted && bufferRemaining < nearEndThresholdSeconds;
+
+                    if (enableVerboseLogging && streamCompleted)
+                    {
+                        Debug.Log($"[InterruptionManager] Stream completed, buffer remaining: {bufferRemaining:F2}s, threshold: {nearEndThresholdSeconds:F2}s, isNearEnd: {isNearEnd}");
+                    }
+                }
 
                 // Also check if NPC recently stopped (within 500ms) - still counts as near-end
                 if (!npcResponding && _npcStoppedSpeakingTime > 0)
@@ -264,23 +282,16 @@ namespace Tsc.AIBridge.Audio.Interruption
                     Debug.Log($"[InterruptionManager] Overlap detected: {_overlapTimer:F2}s (isNearEnd: {isNearEnd}, persistence: {persistenceTime:F1}s)");
                 }
 
-                // NEAR-END: Quick trigger for buffer inclusion
+                // NEAR-END: Use FULL persistenceTime from PersonaSO
+                // Near-end still requires sustained overlap to avoid back-channeling false positives
                 if (isNearEnd)
                 {
-                    // Near-end needs much shorter overlap (0.3s) to ensure buffer is included
-                    if (_overlapTimer >= 0.3f && !_hasValidInterruption)
+                    if (_overlapTimer >= persistenceTime && !_hasValidInterruption)
                     {
                         _hasValidInterruption = true;
                         if (enableVerboseLogging)
                         {
-                            if (isShortResponse)
-                            {
-                                Debug.Log($"[InterruptionManager] Near-end for SHORT response ({npcSpeakingDuration:F1}s) - buffer included");
-                            }
-                            else
-                            {
-                                Debug.Log($"[InterruptionManager] Near-end after {npcSpeakingDuration:F1}s of NPC speech");
-                            }
+                            Debug.Log($"[InterruptionManager] Near-end interruption detected after {_overlapTimer:F2}s persistence (NPC spoke for {npcSpeakingDuration:F1}s)");
                         }
                         OnInterruptionDetected();
                     }
