@@ -39,7 +39,7 @@ namespace Tsc.AIBridge.Audio.Playback
         [Header("Debug Settings")]
         [SerializeField]
         [Tooltip("Enable verbose logging for debugging audio streaming and buffering")]
-        private bool enableVerboseLogging;
+        protected bool enableVerboseLogging;
 
         // Events
         [Header("Events")]
@@ -80,6 +80,8 @@ namespace Tsc.AIBridge.Audio.Playback
         private float _lastBufferLevel;
         private int _underrunCount;
         private bool _cachedIsPlaying; // Thread-safe cache of AudioSource.isPlaying
+        private int _samplesPlayedSinceStart; // Track samples played since playback started
+        private const int UNDERRUN_GRACE_PERIOD_SAMPLES = 24000; // ~500ms at 48kHz - ignore underruns during buffer stabilization
 
         public bool IsPlaybackActive => _isStreamActive && _cachedIsPlaying;
         public bool HasBufferedAudio => _audioBuffer.Count > 0;
@@ -89,9 +91,7 @@ namespace Tsc.AIBridge.Audio.Playback
         public float MinBufferDuration => AdaptiveBufferManager.HasInstance
             ? (AdaptiveBufferManager.Instance?.CurrentBufferDuration ?? 0.1f)
             : 0.1f;
-        public bool IsAdaptiveBufferingEnabled => AdaptiveBufferManager.HasInstance
-            ? (AdaptiveBufferManager.Instance?.IsAdaptiveBufferingEnabled ?? true)
-            : true;
+        public bool IsAdaptiveBufferingEnabled => !AdaptiveBufferManager.HasInstance || (AdaptiveBufferManager.Instance?.IsAdaptiveBufferingEnabled ?? true);
 
         /// <summary>
         /// Gets the AudioFilterRelay component (read-only access)
@@ -414,6 +414,18 @@ namespace Tsc.AIBridge.Audio.Playback
 
             lock (_stateLock)
             {
+                // CRITICAL: Drop samples during pause to prevent buffer overflow
+                // When paused, we don't want to buffer audio that arrives from backend
+                // Resume will continue from where we left off, not replay old audio
+                if (_isPaused)
+                {
+                    if (enableVerboseLogging)
+                    {
+                        Debug.Log($"[{_cachedGameObjectName}] Dropping {samples.Length} samples - playback is paused");
+                    }
+                    return;
+                }
+
                 if (!_isStreamActive)
                 {
                     Debug.LogWarning($"[{_cachedGameObjectName}] Received audio data but stream is not active");
@@ -522,6 +534,7 @@ namespace Tsc.AIBridge.Audio.Playback
             _streamComplete = true;
             _isReceivingResponse = false; // NEW: Mark that response is stopped
             _forceStop = true; // Ensure force stop is set
+            _samplesPlayedSinceStart = 0; // Reset grace period counter
             _cachedIsPlaying = false; // Update cached state
 
             // Stop relay if it exists (may be null in tests)
@@ -612,6 +625,7 @@ namespace Tsc.AIBridge.Audio.Playback
         {
             _isPlaybackStarted = true;
             _cachedIsPlaying = true; // Update cached state
+            _samplesPlayedSinceStart = 0; // Reset grace period counter
 
             // Start playback through relay if available
             if (audioFilterRelay != null)
@@ -716,7 +730,8 @@ namespace Tsc.AIBridge.Audio.Playback
                 }
 
                 // Only count as underrun if we're still expecting more data
-                if (!_streamComplete)
+                // AND we're past the grace period (allows buffer to stabilize after StartPlayback)
+                if (!_streamComplete && _samplesPlayedSinceStart > UNDERRUN_GRACE_PERIOD_SAMPLES)
                 {
                     _underrunCount++;
                     if (_underrunCount % 50 == 1) // Log every 50th underrun
@@ -727,6 +742,7 @@ namespace Tsc.AIBridge.Audio.Playback
             }
 
             _totalSamplesPlayed += samplesProvided;
+            _samplesPlayedSinceStart += samplesProvided; // Track samples played since StartPlayback()
 
             // Store the last played audio frame for feedback detection
             // Only store if we actually played audio
@@ -772,52 +788,36 @@ namespace Tsc.AIBridge.Audio.Playback
 
         private void Update()
         {
-            // Update cached isPlaying state on main thread (thread-safe access)
-            if (audioFilterRelay != null && audioFilterRelay.AudioSource != null)
+            // OPTIMIZATION: Only process when streaming is active
+            if (!_isStreamActive)
+                return;
+
+            // OPTIMIZATION: Cache AudioSource.isPlaying check (expensive Unity API call)
+            // Check once per second instead of every frame at 60fps
+            if (Time.frameCount % 60 == 0)
             {
-                _cachedIsPlaying = audioFilterRelay.AudioSource.isPlaying;
-            }
-            else
-            {
-                _cachedIsPlaying = false;
-            }
-
-            // Check if Unity is paused
-            var shouldBePaused = false;
-
-            #if UNITY_EDITOR
-            // In Unity Editor, check multiple pause conditions
-            shouldBePaused = UnityEditor.EditorApplication.isPaused ||
-                           !UnityEditor.EditorApplication.isPlaying ||
-                           Time.timeScale == 0f ||
-                           AudioListener.pause;
-
-            // Remove debug logging - no longer needed
-            #else
-            // In builds, check Time.timeScale and AudioListener pause
-            shouldBePaused = Time.timeScale == 0f || AudioListener.pause;
-            #endif
-
-            // Also check if AudioSource itself is paused externally
-            if (audioFilterRelay)
-            {
-                var audioSourcePaused = audioFilterRelay != null && audioFilterRelay.AudioSource != null &&
-                                       !_cachedIsPlaying && _isStreamActive;
-                if (audioSourcePaused && !_isPaused)
+                if (audioFilterRelay != null && audioFilterRelay.AudioSource != null)
                 {
-                    // AudioSource was paused externally, sync our state
-                    lock (_stateLock)
-                    {
-                        _isPaused = true;
-                    }
+                    _cachedIsPlaying = audioFilterRelay.AudioSource.isPlaying;
+                }
+                else
+                {
+                    _cachedIsPlaying = false;
                 }
             }
+
+            // CRITICAL: Editor pause detection
+            // Unity's OnAudioFilterRead continues running even when Editor is paused!
+            // Without this check, audio buffer would continue to fill during Editor pause.
+            // NpcAudioPlayer handles PauseManager (training scenario pause) via events.
+#if UNITY_EDITOR
+            // Check Editor pause state (most important check for development)
+            bool shouldBePaused = UnityEditor.EditorApplication.isPaused;
 
             lock (_stateLock)
             {
                 if (shouldBePaused != _isPaused)
                 {
-                    // Remove debug log - it's too spammy
                     if (shouldBePaused)
                     {
                         PausePlayback();
@@ -828,6 +828,7 @@ namespace Tsc.AIBridge.Audio.Playback
                     }
                 }
             }
+#endif
 
             // Handle stop request on main thread
             if (_shouldStop)
@@ -838,13 +839,13 @@ namespace Tsc.AIBridge.Audio.Playback
                 return;
             }
 
-            // Monitor buffer level
-            if (_isStreamActive && _isPlaybackStarted)
+            // Monitor buffer level (only when verbose logging is enabled)
+            if (enableVerboseLogging && _isPlaybackStarted)
             {
                 var currentBufferLevel = BufferLevel;
 
-                // Log significant buffer changes
-                if (enableVerboseLogging && Mathf.Abs(currentBufferLevel - _lastBufferLevel) > 0.5f)
+                // Log significant buffer changes (every 0.5s change)
+                if (Mathf.Abs(currentBufferLevel - _lastBufferLevel) > 0.5f)
                 {
                     Debug.Log($"[{_cachedGameObjectName}] Buffer level: {currentBufferLevel:F2}s");
                     _lastBufferLevel = currentBufferLevel;

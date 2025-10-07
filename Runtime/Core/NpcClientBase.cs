@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using Tsc.AIBridge.Messages;
 using Tsc.AIBridge.WebSocket;
+using Tsc.AIBridge.Audio.Playback;
 
 namespace Tsc.AIBridge.Core
 {
@@ -148,6 +149,38 @@ namespace Tsc.AIBridge.Core
             // CRITICAL FIX: Without this, _isStreamingAudio stays true between turns,
             // preventing StartAudioStream() from being called for turn 2+, which blocks latency metrics
             _metadataHandler.OnAudioStreamEnd += HandleAudioStreamEnd;
+
+            // Subscribe to StreamingAudioPlayer events for IsTalking state management (interruption support)
+            var audioPlayer = GetComponentInChildren<StreamingAudioPlayer>();
+            if (audioPlayer != null)
+            {
+                audioPlayer.OnPlaybackStarted.AddListener(() =>
+                {
+                    IsTalking = true;
+                    OnAudioStarted?.Invoke();
+                    Debug.Log($"[{NpcName}] IsTalking = true (playback started)");
+                });
+
+                audioPlayer.OnPlaybackComplete.AddListener(() =>
+                {
+                    IsTalking = false;
+                    OnAudioStopped?.Invoke();
+                    Debug.Log($"[{NpcName}] IsTalking = false (playback complete)");
+                });
+
+                audioPlayer.OnPlaybackInterrupted.AddListener(() =>
+                {
+                    IsTalking = false;
+                    OnAudioStopped?.Invoke();
+                    Debug.Log($"[{NpcName}] IsTalking = false (playback interrupted)");
+                });
+
+                Debug.Log($"[{NpcName}] Subscribed to StreamingAudioPlayer events for IsTalking management");
+            }
+            else
+            {
+                Debug.LogWarning($"[{NpcName}] StreamingAudioPlayer not found - IsTalking will not be automatically managed (interruption may not work)");
+            }
 
             // Register with the message router to receive WebSocket messages
             NpcMessageRouter.Instance.RegisterNpc(this);

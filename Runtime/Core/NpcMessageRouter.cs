@@ -204,6 +204,33 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
+        /// Get the active RequestId for a given NPC name.
+        /// Returns null if the NPC has no active request.
+        /// </summary>
+        /// <param name="npcName">The name of the NPC</param>
+        /// <returns>The active RequestId, or null if not found</returns>
+        public string GetActiveRequestForNpc(string npcName)
+        {
+            if (string.IsNullOrEmpty(npcName))
+                return null;
+
+            // Find the NPC client by name
+            if (!_npcsByName.TryGetValue(npcName, out var npcClient))
+                return null;
+
+            // Find the RequestId that maps to this NPC client (reverse lookup)
+            foreach (var kvp in _activeNpcsByRequestId)
+            {
+                if (kvp.Value == npcClient)
+                {
+                    return kvp.Key; // Return the requestId
+                }
+            }
+
+            return null; // No active request for this NPC
+        }
+
+        /// <summary>
         /// Clear all registrations and reset state.
         /// Useful for testing or when entering/exiting play mode.
         /// </summary>

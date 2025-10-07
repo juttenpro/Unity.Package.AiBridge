@@ -448,6 +448,40 @@ namespace Tsc.AIBridge.WebSocket
         }
 
         /// <summary>
+        /// Send PauseStream message to pause audio streaming from backend
+        /// </summary>
+        public async Task SendPauseStreamAsync(PauseStreamMessage message)
+        {
+            // Ensure connection before sending
+            if (!await EnsureConnectionAsync())
+            {
+                Debug.LogError("[UnifiedWebSocket] Failed to establish connection for PauseStream");
+                return;
+            }
+
+            await _webSocket.SendJsonAsync(message);
+            if (enableVerboseLogging)
+                Debug.Log($"[UnifiedWebSocket] Sent PauseStream for RequestId: {message.RequestId}, Reason: {message.Reason ?? "none"}");
+        }
+
+        /// <summary>
+        /// Send ResumeStream message to resume paused audio streaming
+        /// </summary>
+        public async Task SendResumeStreamAsync(ResumeStreamMessage message)
+        {
+            // Ensure connection before sending
+            if (!await EnsureConnectionAsync())
+            {
+                Debug.LogError("[UnifiedWebSocket] Failed to establish connection for ResumeStream");
+                return;
+            }
+
+            await _webSocket.SendJsonAsync(message);
+            if (enableVerboseLogging)
+                Debug.Log($"[UnifiedWebSocket] Sent ResumeStream for RequestId: {message.RequestId}");
+        }
+
+        /// <summary>
         /// Ensure WebSocket connection is established
         /// </summary>
         private async Task<bool> EnsureConnectionAsync(CancellationToken cancellationToken = default)
