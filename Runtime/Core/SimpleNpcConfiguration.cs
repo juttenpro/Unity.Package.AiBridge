@@ -105,7 +105,7 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public void SetName(string newName)
         {
-            this.name = newName;
+            name = newName;
         }
     }
 }

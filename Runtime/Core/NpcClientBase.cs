@@ -51,7 +51,7 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Latency tracker for performance monitoring
         /// </summary>
-        protected LatencyTracker _latencyTracker;
+        protected LatencyTracker LatencyTracker;
 
         /// <summary>
         /// Override this in derived classes to provide access to the downstream AudioStreamProcessor
@@ -110,10 +110,6 @@ namespace Tsc.AIBridge.Core
 
         #region Unity Lifecycle
 
-        protected virtual void Awake()
-        {
-            // Audio is now handled by StreamingAudioPlayer/NpcAudioPlayer components
-        }
 
         protected virtual void Start()
         {
@@ -128,10 +124,10 @@ namespace Tsc.AIBridge.Core
         {
             // Initialize latency tracker if metrics are enabled
             // This can be overridden in derived classes to check specific settings
-            _latencyTracker = new LatencyTracker(NpcName);
+            LatencyTracker = new LatencyTracker(NpcName);
 
             // Initialize metadata handler for processing WebSocket messages
-            _metadataHandler = new ConversationMetadataHandler(NpcName, _latencyTracker, enableVerboseLogging: false);
+            _metadataHandler = new ConversationMetadataHandler(NpcName, LatencyTracker, enableVerboseLogging: false);
 
             // Subscribe to transcription events to forward to RequestOrchestrator
             _metadataHandler.OnTranscription += HandleTranscription;
@@ -151,24 +147,24 @@ namespace Tsc.AIBridge.Core
             _metadataHandler.OnAudioStreamEnd += HandleAudioStreamEnd;
 
             // Subscribe to StreamingAudioPlayer events for IsTalking state management (interruption support)
-            var audioPlayer = GetComponentInChildren<StreamingAudioPlayer>();
-            if (audioPlayer != null)
+            AudioPlayer = GetComponentInChildren<StreamingAudioPlayer>();
+            if (AudioPlayer != null)
             {
-                audioPlayer.OnPlaybackStarted.AddListener(() =>
+                AudioPlayer.OnPlaybackStarted.AddListener(() =>
                 {
                     IsTalking = true;
                     OnAudioStarted?.Invoke();
                     Debug.Log($"[{NpcName}] IsTalking = true (playback started)");
                 });
 
-                audioPlayer.OnPlaybackComplete.AddListener(() =>
+                AudioPlayer.OnPlaybackComplete.AddListener(() =>
                 {
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
                     Debug.Log($"[{NpcName}] IsTalking = false (playback complete)");
                 });
 
-                audioPlayer.OnPlaybackInterrupted.AddListener(() =>
+                AudioPlayer.OnPlaybackInterrupted.AddListener(() =>
                 {
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
@@ -215,7 +211,7 @@ namespace Tsc.AIBridge.Core
         {
             // DEBUG: Track how many times this is called
             Debug.Log($"[{NpcName}] HandleTranscription called with: {transcript}");
-            Debug.Log($"[{NpcName}] Stack trace: {System.Environment.StackTrace}");
+            Debug.Log($"[{NpcName}] Stack trace: {Environment.StackTrace}");
 
             // Forward to RequestOrchestrator if it exists
             var orchestrator = RequestOrchestrator.Instance;
@@ -300,7 +296,9 @@ namespace Tsc.AIBridge.Core
         /// Unity event fired when NPC responds with text
         /// </summary>
         [Header("Events")]
-        public UnityEvent<string> OnNpcResponse = new UnityEvent<string>();
+        public UnityEvent<string> OnNpcResponse = new();
+
+        public StreamingAudioPlayer AudioPlayer { get; private set; }
 
         #endregion
 

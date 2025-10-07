@@ -113,7 +113,6 @@ namespace Tsc.AIBridge.Core
         private NpcClientBase _activeNpcClient; // Cache to avoid FindObjectsByType
         private bool _isProcessingRequest; // Queue management - prevents concurrent request STARTS
         private bool _isRequestActive; // Request lifecycle - true from StartAudioRequest until EndAudioRequest/Cancel
-        private bool _isInterrupting;
         private Coroutine _processQueueCoroutine;
 
         /// <summary>
@@ -428,7 +427,6 @@ namespace Tsc.AIBridge.Core
                 // Notify listeners that there's no active NPC anymore
                 OnActiveNpcChanged?.Invoke(null, null);
                 _isRequestActive = false;
-                _isInterrupting = false;
             }
         }
 
@@ -469,7 +467,7 @@ namespace Tsc.AIBridge.Core
                 await _webSocketClient.SendSessionCancelAsync(cancelMessage);
                 Debug.Log($"[RequestOrchestrator] Sent SessionCancel to backend for session {requestId} (reason: {reason})");
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 Debug.LogError($"[RequestOrchestrator] Failed to send SessionCancel: {ex.Message}");
             }
@@ -512,7 +510,7 @@ namespace Tsc.AIBridge.Core
                 await _webSocketClient.SendInterruptionOccurredAsync(interruptionMessage);
                 Debug.Log($"[RequestOrchestrator] Sent InterruptionOccurred to backend for session {requestId} (reason: {reason})");
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 Debug.LogError($"[RequestOrchestrator] Failed to send InterruptionOccurred: {ex.Message}");
             }
@@ -707,7 +705,7 @@ namespace Tsc.AIBridge.Core
             // Will be null if not using interruption features
 
             // CRITICAL: Validate required components
-            var missingComponents = new System.Collections.Generic.List<string>();
+            var missingComponents = new List<string>();
 
             if (_webSocketClient == null)
                 missingComponents.Add("WebSocketClient");
@@ -841,7 +839,7 @@ namespace Tsc.AIBridge.Core
                 // CRITICAL FIX: Subscribe to SessionStarted BEFORE sending SessionStart
                 // This prevents race condition where SessionStarted arrives before we subscribe
                 var sessionStartedReceived = false;
-                System.Action sessionStartedHandler = () => { sessionStartedReceived = true; };
+                Action sessionStartedHandler = () => { sessionStartedReceived = true; };
 
                 if (_activeNpcClient != null)
                 {
@@ -979,43 +977,7 @@ namespace Tsc.AIBridge.Core
 
             yield return null;
         }
-
-        private bool ShouldBufferAudioForRequest()
-        {
-            // Decision logic for whether to buffer audio before sending
-            // This prevents incomplete sentences being sent to STT
-
-            // Always buffer if NPC is speaking (interruption scenario)
-            if (IsNpcSpeaking())
-            {
-                Debug.Log("[RequestOrchestrator] Buffering audio - NPC is speaking");
-                return true;
-            }
-
-            // Buffer if we're in an interruption flow
-            if (_isInterrupting)
-            {
-                Debug.Log("[RequestOrchestrator] Buffering audio - interruption in progress");
-                return true;
-            }
-
-            // Don't buffer for normal conversation starts
-            return false;
-        }
-
-        private bool IsNpcSpeaking()
-        {
-            // Check if any NPC is currently playing audio
-            if (_activeNpcClient != null)
-            {
-                return _activeNpcClient.IsSpeaking;
-            }
-
-            // Fallback: check all NPCs
-            var allClients = FindObjectsByType<NpcClientBase>(FindObjectsSortMode.None);
-            return allClients.Any(npc => npc.IsSpeaking);
-        }
-
+        
         private ConnectionParameters BuildSessionParameters(INpcConfiguration npcConfig)
         {
             // Build connection parameters from NPC configuration

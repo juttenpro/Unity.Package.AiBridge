@@ -87,7 +87,7 @@ namespace Tsc.AIBridge.Core
         {
             this.voiceId = voiceId;
             if (!string.IsNullOrEmpty(streamingMode))
-                this.ttsStreamingMode = streamingMode;
+                ttsStreamingMode = streamingMode;
         }
 
         /// <summary>
@@ -98,8 +98,8 @@ namespace Tsc.AIBridge.Core
         /// <param name="persistence">Time in seconds user must speak to trigger interruption</param>
         public void SetInterruptionSettings(bool allow, float persistence)
         {
-            this.allowInterruption = allow;
-            this.persistenceTime = persistence;
+            allowInterruption = allow;
+            persistenceTime = persistence;
         }
 
 
