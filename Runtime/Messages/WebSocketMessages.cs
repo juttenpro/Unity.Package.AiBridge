@@ -256,8 +256,8 @@ namespace Tsc.AIBridge.Messages
     }
 
     /// <summary>
-    /// Message to cancel a session that was started but is no longer needed.
-    /// Used when an interruption attempt fails or when edge cases require session cleanup.
+    /// EMERGENCY cancel - stops ALL processing (STT, LLM, TTS).
+    /// Use for app crash, scene switch, force quit.
     /// Server should clean up any partial processing, chat history updates, or metadata.
     /// </summary>
     [Serializable]
@@ -269,6 +269,25 @@ namespace Tsc.AIBridge.Messages
         public SessionCancelMessage()
         {
             Type = WebSocketMessageTypes.SessionCancel;
+        }
+    }
+
+    /// <summary>
+    /// User interrupted NPC speech - stop TTS but let LLM finish for metadata/intent.
+    /// NORMAL interruption during conversation.
+    /// Backend stops TTS generation (save bandwidth) but keeps LLM running for complete response.
+    /// Backend sends conversationComplete with wasInterrupted=true.
+    /// Unity uses this to determine partial response for chat history.
+    /// </summary>
+    [Serializable]
+    public class InterruptionOccurredMessage : WebSocketMessageBase
+    {
+        [JsonProperty("reason")]
+        public string Reason;
+
+        public InterruptionOccurredMessage()
+        {
+            Type = WebSocketMessageTypes.InterruptionOccurred;
         }
     }
 

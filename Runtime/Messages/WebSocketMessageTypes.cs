@@ -15,8 +15,8 @@ namespace Tsc.AIBridge.Messages
         public const string UpdateParameters = "UpdateParameters";
         public const string Ping = "Ping";
         public const string PauseState = "PauseState";
-        // DEPRECATED: InterruptionOccurred - use SessionCancel instead (backend doesn't need interruption details)
-        public const string SessionCancel = "sessioncancel"; // Cancel a session by RequestId (simple, no domain knowledge) - lowercase per protocol
+        public const string InterruptionOccurred = "InterruptionOccurred"; // User interrupted NPC - stop TTS but keep LLM for metadata
+        public const string SessionCancel = "SessionCancel"; // Emergency cancel - stop everything (crash, scene switch)
 
         // Server -> Client messages
         public const string ConnectionEstablished = "ConnectionEstablished";

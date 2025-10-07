@@ -381,7 +381,7 @@ namespace Tsc.AIBridge.WebSocket
         }
 
         /// <summary>
-        /// Send SessionCancel message to cancel a session
+        /// Send SessionCancel message to cancel a session (EMERGENCY - stops everything)
         /// </summary>
         public async Task SendSessionCancelAsync(SessionCancelMessage message)
         {
@@ -394,6 +394,22 @@ namespace Tsc.AIBridge.WebSocket
             await _webSocket.SendJsonAsync(message);
             if (enableVerboseLogging)
                 Debug.Log($"[UnifiedWebSocket] Sent SessionCancel for RequestId: {message.RequestId}");
+        }
+
+        /// <summary>
+        /// Send InterruptionOccurred message (NORMAL interruption - stops TTS, keeps LLM for metadata)
+        /// </summary>
+        public async Task SendInterruptionOccurredAsync(InterruptionOccurredMessage message)
+        {
+            if (_webSocket == null || !_webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Cannot send InterruptionOccurred - not connected!");
+                return;
+            }
+
+            await _webSocket.SendJsonAsync(message);
+            if (enableVerboseLogging)
+                Debug.Log($"[UnifiedWebSocket] Sent InterruptionOccurred for RequestId: {message.RequestId}");
         }
 
         /// <summary>

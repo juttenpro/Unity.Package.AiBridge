@@ -404,13 +404,13 @@ namespace Tsc.AIBridge.Audio.Interruption
                 // Get the RequestId of the session being interrupted
                 string interruptedRequestId = orchestrator.GetCurrentSessionId();
 
-                // Notify backend to stop LLM/TTS generation for interrupted session
+                // Notify backend: InterruptionOccurred (stop TTS, keep LLM for metadata)
                 if (!string.IsNullOrEmpty(interruptedRequestId))
                 {
-                    orchestrator.SendSessionCancelToBackend(interruptedRequestId, "Interruption detected");
+                    orchestrator.SendInterruptionOccurredToBackend(interruptedRequestId, "User interrupted NPC");
                     if (enableVerboseLogging)
                     {
-                        Debug.Log($"[InterruptionManager] Sent SessionCancel to backend for session {interruptedRequestId}");
+                        Debug.Log($"[InterruptionManager] Sent InterruptionOccurred to backend for session {interruptedRequestId}");
                     }
                 }
 

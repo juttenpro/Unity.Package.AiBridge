@@ -476,6 +476,49 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
+        /// Send InterruptionOccurred message to backend (stop TTS, keep LLM for metadata)
+        /// Does NOT clear session state - backend will send conversationComplete with wasInterrupted=true
+        /// </summary>
+        public void SendInterruptionOccurredToBackend(string requestId, string reason)
+        {
+            if (string.IsNullOrEmpty(requestId))
+            {
+                Debug.LogWarning("[RequestOrchestrator] Cannot send InterruptionOccurred - requestId is null or empty");
+                return;
+            }
+
+            _ = InterruptionOccurredOnBackendAsync(requestId, reason);
+        }
+
+        /// <summary>
+        /// Internal async method to send InterruptionOccurred message to backend
+        /// </summary>
+        private async System.Threading.Tasks.Task InterruptionOccurredOnBackendAsync(string requestId, string reason)
+        {
+            if (webSocketClient == null)
+            {
+                Debug.LogWarning("[RequestOrchestrator] Cannot send InterruptionOccurred - WebSocketClient is null");
+                return;
+            }
+
+            try
+            {
+                var interruptionMessage = new InterruptionOccurredMessage
+                {
+                    RequestId = requestId,
+                    Reason = reason
+                };
+
+                await webSocketClient.SendInterruptionOccurredAsync(interruptionMessage);
+                Debug.Log($"[RequestOrchestrator] Sent InterruptionOccurred to backend for session {requestId} (reason: {reason})");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[RequestOrchestrator] Failed to send InterruptionOccurred: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Check if currently processing a request
         /// </summary>
         public bool IsProcessingRequest()
