@@ -346,7 +346,7 @@ namespace Tsc.AIBridge.Tests.Runtime
             Assert.AreEqual(1, GetBufferCount(), "Session 1: Should have audio in buffer");
 
             // Act - End session 1, start session 2
-            _processor.EndEncoding();
+            _processor.StopEncoding();
             _processor.StartEncoding();
 
             // Assert
@@ -384,7 +384,7 @@ namespace Tsc.AIBridge.Tests.Runtime
                     $"Session {sessionNum}: Should buffer audio");
 
                 // End session
-                _processor.EndEncoding();
+                _processor.StopEncoding();
             }
 
             // Final check - no leftover state
