@@ -192,28 +192,16 @@ namespace Tsc.AIBridge.Audio.Processing
         /// <summary>
         /// Enable audio buffering mode (for RuleSystem validation flow).
         /// Audio will be queued instead of fired via OnOpusAudioEncoded event.
-        /// Idempotent: safe to call multiple times (e.g., for interruption scenarios).
         /// </summary>
         public void StartBuffering()
         {
             lock (_bufferLock)
             {
-                // CRITICAL: Only clear queue if NOT already buffering
-                // This prevents losing buffered audio when StartBuffering is called multiple times
-                // (e.g., once for interruption attempt, again for approved interruption session)
-                if (!_isBuffering)
-                {
-                    _audioQueue.Clear(); // Clear any leftover data from previous sessions
-                    if (_isVerboseLogging)
-                        Debug.Log("[AudioStreamProcessor] Buffering mode enabled - audio will be queued");
-                }
-                else
-                {
-                    if (_isVerboseLogging)
-                        Debug.Log($"[AudioStreamProcessor] Already buffering - keeping {_audioQueue.Count} buffered chunks");
-                }
-
                 _isBuffering = true;
+                _audioQueue.Clear(); // Clear any leftover data
+
+                if (_isVerboseLogging)
+                    Debug.Log("[AudioStreamProcessor] Buffering mode enabled - audio will be queued");
             }
         }
 
