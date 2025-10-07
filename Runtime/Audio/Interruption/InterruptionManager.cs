@@ -394,13 +394,27 @@ namespace Tsc.AIBridge.Audio.Interruption
                 Debug.Log($"[InterruptionManager] Stopping audio for {_activeNpcClient.NpcName}");
             }
 
-            // Stop the NPC's audio playback
+            // Stop the NPC's audio playback (stops playback, clears buffer)
             _activeNpcClient.StopAudio();
 
-            // Mark interruption in RequestOrchestrator
+            // Mark interruption in RequestOrchestrator and notify backend
             var orchestrator = RequestOrchestrator.Instance;
             if (orchestrator != null)
             {
+                // Get the RequestId of the session being interrupted
+                string interruptedRequestId = orchestrator.GetCurrentSessionId();
+
+                // Notify backend to stop LLM/TTS generation for interrupted session
+                if (!string.IsNullOrEmpty(interruptedRequestId))
+                {
+                    orchestrator.SendSessionCancelToBackend(interruptedRequestId, "Interruption detected");
+                    if (enableVerboseLogging)
+                    {
+                        Debug.Log($"[InterruptionManager] Sent SessionCancel to backend for session {interruptedRequestId}");
+                    }
+                }
+
+                // Mark interruption flag for new session (IsInterruptionActive=true)
                 orchestrator.StartInterruption();
                 if (enableVerboseLogging)
                 {

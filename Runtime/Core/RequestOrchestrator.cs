@@ -415,10 +415,9 @@ namespace Tsc.AIBridge.Core
                 // Stop any ongoing recording
                 speechInputHandler?.StopRecording();
 
-                // Cancel WebSocket session
-                // TODO: Implement CancelCurrentSession in WebSocketClient
-                // For now, just log
-                Debug.Log("[RequestOrchestrator] Cancel session requested");
+                // Cancel WebSocket session - notify backend to stop LLM/TTS generation
+                var requestIdToCancel = _currentSession.RequestId;
+                _ = CancelSessionOnBackendAsync(requestIdToCancel, reason);
 
                 // Clear session
                 _currentSession = null;
@@ -430,6 +429,49 @@ namespace Tsc.AIBridge.Core
                 OnActiveNpcChanged?.Invoke(null, null);
                 _isRequestActive = false;
                 _isInterrupting = false;
+            }
+        }
+
+        /// <summary>
+        /// Send SessionCancel message to backend to stop LLM/TTS generation
+        /// Does NOT clear session state - use CancelCurrentSession for full cleanup
+        /// </summary>
+        public void SendSessionCancelToBackend(string requestId, string reason)
+        {
+            if (string.IsNullOrEmpty(requestId))
+            {
+                Debug.LogWarning("[RequestOrchestrator] Cannot send SessionCancel - requestId is null or empty");
+                return;
+            }
+
+            _ = CancelSessionOnBackendAsync(requestId, reason);
+        }
+
+        /// <summary>
+        /// Internal async method to send SessionCancel message to backend
+        /// </summary>
+        private async System.Threading.Tasks.Task CancelSessionOnBackendAsync(string requestId, string reason)
+        {
+            if (webSocketClient == null)
+            {
+                Debug.LogWarning("[RequestOrchestrator] Cannot send SessionCancel - WebSocketClient is null");
+                return;
+            }
+
+            try
+            {
+                var cancelMessage = new SessionCancelMessage
+                {
+                    RequestId = requestId,
+                    Reason = reason
+                };
+
+                await webSocketClient.SendSessionCancelAsync(cancelMessage);
+                Debug.Log($"[RequestOrchestrator] Sent SessionCancel to backend for session {requestId} (reason: {reason})");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[RequestOrchestrator] Failed to send SessionCancel: {ex.Message}");
             }
         }
 
