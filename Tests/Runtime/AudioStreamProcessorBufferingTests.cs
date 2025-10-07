@@ -473,7 +473,8 @@ namespace Tsc.AIBridge.Tests.Runtime
 
             if (queueField != null)
             {
-                var queue = queueField.GetValue(_processor) as Queue<byte[]>;
+                // AudioStreamProcessor uses ConcurrentQueue<byte[]>, not Queue<byte[]>
+                var queue = queueField.GetValue(_processor) as System.Collections.Concurrent.ConcurrentQueue<byte[]>;
 
                 // Respect buffering mode
                 if (_processor.IsBuffering)
@@ -509,7 +510,8 @@ namespace Tsc.AIBridge.Tests.Runtime
 
             if (queueField != null)
             {
-                var queue = queueField.GetValue(_processor) as Queue<byte[]>;
+                // AudioStreamProcessor uses ConcurrentQueue<byte[]>, not Queue<byte[]>
+                var queue = queueField.GetValue(_processor) as System.Collections.Concurrent.ConcurrentQueue<byte[]>;
                 return queue?.Count ?? 0;
             }
 
