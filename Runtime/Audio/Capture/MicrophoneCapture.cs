@@ -532,10 +532,6 @@ namespace Tsc.AIBridge.Audio.Capture
                 float[] audioData = new float[requiredSize];
                 System.Array.Copy(_reusableBuffer, 0, audioData, 0, requiredSize);
 
-                // VERBOSE: Log event firing for debugging
-                var listenerCount = OnAudioDataAvailable?.GetInvocationList()?.Length ?? 0;
-                Debug.Log($"[MicrophoneCapture] Firing OnAudioDataAvailable - Listeners: {listenerCount}, Samples: {requiredSize}");
-
                 OnAudioDataAvailable?.Invoke(audioData);
                 RecordingDataReceived?.Invoke(audioData); // Fire static event for RecorderBase compatibility
 

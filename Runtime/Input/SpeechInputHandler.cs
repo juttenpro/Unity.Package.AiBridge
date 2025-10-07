@@ -277,8 +277,7 @@ namespace Tsc.AIBridge.Input
             // VERBOSE: Verify subscription
             if (enableVerboseLogging)
             {
-                var listenerCount = _microphoneCapture.OnAudioDataAvailable?.GetInvocationList()?.Length ?? 0;
-                Debug.Log($"[SpeechInputHandler] Subscribed to OnAudioDataAvailable - Total listeners: {listenerCount}");
+                Debug.Log("[SpeechInputHandler] Successfully subscribed to MicrophoneCapture.OnAudioDataAvailable");
             }
         }
 
