@@ -247,7 +247,7 @@ namespace Tsc.AIBridge.Audio.Processing
 
         /// <summary>
         /// Discard buffered audio without sending.
-        /// Disables buffering mode and clears the queue.
+        /// Clears the queue but PRESERVES buffering mode (for retry/next attempt).
         /// </summary>
         public void DiscardBuffer()
         {
@@ -261,10 +261,11 @@ namespace Tsc.AIBridge.Audio.Processing
 
                 var discardedCount = _audioQueue.Count;
                 _audioQueue.Clear();
-                _isBuffering = false;
+                // NOTE: Keep _isBuffering = true so system can buffer again
+                // Use case: RuleSystem rejection, failed interruption - need to retry
 
                 if (_isVerboseLogging)
-                    Debug.Log($"[AudioStreamProcessor] Buffer discarded - {discardedCount} chunks dropped");
+                    Debug.Log($"[AudioStreamProcessor] Buffer discarded - {discardedCount} chunks dropped, buffering mode preserved");
             }
         }
 

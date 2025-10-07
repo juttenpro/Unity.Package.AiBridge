@@ -467,36 +467,18 @@ namespace Tsc.AIBridge.Tests.Runtime
         /// </summary>
         private void AddAudioToBufferViaReflection(byte[] audioChunk)
         {
-            // Get private _audioQueue field
-            var queueField = typeof(AudioStreamProcessor).GetField("_audioQueue",
+            // Simulate audio coming from encoder
+            // This calls the private HandleEncodedAudio method which respects buffering mode
+            var handleEncodedMethod = typeof(AudioStreamProcessor).GetMethod("HandleEncodedAudio",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
-            if (queueField != null)
+            if (handleEncodedMethod != null)
             {
-                // AudioStreamProcessor uses ConcurrentQueue<byte[]>, not Queue<byte[]>
-                var queue = queueField.GetValue(_processor) as System.Collections.Concurrent.ConcurrentQueue<byte[]>;
-
-                // Respect buffering mode
-                if (_processor.IsBuffering)
-                {
-                    queue?.Enqueue(audioChunk);
-                }
-                else
-                {
-                    // Simulate firing event directly (bypassing internal logic)
-                    // In production, this happens in HandleOpusEncoded method
-                    var eventField = typeof(AudioStreamProcessor).GetField("OnOpusAudioEncoded",
-                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                    var eventDelegate = eventField?.GetValue(_processor) as System.MulticastDelegate;
-
-                    if (eventDelegate != null)
-                    {
-                        foreach (var handler in eventDelegate.GetInvocationList())
-                        {
-                            handler.Method.Invoke(handler.Target, new object[] { audioChunk });
-                        }
-                    }
-                }
+                handleEncodedMethod.Invoke(_processor, new object[] { audioChunk });
+            }
+            else
+            {
+                UnityEngine.Debug.LogError("[TEST] Failed to find HandleEncodedAudio method via reflection!");
             }
         }
 
