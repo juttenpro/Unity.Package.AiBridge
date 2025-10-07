@@ -162,10 +162,15 @@ namespace Tsc.AIBridge.Audio.Interruption
             bool allowInterruption = _activeNpcConfig?.AllowInterruption ?? true;
             float persistenceTime = _activeNpcConfig?.InterruptionPersistenceTime ?? 1.5f;
 
-            // SIMPLIFIED: If PTT is active (already checked above), assume user is speaking
-            // VAD can be unreliable during interruptions - PTT state is more reliable
-            // This ensures interruption detection works even if VAD is not configured
-            bool userSpeaking = true; // PTT is active, so user is attempting to speak
+            // Get user speaking state from VAD (with calibration)
+            bool userSpeaking = DetectUserSpeech();
+
+            if (enableVerboseLogging)
+            {
+                Debug.Log($"[InterruptionManager] VAD State - userSpeaking: {userSpeaking}, " +
+                         $"speechInputHandler: {speechInputHandler != null}, " +
+                         $"IsUserSpeaking property: {speechInputHandler?.IsUserSpeaking}");
+            }
 
             // SIMPLIFIED: For interruption detection, use IsTalking (response active)
             // Original design used VAD (IsNPCSpeaking) to detect pauses, but this is too complex
