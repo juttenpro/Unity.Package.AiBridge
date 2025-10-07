@@ -167,11 +167,16 @@ namespace Tsc.AIBridge.Audio.Interruption
             // This ensures interruption detection works even if VAD is not configured
             bool userSpeaking = true; // PTT is active, so user is attempting to speak
 
-            // IMPORTANT: Distinguish between response phase and actual speech
-            // npcResponding: LLM response started → TTS complete (IsTalking flag from NpcClientBase)
-            // npcActuallySpeaking: Actually producing audible speech (VAD from StreamingAudioPlayer)
+            // SIMPLIFIED: For interruption detection, use IsTalking (response active)
+            // Original design used VAD (IsNPCSpeaking) to detect pauses, but this is too complex
+            // and unreliable during real-time overlapping audio. Simple IsTalking is more robust.
             bool npcResponding = _activeNpcClient.IsTalking;
-            bool npcActuallySpeaking = GetNpcActualSpeech(_activeNpcClient);
+            bool npcActuallySpeaking = _activeNpcClient.IsTalking; // Use same as npcResponding for reliability
+
+            if (enableVerboseLogging && npcResponding)
+            {
+                Debug.Log($"[InterruptionManager] NPC is talking - IsTalking: {npcResponding}, userSpeaking: {userSpeaking}, overlapTimer: {_overlapTimer:F2}s");
+            }
 
             // Track if PTT was pressed while NPC was responding (crucial for buffer inclusion)
             // Use npcResponding (not npcActuallySpeaking) because we want to include buffer even during pauses
