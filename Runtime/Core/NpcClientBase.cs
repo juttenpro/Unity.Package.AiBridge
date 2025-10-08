@@ -54,11 +54,11 @@ namespace Tsc.AIBridge.Core
         protected LatencyTracker LatencyTracker;
 
         /// <summary>
-        /// Track received stream count for auto-start on first OGG chunk.
-        /// NOTE: Only used by base NpcClientBase. Extended NpcClient uses AudioMessageHandler instead.
-        /// Reset when new turn starts (via OnPlaybackComplete in extended version).
+        /// Audio message handler for processing binary audio data.
+        /// Handles OGG detection, stream counting, and interruption logic.
+        /// Used by base class OnBinaryMessage() - derived classes can override to use their own handler.
         /// </summary>
-        private int _receivedStreamCount = 0;
+        protected Handlers.AudioMessageHandler _audioMessageHandler;
 
         /// <summary>
         /// Override this in derived classes to provide access to the downstream AudioStreamProcessor
@@ -140,7 +140,17 @@ namespace Tsc.AIBridge.Core
             _metadataHandler.OnTranscription += HandleTranscription;
 
             // Subscribe to SessionStarted event and forward to public OnSessionStarted event
-            _metadataHandler.OnSessionStarted += () => OnSessionStarted?.Invoke();
+            _metadataHandler.OnSessionStarted += () =>
+            {
+                // Reset AudioMessageHandler state for new session
+                if (_audioMessageHandler != null && !string.IsNullOrEmpty(_metadataHandler?.LastRequestId))
+                {
+                    _audioMessageHandler.OnNewRequest(_metadataHandler.LastRequestId);
+                    Debug.Log($"[{NpcName}] SessionStarted - AudioMessageHandler reset for new request");
+                }
+
+                OnSessionStarted?.Invoke();
+            };
 
             // Subscribe to AI response event and call OnAiResponseReceived method
             _metadataHandler.OnAIResponse += (response) =>
@@ -152,6 +162,14 @@ namespace Tsc.AIBridge.Core
             // CRITICAL FIX: Without this, _isStreamingAudio stays true between turns,
             // preventing StartAudioStream() from being called for turn 2+, which blocks latency metrics
             _metadataHandler.OnAudioStreamEnd += HandleAudioStreamEnd;
+
+            // Initialize AudioMessageHandler if DownstreamAudioProcessor is available
+            var audioProcessor = DownstreamAudioProcessor;
+            if (audioProcessor != null)
+            {
+                _audioMessageHandler = new Handlers.AudioMessageHandler(NpcName, audioProcessor, enableVerboseLogging: false);
+                Debug.Log($"[{NpcName}] AudioMessageHandler initialized for audio processing");
+            }
 
             // Subscribe to StreamingAudioPlayer events for IsTalking state management (interruption support)
             AudioPlayer = GetComponentInChildren<StreamingAudioPlayer>();
@@ -168,20 +186,32 @@ namespace Tsc.AIBridge.Core
                 {
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
-                    // CRITICAL: Reset stream count for next turn (used by base class OnBinaryMessage)
-                    // Extended NpcClient overrides OnBinaryMessage and uses AudioMessageHandler.Reset() instead
-                    _receivedStreamCount = 0;
-                    Debug.Log($"[{NpcName}] IsTalking = false (playback complete) - stream count reset");
+                    // CRITICAL: Reset AudioMessageHandler state for next turn
+                    if (_audioMessageHandler != null)
+                    {
+                        _audioMessageHandler.Reset();
+                        Debug.Log($"[{NpcName}] IsTalking = false (playback complete) - AudioMessageHandler reset");
+                    }
+                    else
+                    {
+                        Debug.Log($"[{NpcName}] IsTalking = false (playback complete)");
+                    }
                 });
 
                 AudioPlayer.OnPlaybackInterrupted.AddListener(() =>
                 {
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
-                    // CRITICAL: Reset stream count for next turn (used by base class OnBinaryMessage)
-                    // Extended NpcClient overrides OnBinaryMessage and uses AudioMessageHandler.Reset() instead
-                    _receivedStreamCount = 0;
-                    Debug.Log($"[{NpcName}] IsTalking = false (playback interrupted) - stream count reset");
+                    // CRITICAL: Reset AudioMessageHandler state for next turn
+                    if (_audioMessageHandler != null)
+                    {
+                        _audioMessageHandler.Reset();
+                        Debug.Log($"[{NpcName}] IsTalking = false (playback interrupted) - AudioMessageHandler reset");
+                    }
+                    else
+                    {
+                        Debug.Log($"[{NpcName}] IsTalking = false (playback interrupted)");
+                    }
                 });
 
                 Debug.Log($"[{NpcName}] Subscribed to StreamingAudioPlayer events for IsTalking management");
@@ -216,8 +246,8 @@ namespace Tsc.AIBridge.Core
                 Debug.LogWarning($"[{NpcName}] AudioStreamEnd received but DownstreamAudioProcessor is null - state may not be reset properly!");
             }
 
-            // Reset stream count for next turn
-            _receivedStreamCount = 0;
+            // Note: Stream count reset is now handled by AudioMessageHandler.Reset()
+            // which is called in OnPlaybackComplete/OnPlaybackInterrupted events
         }
 
         /// <summary>
@@ -557,36 +587,22 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Handle incoming binary messages from WebSocket (audio data).
         /// SIMPLICITY FIRST: Auto-starts stream on first OGG chunk - no AudioStreamStart message needed!
+        /// Uses AudioMessageHandler for OGG detection and stream management.
         /// </summary>
         public virtual void OnBinaryMessage(byte[] data)
         {
             if (data == null || data.Length == 0)
                 return;
 
-            var audioProcessor = DownstreamAudioProcessor;
-            if (audioProcessor == null)
+            // Use AudioMessageHandler if available (standard path)
+            if (_audioMessageHandler != null)
             {
-                Debug.LogWarning($"[{NpcName}] Received audio but DownstreamAudioProcessor is null - cannot process");
+                _audioMessageHandler.ProcessBinaryMessage(data);
                 return;
             }
 
-            // Auto-detect and auto-start on first OGG chunk
-            // NOTE: ElevenLabs may send multiple OGG containers per sentence for streaming efficiency
-            // We only care about the FIRST OGG header to start playback
-            if (IsOggHeader(data))
-            {
-                _receivedStreamCount++;
-
-                // Auto-start on FIRST OGG chunk only
-                if (_receivedStreamCount == 1)
-                {
-                    Debug.Log($"[{NpcName}] First OGG header detected - auto-starting audio stream (Opus 48kHz)");
-                    audioProcessor.StartAudioStream(isOpus: true, sampleRate: 48000);
-                }
-            }
-
-            // Process all audio data
-            audioProcessor.ProcessReceivedAudio(data);
+            // Fallback for NPCs without audio processor (rare case)
+            Debug.LogWarning($"[{NpcName}] Received audio but AudioMessageHandler not initialized - cannot process");
         }
 
         /// <summary>
@@ -602,19 +618,7 @@ namespace Tsc.AIBridge.Core
 
         #region Private Helpers
 
-        /// <summary>
-        /// Check if data starts with OGG header magic bytes ("OggS").
-        /// Used for auto-detection and auto-start of audio streaming.
-        /// </summary>
-        private bool IsOggHeader(byte[] data)
-        {
-            return data != null &&
-                   data.Length >= 4 &&
-                   data[0] == 0x4F && // 'O'
-                   data[1] == 0x67 && // 'g'
-                   data[2] == 0x67 && // 'g'
-                   data[3] == 0x53;   // 'S'
-        }
+        // Note: OGG header detection is now handled by AudioMessageHandler
 
         #endregion
     }
