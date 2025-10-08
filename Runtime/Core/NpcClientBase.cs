@@ -55,7 +55,8 @@ namespace Tsc.AIBridge.Core
 
         /// <summary>
         /// Track received stream count for auto-start on first OGG chunk.
-        /// Reset when new turn starts (AudioStreamEnd).
+        /// NOTE: Only used by base NpcClientBase. Extended NpcClient uses AudioMessageHandler instead.
+        /// Reset when new turn starts (via OnPlaybackComplete in extended version).
         /// </summary>
         private int _receivedStreamCount = 0;
 
@@ -167,18 +168,16 @@ namespace Tsc.AIBridge.Core
                 {
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
-                    // CRITICAL: Reset stream count for next turn when playback completes
-                    _receivedStreamCount = 0;
-                    Debug.Log($"[{NpcName}] IsTalking = false (playback complete) - stream count reset for next turn");
+                    // NOTE: Stream count reset is handled in Extended NpcClient via AudioMessageHandler.Reset()
+                    Debug.Log($"[{NpcName}] IsTalking = false (playback complete)");
                 });
 
                 AudioPlayer.OnPlaybackInterrupted.AddListener(() =>
                 {
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
-                    // CRITICAL: Reset stream count for next turn when playback interrupted
-                    _receivedStreamCount = 0;
-                    Debug.Log($"[{NpcName}] IsTalking = false (playback interrupted) - stream count reset for next turn");
+                    // NOTE: Stream count reset is handled in Extended NpcClient via AudioMessageHandler.Reset()
+                    Debug.Log($"[{NpcName}] IsTalking = false (playback interrupted)");
                 });
 
                 Debug.Log($"[{NpcName}] Subscribed to StreamingAudioPlayer events for IsTalking management");
