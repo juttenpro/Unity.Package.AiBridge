@@ -163,6 +163,10 @@ namespace Tsc.AIBridge.Core
             // preventing StartAudioStream() from being called for turn 2+, which blocks latency metrics
             _metadataHandler.OnAudioStreamEnd += HandleAudioStreamEnd;
 
+            // CRITICAL: Find and set AudioPlayer FIRST before initializing AudioMessageHandler
+            // This ensures derived classes can initialize their AudioStreamProcessor in time
+            AudioPlayer = GetComponentInChildren<StreamingAudioPlayer>();
+
             // Initialize AudioMessageHandler if DownstreamAudioProcessor is available
             var audioProcessor = DownstreamAudioProcessor;
             if (audioProcessor != null)
@@ -172,7 +176,6 @@ namespace Tsc.AIBridge.Core
             }
 
             // Subscribe to StreamingAudioPlayer events for IsTalking state management (interruption support)
-            AudioPlayer = GetComponentInChildren<StreamingAudioPlayer>();
             if (AudioPlayer != null)
             {
                 AudioPlayer.OnPlaybackStarted.AddListener(() =>
