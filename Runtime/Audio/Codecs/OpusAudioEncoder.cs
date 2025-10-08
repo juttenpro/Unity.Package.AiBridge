@@ -115,11 +115,8 @@ namespace Tsc.AIBridge.Audio.Codecs
         /// </summary>
         public void ProcessAudioData(float[] samples)
         {
-            Debug.Log($"[OpusAudioEncoder] ProcessAudioData called - IsRecording: {_isRecording}, samples: {samples?.Length ?? 0}");
-
             if (!_isRecording || samples == null || samples.Length == 0)
             {
-                Debug.LogWarning($"[OpusAudioEncoder] Ignoring audio - IsRecording: {_isRecording}, samples null or empty: {samples == null || samples.Length == 0}");
                 return;
             }
 
@@ -140,7 +137,6 @@ namespace Tsc.AIBridge.Audio.Codecs
                 // Process complete frames
                 while (_accumulationIndex >= _frameSize)
                 {
-                    Debug.Log($"[OpusAudioEncoder] Encoding frame - accumulation index: {_accumulationIndex}, frameSize: {_frameSize}");
                     EncodeFrame();
                 }
             }
@@ -148,8 +144,6 @@ namespace Tsc.AIBridge.Audio.Codecs
 
         private void EncodeFrame()
         {
-            Debug.Log($"[OpusAudioEncoder] EncodeFrame called - _frameCounter: {_frameCounter}");
-
             // Copy frame from accumulation buffer
             Array.Copy(_accumulationBuffer, 0, _sampleBuffer, 0, _frameSize);
 
@@ -164,9 +158,7 @@ namespace Tsc.AIBridge.Audio.Codecs
             try
             {
                 // Encode the frame
-                Debug.Log($"[OpusAudioEncoder] Calling _encoder.Encode with {_frameSize} samples...");
                 var encodedBytes = _encoder.Encode(_sampleBuffer, _frameSize, _opusBuffer, _opusBuffer.Length);
-                Debug.Log($"[OpusAudioEncoder] Encode returned {encodedBytes} bytes");
 
                 if (encodedBytes > 0)
                 {
@@ -175,7 +167,6 @@ namespace Tsc.AIBridge.Audio.Codecs
                     Array.Copy(_opusBuffer, 0, outputBuffer, 0, encodedBytes);
 
                     // Raise event with encoded data
-                    Debug.Log($"[OpusAudioEncoder] Firing OnAudioEncoded event with {encodedBytes} bytes, listeners: {OnAudioEncoded?.GetInvocationList().Length ?? 0}");
                     OnAudioEncoded?.Invoke(outputBuffer);
                     _frameCounter++;
 
@@ -184,7 +175,7 @@ namespace Tsc.AIBridge.Audio.Codecs
                         Debug.Log($"[OpusAudioEncoder] Encoded frame {_frameCounter}: {encodedBytes} bytes");
                     }
                 }
-                else
+                else if (_isVerboseLogging)
                 {
                     Debug.LogWarning($"[OpusAudioEncoder] Encode returned 0 bytes!");
                 }

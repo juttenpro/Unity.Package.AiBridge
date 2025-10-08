@@ -548,10 +548,6 @@ namespace Tsc.AIBridge.Input
 
         private void HandleAudioData(float[] samples)
         {
-            // VERBOSE: Log entry to track if this method is called
-            if (enableVerboseLogging)
-                Debug.Log($"[SpeechInputHandler] HandleAudioData called - samples: {samples?.Length ?? 0}, _vadManager: {_vadManager != null}, _isRecording: {_isRecording}");
-
             if (samples == null || samples.Length == 0)
             {
                 Debug.LogWarning("[SpeechInputHandler] HandleAudioData received null or empty samples!");
@@ -560,16 +556,7 @@ namespace Tsc.AIBridge.Input
 
             // Update VAD
             var pttDuration = _isPttPressed ? Time.time - _pttPressTime : 0f;
-
-            // VERBOSE: Log VAD state BEFORE processing
-            if (enableVerboseLogging)
-                Debug.Log($"[SpeechInputHandler] Before VAD - _vadManager null: {_vadManager == null}, pttDuration: {pttDuration:F2}s");
-
             var isSpeaking = _vadManager?.ProcessAudioFrame(samples, pttDuration) ?? false;
-
-            // VERBOSE: Log VAD result
-            if (enableVerboseLogging)
-                Debug.Log($"[SpeechInputHandler] After VAD - isSpeaking: {isSpeaking}, IsUserSpeaking property: {IsUserSpeaking}");
 
             // IsUserSpeaking is now a property that reads from _vadManager
 

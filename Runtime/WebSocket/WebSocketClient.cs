@@ -408,12 +408,7 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
-            // CRITICAL DEBUG: Log the exact JSON being sent
-            var json = Newtonsoft.Json.JsonConvert.SerializeObject(message);
-            Debug.LogError($"[DEBUG-INTERRUPTION-UNITY] About to send InterruptionOccurred: {json}");
-
             await _webSocket.SendJsonAsync(message);
-            Debug.LogError($"[DEBUG-INTERRUPTION-UNITY] SendJsonAsync completed for RequestId: {message.RequestId}");
 
             // CRITICAL FIX: NativeWebSocket SendText() race condition
             // SendText() can return before the message is actually transmitted over the network.
@@ -421,7 +416,6 @@ namespace Tsc.AIBridge.WebSocket
             // message (InterruptionOccurred) can be lost in the send buffer.
             // Adding a 50ms delay ensures the message is fully transmitted before the next message.
             await System.Threading.Tasks.Task.Delay(50);
-            Debug.LogError($"[DEBUG-INTERRUPTION-UNITY] Waited 50ms for network transmission");
 
             if (enableVerboseLogging)
                 Debug.Log($"[UnifiedWebSocket] Sent InterruptionOccurred for RequestId: {message.RequestId}");
