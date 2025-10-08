@@ -158,10 +158,8 @@ namespace Tsc.AIBridge.Core
                 OnAiResponseReceived(response);
             };
 
-            // Subscribe to AudioStreamEnd event to properly end the audio stream
-            // CRITICAL FIX: Without this, _isStreamingAudio stays true between turns,
-            // preventing StartAudioStream() from being called for turn 2+, which blocks latency metrics
-            _metadataHandler.OnAudioStreamEnd += HandleAudioStreamEnd;
+            // Note: AudioStreamEnd message removed - stream end is now detected via
+            // AudioPlayer.OnPlaybackComplete/OnPlaybackInterrupted events
 
             // CRITICAL: Find and set AudioPlayer FIRST before initializing AudioMessageHandler
             // This ensures derived classes can initialize their AudioStreamProcessor in time
@@ -189,15 +187,20 @@ namespace Tsc.AIBridge.Core
                 {
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
-                    // CRITICAL: Reset AudioMessageHandler state for next turn
+
+                    // CRITICAL: Stream ended - reset ALL audio state for next turn
+                    // This replaces the old AudioStreamEnd message behavior
+                    var audioProcessor = DownstreamAudioProcessor;
+                    if (audioProcessor != null)
+                    {
+                        audioProcessor.EndAudioStream();
+                        Debug.Log($"[{NpcName}] Playback complete - called EndAudioStream() to reset stream state");
+                    }
+
                     if (_audioMessageHandler != null)
                     {
                         _audioMessageHandler.Reset();
-                        Debug.Log($"[{NpcName}] IsTalking = false (playback complete) - AudioMessageHandler reset");
-                    }
-                    else
-                    {
-                        Debug.Log($"[{NpcName}] IsTalking = false (playback complete)");
+                        Debug.Log($"[{NpcName}] Playback complete - AudioMessageHandler reset");
                     }
                 });
 
@@ -205,15 +208,20 @@ namespace Tsc.AIBridge.Core
                 {
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
-                    // CRITICAL: Reset AudioMessageHandler state for next turn
+
+                    // CRITICAL: Stream interrupted - reset ALL audio state for next turn
+                    // This replaces the old AudioStreamEnd message behavior
+                    var audioProcessor = DownstreamAudioProcessor;
+                    if (audioProcessor != null)
+                    {
+                        audioProcessor.EndAudioStream();
+                        Debug.Log($"[{NpcName}] Playback interrupted - called EndAudioStream() to reset stream state");
+                    }
+
                     if (_audioMessageHandler != null)
                     {
                         _audioMessageHandler.Reset();
-                        Debug.Log($"[{NpcName}] IsTalking = false (playback interrupted) - AudioMessageHandler reset");
-                    }
-                    else
-                    {
-                        Debug.Log($"[{NpcName}] IsTalking = false (playback interrupted)");
+                        Debug.Log($"[{NpcName}] Playback interrupted - AudioMessageHandler reset");
                     }
                 });
 
@@ -226,31 +234,6 @@ namespace Tsc.AIBridge.Core
 
             // Register with the message router to receive WebSocket messages
             NpcMessageRouter.Instance.RegisterNpc(this);
-        }
-
-        /// <summary>
-        /// Handle AudioStreamEnd message from backend.
-        /// Calls EndAudioStream() on the DOWNSTREAM AudioStreamProcessor (for TTS playback) to reset streaming state.
-        /// CRITICAL: This must call the downstream processor (with audioPlayer), not the upstream processor (microphone encoding).
-        /// </summary>
-        private void HandleAudioStreamEnd(AudioStreamEndMessage message)
-        {
-            // CRITICAL FIX: Use the downstream AudioStreamProcessor (for TTS playback), not the upstream one (microphone encoding)
-            // The downstream processor has the audioPlayer and needs to call EndStream() to reset _isPlaybackStarted
-            var audioProcessor = DownstreamAudioProcessor;
-
-            if (audioProcessor != null)
-            {
-                audioProcessor.EndAudioStream();
-                Debug.Log($"[{NpcName}] AudioStreamEnd handled - called EndAudioStream() on downstream AudioStreamProcessor");
-            }
-            else
-            {
-                Debug.LogWarning($"[{NpcName}] AudioStreamEnd received but DownstreamAudioProcessor is null - state may not be reset properly!");
-            }
-
-            // Note: Stream count reset is now handled by AudioMessageHandler.Reset()
-            // which is called in OnPlaybackComplete/OnPlaybackInterrupted events
         }
 
         /// <summary>
@@ -283,8 +266,8 @@ namespace Tsc.AIBridge.Core
             if (_metadataHandler != null)
             {
                 _metadataHandler.OnTranscription -= HandleTranscription;
-                _metadataHandler.OnAudioStreamEnd -= HandleAudioStreamEnd;
                 // Note: OnSessionStarted and OnAIResponse use lambdas, automatically cleaned up when _metadataHandler is disposed
+                // Note: AudioStreamEnd handler removed - stream end now detected via AudioPlayer events
             }
 
             // Unregister from message router (only if it exists, don't create new one during cleanup)
