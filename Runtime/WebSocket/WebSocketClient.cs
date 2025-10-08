@@ -401,9 +401,10 @@ namespace Tsc.AIBridge.WebSocket
         /// </summary>
         public async Task SendInterruptionOccurredAsync(InterruptionOccurredMessage message)
         {
-            if (_webSocket == null || !_webSocket.IsConnected)
+            // Ensure connection before sending (follows WebSocketClient pattern)
+            if (!await EnsureConnectionAsync())
             {
-                Debug.LogError("[UnifiedWebSocket] Cannot send InterruptionOccurred - not connected!");
+                Debug.LogError("[UnifiedWebSocket] Failed to establish connection for InterruptionOccurred");
                 return;
             }
 
