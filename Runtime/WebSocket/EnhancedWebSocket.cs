@@ -198,7 +198,13 @@ namespace Tsc.AIBridge.WebSocket
         /// <returns>Task representing the asynchronous send operation</returns>
         public async System.Threading.Tasks.Task SendTextAsync(string text)
         {
+            // CRITICAL DEBUG: Log before/after NativeWebSocket.SendText
+            var messageType = text.Contains("\"type\":") ? text.Substring(text.IndexOf("\"type\":") + 8, 20) : "unknown";
+            Debug.LogError($"[DEBUG-ENHANCED-WS] SendTextAsync BEFORE NativeWebSocket.SendText - type: {messageType}, state: {State}");
+
             await _webSocket.SendText(text);
+
+            Debug.LogError($"[DEBUG-ENHANCED-WS] SendTextAsync AFTER NativeWebSocket.SendText completed - type: {messageType}");
         }
 
         /// <summary>
