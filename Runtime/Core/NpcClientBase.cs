@@ -168,16 +168,20 @@ namespace Tsc.AIBridge.Core
                 {
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
-                    // NOTE: Stream count reset is handled in Extended NpcClient via AudioMessageHandler.Reset()
-                    Debug.Log($"[{NpcName}] IsTalking = false (playback complete)");
+                    // CRITICAL: Reset stream count for next turn (used by base class OnBinaryMessage)
+                    // Extended NpcClient overrides OnBinaryMessage and uses AudioMessageHandler.Reset() instead
+                    _receivedStreamCount = 0;
+                    Debug.Log($"[{NpcName}] IsTalking = false (playback complete) - stream count reset");
                 });
 
                 AudioPlayer.OnPlaybackInterrupted.AddListener(() =>
                 {
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
-                    // NOTE: Stream count reset is handled in Extended NpcClient via AudioMessageHandler.Reset()
-                    Debug.Log($"[{NpcName}] IsTalking = false (playback interrupted)");
+                    // CRITICAL: Reset stream count for next turn (used by base class OnBinaryMessage)
+                    // Extended NpcClient overrides OnBinaryMessage and uses AudioMessageHandler.Reset() instead
+                    _receivedStreamCount = 0;
+                    Debug.Log($"[{NpcName}] IsTalking = false (playback interrupted) - stream count reset");
                 });
 
                 Debug.Log($"[{NpcName}] Subscribed to StreamingAudioPlayer events for IsTalking management");
