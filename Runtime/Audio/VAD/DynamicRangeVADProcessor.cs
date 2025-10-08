@@ -44,7 +44,7 @@ namespace Tsc.AIBridge.Audio.VAD
 
         // Sustained detection - prevent spikes/clicks from triggering speech
         private float _volumeAboveThresholdTime; // How long volume has been above threshold
-        private const float SustainedSpeechTime = 0.1f; // Require 100ms of sustained volume for speech detection
+        private const float SustainedSpeechTime = 0.05f; // Require 50ms of sustained volume for speech detection (lowered from 100ms for faster response)
 
         // Smoothing
         private readonly Queue<float> _recentVolumes = new();
@@ -257,13 +257,13 @@ namespace Tsc.AIBridge.Audio.VAD
 
         private void AdaptThreshold()
         {
-            // Need enough samples to adapt
-            if (_quietSamples.Count < 20)
+            // Need enough samples to adapt (lowered from 20 to 10 for faster initial adaptation)
+            if (_quietSamples.Count < 10)
             {
                 // Log why adaptation isn't happening
                 if (EnableVerboseLogging && Time.frameCount % 180 == 0)
                 {
-                    Debug.Log($"[{Name}VAD] Adaptation skipped - insufficient samples (quiet: {_quietSamples.Count}/20, loud: {_loudSamples.Count})");
+                    Debug.Log($"[{Name}VAD] Adaptation skipped - insufficient samples (quiet: {_quietSamples.Count}/10, loud: {_loudSamples.Count})");
                 }
                 return; // Not enough data yet
             }

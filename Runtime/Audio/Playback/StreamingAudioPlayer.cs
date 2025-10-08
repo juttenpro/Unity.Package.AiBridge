@@ -66,6 +66,10 @@ namespace Tsc.AIBridge.Audio.Playback
         private int _totalSamplesPlayed;
         private readonly object _stateLock = new();
 
+        // Auto-detect playback completion without backend messages
+        private float _lastDataReceivedTime;
+        private const float PLAYBACK_COMPLETE_TIMEOUT = 1.0f; // 1 second without new data = playback complete
+
         // Cached values
         private string _cachedGameObjectName;
         private int _minBufferSamples;
@@ -368,6 +372,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 _totalSamplesReceived = 0;
                 _totalSamplesPlayed = 0;
                 _underrunCount = 0;
+                _lastDataReceivedTime = Time.realtimeSinceStartup; // Initialize timestamp for auto-detection
 
                 // Extra safety: Ensure buffer is completely empty
                 // (Should already be cleared by StopPlaybackInternal but this is a safety check)
@@ -432,6 +437,8 @@ namespace Tsc.AIBridge.Audio.Playback
                     return;
                 }
 
+                // Track when we last received data - used for auto-detecting playback completion
+                _lastDataReceivedTime = Time.realtimeSinceStartup;
 
                 // Add samples to buffer - no limit, memory will grow as needed
                 // Use AudioSource.volume for volume control, not gain multipliers!
@@ -829,6 +836,22 @@ namespace Tsc.AIBridge.Audio.Playback
                 }
             }
 #endif
+
+            // Auto-detect playback completion without waiting for backend AudioStreamEnd message
+            // If buffer is empty and no new data for PLAYBACK_COMPLETE_TIMEOUT, playback is complete
+            if (_isPlaybackStarted && !_shouldStop && _audioBuffer.Count == 0)
+            {
+                float timeSinceLastData = Time.realtimeSinceStartup - _lastDataReceivedTime;
+
+                if (timeSinceLastData > PLAYBACK_COMPLETE_TIMEOUT)
+                {
+                    if (enableVerboseLogging)
+                    {
+                        Debug.Log($"[{_cachedGameObjectName}] Auto-detected playback complete - buffer empty for {timeSinceLastData:F2}s");
+                    }
+                    _shouldStop = true;
+                }
+            }
 
             // Handle stop request on main thread
             if (_shouldStop)

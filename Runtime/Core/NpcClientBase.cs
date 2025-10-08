@@ -54,6 +54,12 @@ namespace Tsc.AIBridge.Core
         protected LatencyTracker LatencyTracker;
 
         /// <summary>
+        /// Track received stream count for auto-start on first OGG chunk.
+        /// Reset when new turn starts (AudioStreamEnd).
+        /// </summary>
+        private int _receivedStreamCount = 0;
+
+        /// <summary>
         /// Override this in derived classes to provide access to the downstream AudioStreamProcessor
         /// (the one used for TTS audio playback, not microphone encoding).
         /// This is needed for proper state management between conversation turns.
@@ -202,6 +208,9 @@ namespace Tsc.AIBridge.Core
             {
                 Debug.LogWarning($"[{NpcName}] AudioStreamEnd received but DownstreamAudioProcessor is null - state may not be reset properly!");
             }
+
+            // Reset stream count for next turn
+            _receivedStreamCount = 0;
         }
 
         /// <summary>
@@ -539,13 +548,38 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// Handle incoming binary messages from WebSocket (audio data)
+        /// Handle incoming binary messages from WebSocket (audio data).
+        /// SIMPLICITY FIRST: Auto-starts stream on first OGG chunk - no AudioStreamStart message needed!
         /// </summary>
         public virtual void OnBinaryMessage(byte[] data)
         {
-            // Handle binary messages - typically audio data
-            // This is usually handled by the audio processing system
-            Debug.Log($"[{GetType().Name}] Received binary message: {data.Length} bytes");
+            if (data == null || data.Length == 0)
+                return;
+
+            var audioProcessor = DownstreamAudioProcessor;
+            if (audioProcessor == null)
+            {
+                Debug.LogWarning($"[{NpcName}] Received audio but DownstreamAudioProcessor is null - cannot process");
+                return;
+            }
+
+            // Auto-detect and auto-start on first OGG chunk
+            // NOTE: ElevenLabs may send multiple OGG containers per sentence for streaming efficiency
+            // We only care about the FIRST OGG header to start playback
+            if (IsOggHeader(data))
+            {
+                _receivedStreamCount++;
+
+                // Auto-start on FIRST OGG chunk only
+                if (_receivedStreamCount == 1)
+                {
+                    Debug.Log($"[{NpcName}] First OGG header detected - auto-starting audio stream (Opus 48kHz)");
+                    audioProcessor.StartAudioStream(isOpus: true, sampleRate: 48000);
+                }
+            }
+
+            // Process all audio data
+            audioProcessor.ProcessReceivedAudio(data);
         }
 
         /// <summary>
@@ -555,6 +589,24 @@ namespace Tsc.AIBridge.Core
         {
             Debug.Log($"[{GetType().Name}] Request completed: {requestId}");
             // Clean up any request-specific resources if needed
+        }
+
+        #endregion
+
+        #region Private Helpers
+
+        /// <summary>
+        /// Check if data starts with OGG header magic bytes ("OggS").
+        /// Used for auto-detection and auto-start of audio streaming.
+        /// </summary>
+        private bool IsOggHeader(byte[] data)
+        {
+            return data != null &&
+                   data.Length >= 4 &&
+                   data[0] == 0x4F && // 'O'
+                   data[1] == 0x67 && // 'g'
+                   data[2] == 0x67 && // 'g'
+                   data[3] == 0x53;   // 'S'
         }
 
         #endregion
