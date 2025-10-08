@@ -408,7 +408,13 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
+            // CRITICAL DEBUG: Log the exact JSON being sent
+            var json = Newtonsoft.Json.JsonConvert.SerializeObject(message);
+            Debug.LogError($"[DEBUG-INTERRUPTION-UNITY] About to send InterruptionOccurred: {json}");
+
             await _webSocket.SendJsonAsync(message);
+            Debug.LogError($"[DEBUG-INTERRUPTION-UNITY] SendJsonAsync completed for RequestId: {message.RequestId}");
+
             if (enableVerboseLogging)
                 Debug.Log($"[UnifiedWebSocket] Sent InterruptionOccurred for RequestId: {message.RequestId}");
         }
