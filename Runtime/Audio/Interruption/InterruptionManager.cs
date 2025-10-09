@@ -40,6 +40,7 @@ namespace Tsc.AIBridge.Audio.Interruption
         // Cached active NPC references (set via RequestOrchestrator event)
         private NpcClientBase _activeNpcClient;
         private INpcConfiguration _activeNpcConfig;
+        private StreamingAudioPlayer _activeAudioPlayer; // Cached for performance (GetComponent is expensive)
 
         private float _overlapTimer;
         private bool _hasValidInterruption;
@@ -88,19 +89,32 @@ namespace Tsc.AIBridge.Audio.Interruption
         /// <summary>
         /// Handle active NPC change from RequestOrchestrator.
         /// Replaces expensive reflection calls with simple event-driven updates.
+        /// Caches StreamingAudioPlayer for performance (GetComponent is expensive in Update loop).
         /// </summary>
         private void HandleActiveNpcChanged(NpcClientBase npcClient, INpcConfiguration npcConfig)
         {
             _activeNpcClient = npcClient;
             _activeNpcConfig = npcConfig;
 
-            if (enableVerboseLogging)
+            // Cache StreamingAudioPlayer for near-end detection (used in Update loop)
+            // GetComponent is expensive - cache it when NPC changes instead of every frame
+            if (npcClient != null)
             {
-                if (npcClient != null)
+                _activeAudioPlayer = npcClient.GetComponent<StreamingAudioPlayer>();
+                if (_activeAudioPlayer == null)
                 {
-                    Debug.Log($"[InterruptionManager] Active NPC changed: {npcClient.NpcName}");
+                    _activeAudioPlayer = npcClient.GetComponentInChildren<StreamingAudioPlayer>();
                 }
-                else
+
+                if (enableVerboseLogging)
+                {
+                    Debug.Log($"[InterruptionManager] Active NPC changed: {npcClient.NpcName}, AudioPlayer cached: {_activeAudioPlayer != null}");
+                }
+            }
+            else
+            {
+                _activeAudioPlayer = null;
+                if (enableVerboseLogging)
                 {
                     Debug.Log("[InterruptionManager] Active NPC cleared");
                 }
@@ -233,19 +247,13 @@ namespace Tsc.AIBridge.Audio.Interruption
 
             if (_pttPressedDuringNpcSpeech)
             {
-                // Get StreamingAudioPlayer to check stream completion and buffer level
-                var audioPlayer = _activeNpcClient?.GetComponent<StreamingAudioPlayer>();
-                if (audioPlayer == null)
-                {
-                    audioPlayer = _activeNpcClient?.GetComponentInChildren<StreamingAudioPlayer>();
-                }
-
-                if (audioPlayer != null)
+                // Use cached StreamingAudioPlayer for performance (cached in HandleActiveNpcChanged)
+                if (_activeAudioPlayer != null)
                 {
                     // CORRECT: Near-end = AudioStreamEnd received + BufferLevel < threshold
                     // IsReceivingResponse becomes false when AudioStreamEnd is received
-                    bool streamCompleted = !audioPlayer.IsReceivingResponse;
-                    float bufferRemaining = audioPlayer.BufferLevel;
+                    bool streamCompleted = !_activeAudioPlayer.IsReceivingResponse;
+                    float bufferRemaining = _activeAudioPlayer.BufferLevel;
 
                     isNearEnd = streamCompleted && bufferRemaining < nearEndThresholdSeconds;
 

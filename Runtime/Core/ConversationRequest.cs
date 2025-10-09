@@ -4,7 +4,7 @@ namespace Tsc.AIBridge.Core
 {
     /// <summary>
     /// Complete conversation request containing all settings determined by RuleSystem.
-    /// Created when player starts talking (PTT) and contains everything needed for the conversation.
+    /// Created when player starts talking (PTT) or when NPC initiates conversation.
     /// </summary>
     public class ConversationRequest
     {
@@ -14,6 +14,9 @@ namespace Tsc.AIBridge.Core
         // Conversation content (determined by RuleSystem)
         // Messages array includes system prompt as first message with role="system"
         public List<Messages.ChatMessage> Messages { get; set; }
+
+        // Conversation type
+        public bool IsNpcInitiated { get; set; } = false; // If true, skip STT and use TextInput flow
 
         // API Configuration (determined by RuleSystem per conversation)
         public string SttProvider { get; set; } = "google";

@@ -315,9 +315,13 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public void MarkPlaybackStart(float bufferDurationSeconds = 0)
         {
+            // Latency tracking is optional - not a core functionality issue if stopwatch not running
+            // This is normal for NPC-initiated conversations where there's no PTT button press
             if (!_stopwatch.IsRunning)
             {
-                UnityEngine.Debug.LogWarning($"[{_personaName}] MarkPlaybackStart called but stopwatch not running! This prevents latency metrics from being reported.");
+                // Debug log only - this is informational, not an error
+                // For NPC-initiated: could add separate LLM→TTS latency tracking in the future
+                //UnityEngine.Debug.Log($"[{_personaName}] MarkPlaybackStart called without active latency measurement (normal for NPC-initiated conversations)");
                 return;
             }
 

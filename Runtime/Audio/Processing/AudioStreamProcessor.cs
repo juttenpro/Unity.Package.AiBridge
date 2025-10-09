@@ -71,6 +71,13 @@ namespace Tsc.AIBridge.Audio.Processing
         private bool _isBuffering;
         private readonly object _bufferLock = new();
 
+        // Decoding pause for training scenarios (PauseManager integration)
+        // Queues Opus data during pause instead of decoding to PCM
+        // 24x more memory efficient than buffering decoded PCM samples
+        private readonly System.Collections.Concurrent.ConcurrentQueue<byte[]> _pausedOpusQueue = new();
+        private bool _isDecodingPaused;
+        private readonly object _pauseLock = new();
+
         /// <summary>
         /// Initializes the audio processor with required components and settings.
         /// </summary>
@@ -384,6 +391,24 @@ namespace Tsc.AIBridge.Audio.Processing
                 return;
             }
 
+            // Check if decoding is paused (PauseManager integration)
+            // Queue Opus data instead of decoding - 24x more memory efficient than PCM buffering
+            if (_isDecodingPaused)
+            {
+                // Clone the data to prevent buffer reuse issues
+                var clonedData = new byte[audioData.Length];
+                System.Buffer.BlockCopy(audioData, 0, clonedData, 0, audioData.Length);
+                _pausedOpusQueue.Enqueue(clonedData);
+
+                // Periodic logging to track queue size during long pauses
+                if (_isVerboseLogging && _pausedOpusQueue.Count % 50 == 0)
+                {
+                    var queueSizeKB = _pausedOpusQueue.Count * audioData.Length / 1024;
+                    Debug.Log($"[AudioStreamProcessor] Queued Opus during pause: {_pausedOpusQueue.Count} chunks (~{queueSizeKB}KB)");
+                }
+                return;
+            }
+
             lock (_streamLock)
             {
                 if (!_isStreamingAudio)
@@ -567,7 +592,68 @@ namespace Tsc.AIBridge.Audio.Processing
         {
             OnPlaybackComplete?.Invoke();
         }
-        
+
+        /// <summary>
+        /// Pause Opus decoding for training scenarios (PauseManager integration).
+        /// Incoming Opus data will be queued instead of decoded to PCM.
+        /// This is 24x more memory efficient than buffering decoded PCM samples.
+        /// PCM buffer remains stable - no growth during pause.
+        /// </summary>
+        public void PauseDecoding()
+        {
+            lock (_pauseLock)
+            {
+                if (_isDecodingPaused)
+                {
+                    if (_isVerboseLogging)
+                        Debug.LogWarning("[AudioStreamProcessor] Decoding already paused - ignoring duplicate call");
+                    return;
+                }
+
+                _isDecodingPaused = true;
+                if (_isVerboseLogging)
+                    Debug.Log("[AudioStreamProcessor] Decoding paused - Opus data will be queued (PCM buffer stable)");
+            }
+        }
+
+        /// <summary>
+        /// Resume Opus decoding and process queued Opus data.
+        /// Flushes all queued Opus chunks through the decoder in order.
+        /// PCM buffer will grow as queued Opus is decoded.
+        /// </summary>
+        public void ResumeDecoding()
+        {
+            lock (_pauseLock)
+            {
+                if (!_isDecodingPaused)
+                {
+                    if (_isVerboseLogging)
+                        Debug.LogWarning("[AudioStreamProcessor] Decoding not paused - ignoring resume call");
+                    return;
+                }
+
+                var queuedCount = _pausedOpusQueue.Count;
+                if (_isVerboseLogging && queuedCount > 0)
+                {
+                    var estimatedKB = queuedCount * 350 / 1024; // ~350 bytes average per Opus chunk
+                    Debug.Log($"[AudioStreamProcessor] Resuming decoding - processing {queuedCount} queued Opus chunks (~{estimatedKB}KB)");
+                }
+
+                _isDecodingPaused = false;
+
+                // Process all queued Opus data through the decoder
+                while (_pausedOpusQueue.TryDequeue(out var opusData))
+                {
+                    ProcessReceivedAudio(opusData); // Recursive call with _isDecodingPaused=false
+                }
+
+                if (_isVerboseLogging && queuedCount > 0)
+                {
+                    Debug.Log($"[AudioStreamProcessor] Decoding resumed - processed {queuedCount} queued chunks");
+                }
+            }
+        }
+
         public void Dispose()
         {
             if (_isDisposed) return;

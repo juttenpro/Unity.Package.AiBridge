@@ -419,22 +419,21 @@ namespace Tsc.AIBridge.Audio.Playback
 
             lock (_stateLock)
             {
-                // CRITICAL: Drop samples during pause to prevent buffer overflow
-                // When paused, we don't want to buffer audio that arrives from backend
-                // Resume will continue from where we left off, not replay old audio
-                if (_isPaused)
+                // PAUSE BEHAVIOR: Continue buffering audio during pause
+                // FillAudioBuffer() handles pause by outputting silence without dequeuing
+                // This allows seamless resume - buffer continues to grow during pause
+                // WARNING: Long pauses (>1 minute) may cause large buffers (acceptable for training scenarios)
+                if (_isPaused && enableVerboseLogging)
                 {
-                    if (enableVerboseLogging)
-                    {
-                        Debug.Log($"[{_cachedGameObjectName}] Dropping {samples.Length} samples - playback is paused");
-                    }
-                    return;
+                    Debug.Log($"[{_cachedGameObjectName}] Buffering {samples.Length} samples during pause (buffer will continue to grow)");
                 }
 
-                if (!_isStreamActive)
+                // SIMPLICITY: Process audio data regardless of _isStreamActive state
+                // State flag is for UI/IsTalking indication, not for blocking audio processing
+                // Audio pipeline: data arrives → buffer → auto-start playback when buffer full
+                if (!_isStreamActive && enableVerboseLogging)
                 {
-                    Debug.LogWarning($"[{_cachedGameObjectName}] Received audio data but stream is not active");
-                    return;
+                    Debug.Log($"[{_cachedGameObjectName}] Received audio data before StartStream() - processing anyway (state flag is informational only)");
                 }
 
                 // Track when we last received data - used for auto-detecting playback completion

@@ -225,7 +225,7 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// Start an audio request with complete conversation request (preferred method)
+        /// Start a conversation request (player-initiated with audio or NPC-initiated without audio)
         /// This is called when RuleSystem determines all conversation parameters
         /// </summary>
         public void StartConversationRequest(ConversationRequest request)
@@ -236,7 +236,9 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
-            Debug.Log($"[RequestOrchestrator] Starting conversation request - NPC: {request.NpcId}, STT: {request.SttProvider}, LLM: {request.LlmModel}");
+            Debug.Log($"[RequestOrchestrator] Starting conversation request - NPC: {request.NpcId}, " +
+                     $"Type: {(request.IsNpcInitiated ? "NPC-initiated" : "Player-initiated")}, " +
+                     $"STT: {request.SttProvider}, LLM: {request.LlmModel}");
 
             // DEBUG: Log message count in request
             Debug.Log($"[RequestOrchestrator] ConversationRequest has {request.Messages?.Count ?? 0} messages before adapter");
@@ -251,7 +253,20 @@ namespace Tsc.AIBridge.Core
 
             // Create a temporary configuration wrapper for the request
             var config = new ConversationRequestAdapter(request);
-            StartAudioRequest(config);
+
+            // Route to appropriate flow based on IsNpcInitiated flag
+            if (request.IsNpcInitiated)
+            {
+                // NPC-initiated: Skip STT, go directly to text input flow (with empty text)
+                Debug.Log("[RequestOrchestrator] Using text input flow for NPC-initiated conversation");
+                StartTextRequest(config, ""); // Empty text = NPC initiates based on system prompt/history
+            }
+            else
+            {
+                // Player-initiated: Use normal audio/STT flow
+                Debug.Log("[RequestOrchestrator] Using audio request flow for player-initiated conversation");
+                StartAudioRequest(config);
+            }
         }
 
         /// <summary>
@@ -276,17 +291,22 @@ namespace Tsc.AIBridge.Core
 
             _activeNpcConfig = npcConfig;
 
-            // Try to find the NPC client
-            if (_npcProvider != null)
+            // Get NPC client from provider - MUST be configured!
+            if (_npcProvider == null)
             {
-                _activeNpcClient = _npcProvider.GetNpcClient(npcConfig.Id);
+                Debug.LogError("[RequestOrchestrator] No NPC provider configured! Set 'npcProviderComponent' in Inspector to a component implementing INpcProvider (e.g., AIBridgeRulesHandler).");
+                return;
             }
-            else
+
+            _activeNpcClient = _npcProvider.GetNpcClient(npcConfig.Id);
+
+            if (_activeNpcClient == null)
             {
-                // Fallback: try to find any NPC client in scene
-                var allClients = FindObjectsByType<NpcClientBase>(FindObjectsSortMode.None);
-                _activeNpcClient = allClients.FirstOrDefault();
+                Debug.LogError($"[RequestOrchestrator] NPC provider returned null for NPC ID: '{npcConfig.Id}'. Check that NPC client exists in scene and matches this ID.");
+                return;
             }
+
+            Debug.Log($"[RequestOrchestrator] Found NPC client: {_activeNpcClient.NpcName} for ID: {npcConfig.Id}");
 
             // Notify listeners (e.g., InterruptionManager) about active NPC change
             OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
@@ -350,21 +370,35 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public void StartTextRequest(INpcConfiguration npcConfig, string text)
         {
-            if (npcConfig == null || string.IsNullOrEmpty(text))
+            // Note: text can be empty string for NPC-initiated conversations (NPC speaks first without player input)
+            if (npcConfig == null || text == null)
             {
                 Debug.LogError("[RequestOrchestrator] Invalid text request parameters!");
                 return;
             }
 
-            Debug.Log($"[RequestOrchestrator] Starting text request for {npcConfig.Name}: {text}");
+            var isNpcInitiated = string.IsNullOrEmpty(text);
+            Debug.Log($"[RequestOrchestrator] Starting text request for {npcConfig.Name}" +
+                     (isNpcInitiated ? " (NPC-initiated, no player input)" : $": {text}"));
 
             _activeNpcConfig = npcConfig;
 
-            // Try to find the NPC client
-            if (_npcProvider != null)
+            // Get NPC client from provider - MUST be configured!
+            if (_npcProvider == null)
             {
-                _activeNpcClient = _npcProvider.GetNpcClient(npcConfig.Id);
+                Debug.LogError("[RequestOrchestrator] No NPC provider configured! Set 'npcProviderComponent' in Inspector to a component implementing INpcProvider (e.g., AIBridgeRulesHandler).");
+                return;
             }
+
+            _activeNpcClient = _npcProvider.GetNpcClient(npcConfig.Id);
+
+            if (_activeNpcClient == null)
+            {
+                Debug.LogError($"[RequestOrchestrator] NPC provider returned null for NPC ID: '{npcConfig.Id}'. Check that NPC client exists in scene and matches this ID.");
+                return;
+            }
+
+            Debug.Log($"[RequestOrchestrator] Found NPC client: {_activeNpcClient.NpcName} for ID: {npcConfig.Id}");
 
             // Notify listeners (e.g., InterruptionManager) about active NPC change
             OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
@@ -925,6 +959,14 @@ namespace Tsc.AIBridge.Core
             {
                 Debug.Log($"[RequestOrchestrator] Processing text request: {request.Text}");
 
+                // Validate NPC client is available
+                if (_activeNpcClient == null)
+                {
+                    Debug.LogError("[RequestOrchestrator] Cannot process text request - no active NPC client! This should have been caught in StartTextRequest.");
+                    _isProcessingRequest = false;
+                    yield break;
+                }
+
                 // Start WebSocket session with text input
                 var npcName = _activeNpcClient?.NpcName ?? request.NpcConfig.Name;
                 _currentSession = new ConversationSession(npcName, request.RequestId);
@@ -947,7 +989,7 @@ namespace Tsc.AIBridge.Core
                 {
                     RequestId = request.RequestId,
                     Text = request.Text,
-                    IsNpcInitiated = false,
+                    IsNpcInitiated = string.IsNullOrEmpty(request.Text), // Empty text = NPC-initiated
                     Context = new ConversationContext
                     {
                         messages = messages,
