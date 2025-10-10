@@ -1011,6 +1011,20 @@ namespace Tsc.AIBridge.Core
                 yield return _webSocketClient.SendTextInputAsync(textInputMessage);
 
                 Debug.Log($"[RequestOrchestrator] Text request started. Session: {_currentSession.RequestId}");
+
+                // Start latency measurement for NPC-initiated conversations
+                // For player-initiated: StartMeasurement is called on PTT release
+                // For NPC-initiated: StartMeasurement is called after request is sent
+                var tracker = GetLatencyTracker(_activeNpcClient);
+                if (tracker != null)
+                {
+                    tracker.StartMeasurement();
+                    Debug.Log($"[RequestOrchestrator] StartMeasurement() called for NPC-initiated conversation: {_activeNpcClient?.NpcName}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[RequestOrchestrator] Could not call StartMeasurement() - LatencyTracker is null for {_activeNpcClient?.NpcName}");
+                }
             }
             finally
             {
