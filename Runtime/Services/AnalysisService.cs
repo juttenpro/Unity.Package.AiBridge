@@ -58,8 +58,7 @@ namespace Tsc.AIBridge.Services
         /// <summary>
         /// Request analysis via WebSocket - simplest approach.
         /// </summary>
-        /// <param name="systemPrompt">The system prompt for analysis</param>
-        /// <param name="messages">Chat history messages</param>
+        /// <param name="messages">Chat history messages (system message should be first message with role="system" if needed)</param>
         /// <param name="llmProvider">LLM provider to use (e.g., "openai", "vertexai")</param>
         /// <param name="llmModel">LLM model to use</param>
         /// <param name="temperature">Temperature for response generation</param>
@@ -67,7 +66,6 @@ namespace Tsc.AIBridge.Services
         /// <param name="onSuccess">Callback when analysis completes</param>
         /// <param name="onError">Callback on error</param>
         public IEnumerator RequestAnalysis(
-            string systemPrompt,
             List<ChatMessage> messages,
             string llmProvider,
             string llmModel,
@@ -79,26 +77,48 @@ namespace Tsc.AIBridge.Services
             // Check WebSocket connection
             if (WebSocketClient.Instance == null || !WebSocketClient.Instance.IsConnected)
             {
+                Debug.LogError($"[AnalysisService] WebSocket not connected - Instance null: {WebSocketClient.Instance == null}, Connected: {WebSocketClient.Instance?.IsConnected ?? false}");
                 onError?.Invoke("WebSocket not connected - ensure connection is established first");
                 yield break;
             }
 
             // Create request
             var requestId = Guid.NewGuid().ToString();
+            Debug.Log($"[AnalysisService] Creating analysis request with ID: {requestId}");
+
+            // Validate messages array has at least one message
+            if (messages == null || messages.Count == 0)
+            {
+                onError?.Invoke("At least one message is required for analysis");
+                yield break;
+            }
+
+            // LOG: Show all messages being sent to API for debugging
+            Debug.Log($"[AnalysisService] === ANALYSIS REQUEST MESSAGES ({messages.Count} total) ===");
+            for (int i = 0; i < messages.Count; i++)
+            {
+                var msg = messages[i];
+                var preview = msg.Content.Length > 150 ? msg.Content.Substring(0, 150) + "..." : msg.Content;
+                Debug.Log($"[AnalysisService] Message {i}: Role='{msg.Role}', Content='{preview}'");
+            }
+            Debug.Log($"[AnalysisService] === END MESSAGES ===");
+
             var request = new AnalysisRequestMessage
             {
                 RequestId = requestId,
                 Context = new ConversationContext
                 {
-                    systemPrompt = systemPrompt,
+                    // Messages array contains everything, including system message if present
                     messages = messages,
                     llmProvider = llmProvider,
                     llmModel = llmModel,
                     temperature = temperature,
                     maxTokens = maxTokens,
-                    language = null,  // Not relevant for analysis - no TTS/STT involved
-                    // TTS/STT fields not needed for analysis
+                    // Language and VoiceId are optional - backend provides defaults
+                    language = null,
                     voiceId = null,
+                    // TTS/STT fields not needed for analysis
+                    systemPrompt = null,
                     ttsStreamingMode = null,
                     ttsModel = null,
                     sttProvider = null
@@ -111,10 +131,13 @@ namespace Tsc.AIBridge.Services
             _pendingResponse = null;
 
             // Register as handler for this RequestId
+            Debug.Log($"[AnalysisService] Registering as handler for RequestId: {requestId}");
             WebSocketClient.Instance.RegisterNpc(requestId, this);
 
             // Send request via WebSocket
+            Debug.Log($"[AnalysisService] Sending analysis request to backend - LLM: {llmProvider}/{llmModel}, Temp: {temperature}, MaxTokens: {maxTokens}");
             _ = WebSocketClient.Instance.SendAnalysisRequestAsync(request);
+            Debug.Log($"[AnalysisService] Analysis request sent, waiting for response...");
 
             // Wait for response (with timeout)
             var timeout = 30f; // 30 second timeout
@@ -154,25 +177,50 @@ namespace Tsc.AIBridge.Services
         {
             try
             {
+                Debug.Log($"[AnalysisService] OnTextMessage received: {(json.Length > 200 ? json.Substring(0, 200) + "..." : json)}");
+
                 // Check if it's an analysis response
                 if (!json.Contains("\"type\":\"analysisresponse\""))
+                {
+                    Debug.Log($"[AnalysisService] Message is not analysisresponse, ignoring");
                     return;
+                }
 
+                Debug.Log($"[AnalysisService] Parsing analysis response...");
                 var message = Newtonsoft.Json.JsonConvert.DeserializeObject<AnalysisResponseMessage>(json);
                 if (message != null && message.RequestId == _pendingRequestId)
                 {
+                    // Convert llmResponse object to JObject if needed
+                    Newtonsoft.Json.Linq.JObject llmResponseJObject = null;
+                    if (message.LlmResponse != null)
+                    {
+                        llmResponseJObject = message.LlmResponse as Newtonsoft.Json.Linq.JObject;
+                        if (llmResponseJObject == null)
+                        {
+                            // If not already JObject, serialize and deserialize to convert
+                            var jsonString = Newtonsoft.Json.JsonConvert.SerializeObject(message.LlmResponse);
+                            llmResponseJObject = Newtonsoft.Json.Linq.JObject.Parse(jsonString);
+                        }
+                    }
+
                     _pendingResponse = new AnalysisResponse
                     {
                         analysis = message.Analysis,
-                        llmResponse = message.LlmResponse,
+                        llmResponse = llmResponseJObject,
                         metadata = message.Metadata,
                         timing = message.Timing
                     };
+
+                    Debug.Log($"[AnalysisService] Analysis response received successfully for RequestId: {message.RequestId}");
+                }
+                else
+                {
+                    Debug.LogWarning($"[AnalysisService] Analysis response received but RequestId mismatch. Expected: {_pendingRequestId}, Got: {message?.RequestId}");
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[AnalysisService] Failed to parse response: {ex.Message}");
+                Debug.LogError($"[AnalysisService] Failed to parse response: {ex.Message}\nStack trace: {ex.StackTrace}");
                 _pendingErrorCallback?.Invoke($"Failed to parse response: {ex.Message}");
             }
         }
@@ -198,7 +246,7 @@ namespace Tsc.AIBridge.Services
         public class AnalysisResponse
         {
             public string analysis;
-            public object llmResponse;
+            public Newtonsoft.Json.Linq.JObject llmResponse;
             public object metadata;
             public object timing;
         }
