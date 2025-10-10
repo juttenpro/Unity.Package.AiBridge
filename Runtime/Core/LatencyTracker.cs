@@ -297,21 +297,20 @@ namespace Tsc.AIBridge.Core
             // Check if we have the essential backend timings
             if (!_hasLlmCompleted || !_hasTtsTimingReceived)
             {
-                UnityEngine.Debug.Log($"[{_personaName}] Cannot report yet - LLM: {_hasLlmCompleted}, TTS: {_hasTtsTimingReceived}");
+                //UnityEngine.Debug.Log($"[{_personaName}] Cannot report yet - LLM: {_hasLlmCompleted}, TTS: {_hasTtsTimingReceived}");
                 return;
             }
 
             // Log component timings for debugging (but don't use as perceived latency)
-            UnityEngine.Debug.Log($"[{_personaName}] Backend timings received - STT:{_sttLatency}ms, LLM:{_llmLatency}ms, TTS:{_ttsLatency}ms (sum: {_sttLatency + _llmLatency + _ttsLatency}ms, but NOT perceived latency due to streaming)");
+            //UnityEngine.Debug.Log($"[{_personaName}] Backend timings received - STT:{_sttLatency}ms, LLM:{_llmLatency}ms, TTS:{_ttsLatency}ms (sum: {_sttLatency + _llmLatency + _ttsLatency}ms, but NOT perceived latency due to streaming)");
 
             // Check if playback has already started and report if we have everything
             CheckAndReportIfComplete();
         }
         
         /// <summary>
-        /// Mark playback start (audio actually playing)
-        /// This measures the total perceived latency from PTT release to audio start
-        /// SIMPLE: Reports immediately - no waiting for other timings (no race conditions!)
+        /// Mark playback buffer ready (buffer filled, about to play)
+        /// Does NOT stop the stopwatch - waits for actual audio output
         /// </summary>
         public void MarkPlaybackStart(float bufferDurationSeconds = 0)
         {
@@ -325,23 +324,36 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
-            // The ONLY measurement that matters: PTT release → Audio playback start
+            // Mark playback as started but DON'T stop stopwatch yet
+            // We'll stop it when first audio sample is actually output
+            _hasPlaybackStarted = true;
+
+            //UnityEngine.Debug.Log($"[{_personaName}] Playback buffer ready at {_stopwatch.ElapsedMilliseconds}ms - waiting for actual audio output");
+        }
+
+        /// <summary>
+        /// Mark actual audio output (first sample played through speakers)
+        /// This is the TRUE perceived latency - when user actually hears audio
+        /// </summary>
+        public void MarkActualAudioOutput()
+        {
+            if (!_stopwatch.IsRunning)
+            {
+                //UnityEngine.Debug.LogWarning($"[{_personaName}] MarkActualAudioOutput called but stopwatch not running");
+                return;
+            }
+
+            // The ONLY measurement that matters: PTT release (or request start) → First audio sample output
             var totalPerceivedLatency = _stopwatch.ElapsedMilliseconds;
 
             _stopwatch.Stop();
 
-            // Add buffer duration to account for actual audio output delay
-            if (bufferDurationSeconds > 0)
-            {
-                totalPerceivedLatency += (long)(bufferDurationSeconds * 1000);
-            }
-
             // Store for history
             _latencyHistory.Add(totalPerceivedLatency);
 
-            // Mark playback as started
-            _hasPlaybackStarted = true;
             _pendingPerceivedLatency = totalPerceivedLatency;
+
+            //UnityEngine.Debug.Log($"[{_personaName}] ✅ Actual audio output at {totalPerceivedLatency}ms - true perceived latency");
 
             // Check if we can report immediately (if TTS timing already arrived)
             // Otherwise, wait for CheckAndReportIfComplete() when TTS timing arrives
@@ -425,7 +437,7 @@ namespace Tsc.AIBridge.Core
             // Debug: Log static event invocation
             if (OnLatencyStatsUpdatedStatic != null)
             {
-                UnityEngine.Debug.Log($"[{_personaName}] Invoking static event with {OnLatencyStatsUpdatedStatic.GetInvocationList().Length} subscribers");
+                //UnityEngine.Debug.Log($"[{_personaName}] Invoking static event with {OnLatencyStatsUpdatedStatic.GetInvocationList().Length} subscribers");
                 OnLatencyStatsUpdatedStatic.Invoke(stats);
             }
             else

@@ -22,6 +22,10 @@ namespace Tsc.AIBridge.Audio.Capture
         [Tooltip("Enable volume calculation for debugging (slight performance cost)")]
         private bool calculateVolume = true;
 
+        [SerializeField]
+        [Tooltip("Enable verbose logging for debugging")]
+        private bool enableVerboseLogging;
+
         #endregion
         #region Static Events
 
@@ -197,7 +201,8 @@ namespace Tsc.AIBridge.Audio.Capture
             yield return null; // Wait one frame for Awake to complete
 #endif
 
-            Debug.Log("[MicrophoneCapture] Starting microphone at scene start (prevents hardware switching delays)");
+            if (enableVerboseLogging)
+                Debug.Log("[MicrophoneCapture] Starting microphone at scene start (prevents hardware switching delays)");
             StartCapture();
         }
 
@@ -255,7 +260,8 @@ namespace Tsc.AIBridge.Audio.Capture
 
                 // Use default device (first available)
                 SelectedDevice = devices[0];
-                Debug.Log($"[MicrophoneCapture] Using default device: {SelectedDevice}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[MicrophoneCapture] Using default device: {SelectedDevice}");
             }
 
             // Check device capabilities
@@ -339,7 +345,8 @@ namespace Tsc.AIBridge.Audio.Capture
 
             OnCaptureStopped?.Invoke();
             RecordingStopped?.Invoke(); // Fire static event for RecorderBase compatibility
-            Debug.Log("[MicrophoneCapture] Stopped capture");
+            if (enableVerboseLogging)
+                Debug.Log("[MicrophoneCapture] Stopped capture");
         }
 
         public bool SelectDevice(string deviceName)
@@ -377,7 +384,8 @@ namespace Tsc.AIBridge.Audio.Capture
         {
             if (!enableEchoCancellation)
             {
-                Debug.Log("[MicrophoneCapture] Echo cancellation disabled");
+                if (enableVerboseLogging)
+                    Debug.Log("[MicrophoneCapture] Echo cancellation disabled");
                 return;
             }
 
@@ -461,7 +469,8 @@ namespace Tsc.AIBridge.Audio.Capture
 
             OnCaptureStarted?.Invoke();
             RecordingStarted?.Invoke(); // Fire static event for RecorderBase compatibility
-            Debug.Log($"[MicrophoneCapture] Started capture - Device: {SelectedDevice}, SampleRate: {actualSampleRate}Hz, Channels: {Channels}");
+            if (enableVerboseLogging)
+                Debug.Log($"[MicrophoneCapture] Started capture - Device: {SelectedDevice}, SampleRate: {actualSampleRate}Hz, Channels: {Channels}");
         }
 
         private IEnumerator CaptureRoutine()

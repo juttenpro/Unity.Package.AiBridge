@@ -15,6 +15,15 @@ namespace Tsc.AIBridge.Core
     /// </summary>
     public abstract class NpcClientBase : MonoBehaviour, IConversationHistory, INpcMessageHandler
     {
+        #region Debug Settings
+
+        [Header("Debug Settings")]
+        [SerializeField]
+        [Tooltip("Enable verbose logging for debugging")]
+        protected bool enableVerboseLogging;
+
+        #endregion
+
         #region Properties
 
         /// <summary>
@@ -134,7 +143,7 @@ namespace Tsc.AIBridge.Core
             LatencyTracker = new LatencyTracker(NpcName);
 
             // Initialize metadata handler for processing WebSocket messages
-            _metadataHandler = new ConversationMetadataHandler(NpcName, LatencyTracker, enableVerboseLogging: false);
+            _metadataHandler = new ConversationMetadataHandler(NpcName, LatencyTracker, enableVerboseLogging: enableVerboseLogging);
 
             // Subscribe to transcription events to forward to RequestOrchestrator
             _metadataHandler.OnTranscription += HandleTranscription;
@@ -146,7 +155,8 @@ namespace Tsc.AIBridge.Core
                 if (_audioMessageHandler != null && !string.IsNullOrEmpty(_metadataHandler?.LastRequestId))
                 {
                     _audioMessageHandler.OnNewRequest(_metadataHandler.LastRequestId);
-                    Debug.Log($"[{NpcName}] SessionStarted - AudioMessageHandler reset for new request");
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{NpcName}] SessionStarted - AudioMessageHandler reset for new request");
                 }
 
                 OnSessionStarted?.Invoke();
@@ -169,8 +179,9 @@ namespace Tsc.AIBridge.Core
             var audioProcessor = DownstreamAudioProcessor;
             if (audioProcessor != null)
             {
-                _audioMessageHandler = new Handlers.AudioMessageHandler(NpcName, audioProcessor, enableVerboseLogging: false);
-                Debug.Log($"[{NpcName}] AudioMessageHandler initialized for audio processing");
+                _audioMessageHandler = new Handlers.AudioMessageHandler(NpcName, audioProcessor, enableVerboseLogging: enableVerboseLogging);
+                if (enableVerboseLogging)
+                    Debug.Log($"[{NpcName}] AudioMessageHandler initialized for audio processing");
             }
 
             // Subscribe to StreamingAudioPlayer events for IsTalking state management (interruption support)
@@ -180,7 +191,8 @@ namespace Tsc.AIBridge.Core
                 {
                     IsTalking = true;
                     OnAudioStarted?.Invoke();
-                    Debug.Log($"[{NpcName}] IsTalking = true (playback started)");
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{NpcName}] IsTalking = true (playback started)");
                 });
 
                 AudioPlayer.OnPlaybackComplete.AddListener(() =>
@@ -194,13 +206,15 @@ namespace Tsc.AIBridge.Core
                     if (audioProcessor != null)
                     {
                         audioProcessor.EndAudioStream();
-                        Debug.Log($"[{NpcName}] Playback complete - called EndAudioStream() to reset stream state");
+                        if (enableVerboseLogging)
+                            Debug.Log($"[{NpcName}] Playback complete - called EndAudioStream() to reset stream state");
                     }
 
                     if (_audioMessageHandler != null)
                     {
                         _audioMessageHandler.Reset();
-                        Debug.Log($"[{NpcName}] Playback complete - AudioMessageHandler reset");
+                        if (enableVerboseLogging)
+                            Debug.Log($"[{NpcName}] Playback complete - AudioMessageHandler reset");
                     }
                 });
 
@@ -215,21 +229,25 @@ namespace Tsc.AIBridge.Core
                     if (audioProcessor != null)
                     {
                         audioProcessor.EndAudioStream();
-                        Debug.Log($"[{NpcName}] Playback interrupted - called EndAudioStream() to reset stream state");
+                        if (enableVerboseLogging)
+                            Debug.Log($"[{NpcName}] Playback interrupted - called EndAudioStream() to reset stream state");
                     }
 
                     if (_audioMessageHandler != null)
                     {
                         _audioMessageHandler.Reset();
-                        Debug.Log($"[{NpcName}] Playback interrupted - AudioMessageHandler reset");
+                        if (enableVerboseLogging)
+                            Debug.Log($"[{NpcName}] Playback interrupted - AudioMessageHandler reset");
                     }
                 });
 
-                Debug.Log($"[{NpcName}] Subscribed to StreamingAudioPlayer events for IsTalking management");
+                if (enableVerboseLogging)
+                    Debug.Log($"[{NpcName}] Subscribed to StreamingAudioPlayer events for IsTalking management");
             }
             else
             {
-                Debug.LogWarning($"[{NpcName}] StreamingAudioPlayer not found - IsTalking will not be automatically managed (interruption may not work)");
+                if (enableVerboseLogging)
+                    Debug.LogWarning($"[{NpcName}] StreamingAudioPlayer not found - IsTalking will not be automatically managed (interruption may not work)");
             }
 
             // Register with the message router to receive WebSocket messages
@@ -241,9 +259,12 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         protected virtual void HandleTranscription(string transcript)
         {
-            // DEBUG: Track how many times this is called
-            Debug.Log($"[{NpcName}] HandleTranscription called with: {transcript}");
-            Debug.Log($"[{NpcName}] Stack trace: {Environment.StackTrace}");
+            if (enableVerboseLogging)
+            {
+                // DEBUG: Track how many times this is called
+                Debug.Log($"[{NpcName}] HandleTranscription called with: {transcript}");
+                Debug.Log($"[{NpcName}] Stack trace: {Environment.StackTrace}");
+            }
 
             // Forward to RequestOrchestrator if it exists
             var orchestrator = RequestOrchestrator.Instance;
@@ -255,7 +276,8 @@ namespace Tsc.AIBridge.Core
             // Fire static event for test UI (LatencyLogUI)
             OnTranscriptionReceivedStatic?.Invoke(NpcName, transcript);
 
-            Debug.Log($"[{NpcName}] Transcription: {transcript}");
+            if (enableVerboseLogging)
+                Debug.Log($"[{NpcName}] Transcription: {transcript}");
         }
 
         protected abstract void ValidateConfiguration();
@@ -343,7 +365,8 @@ namespace Tsc.AIBridge.Core
         /// <param name="context">Conversation context with all parameters</param>
         public virtual void StartTextConversation(string userInput, ConversationContext context)
         {
-            Debug.Log($"[{GetType().Name}] Starting text conversation: {userInput}");
+            if (enableVerboseLogging)
+                Debug.Log($"[{GetType().Name}] Starting text conversation: {userInput}");
 
             // Create text input message with context
             var textMessage = CreateTextInputMessage(userInput, false, context);
@@ -361,7 +384,8 @@ namespace Tsc.AIBridge.Core
         /// <param name="model">Optional TTS model override (null = use default)</param>
         public virtual async void SendDirectTTS(string text, string voice = null, string model = null)
         {
-            Debug.Log($"[{GetType().Name}] Sending DirectTTS: {text} (voice: {voice ?? "default"})");
+            if (enableVerboseLogging)
+                Debug.Log($"[{GetType().Name}] Sending DirectTTS: {text} (voice: {voice ?? "default"})");
 
             // Create DirectTTS message
             var directTtsMessage = new DirectTTSMessage
@@ -386,7 +410,8 @@ namespace Tsc.AIBridge.Core
             // Send DirectTTS message
             await webSocketClient.SendDirectTTSAsync(directTtsMessage);
 
-            Debug.Log($"[{GetType().Name}] DirectTTS message sent with RequestId: {directTtsMessage.RequestId}");
+            if (enableVerboseLogging)
+                Debug.Log($"[{GetType().Name}] DirectTTS message sent with RequestId: {directTtsMessage.RequestId}");
         }
 
         /// <summary>
@@ -408,7 +433,8 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         protected virtual async void SendTextInputMessage(TextInputMessage message)
         {
-            Debug.Log($"[{GetType().Name}] Sending text input message. NPC-initiated: {message.IsNpcInitiated}");
+            if (enableVerboseLogging)
+                Debug.Log($"[{GetType().Name}] Sending text input message. NPC-initiated: {message.IsNpcInitiated}");
 
             // Get the WebSocket client
             var webSocketClient = WebSocketClient.Instance;
@@ -425,7 +451,8 @@ namespace Tsc.AIBridge.Core
             try
             {
                 await webSocketClient.SendTextInputAsync(message);
-                Debug.Log($"[{GetType().Name}] Sent text input message. RequestId: {message.RequestId}, NPC-initiated: {message.IsNpcInitiated}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[{GetType().Name}] Sent text input message. RequestId: {message.RequestId}, NPC-initiated: {message.IsNpcInitiated}");
             }
             catch (Exception ex)
             {
@@ -445,7 +472,8 @@ namespace Tsc.AIBridge.Core
         /// <param name="metadata">Optional metadata about the response (timing, model info, etc.)</param>
         public virtual void OnAiResponseReceived(string response, Dictionary<string, object> metadata = null)
         {
-            Debug.Log($"[{GetType().Name}] AI response: {response}");
+            if (enableVerboseLogging)
+                Debug.Log($"[{GetType().Name}] AI response: {response}");
 
             // Store last response
             LastResponseText = response;
@@ -560,14 +588,14 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public virtual void OnTextMessage(string json)
         {
-            // Handle text messages - typically JSON messages like AiResponse, AudioStreamStart, etc.
-            Debug.Log($"[{GetType().Name}] Received text message: {json}");
+            if (enableVerboseLogging)
+            {
+                // Handle text messages - typically JSON messages like AiResponse, AudioStreamStart, etc.
+                Debug.Log($"[{GetType().Name}] Received text message: {json}");
+            }
 
             // Forward to metadata handler for processing
-            if (_metadataHandler != null)
-            {
-                _metadataHandler.ProcessMessage(json);
-            }
+            _metadataHandler?.ProcessMessage(json);
         }
 
         /// <summary>
@@ -588,7 +616,8 @@ namespace Tsc.AIBridge.Core
             }
 
             // Fallback for NPCs without audio processor (rare case)
-            Debug.LogWarning($"[{NpcName}] Received audio but AudioMessageHandler not initialized - cannot process");
+            if (enableVerboseLogging)
+                Debug.LogWarning($"[{NpcName}] Received audio but AudioMessageHandler not initialized - cannot process");
         }
 
         /// <summary>
@@ -596,7 +625,8 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public virtual void OnRequestComplete(string requestId)
         {
-            Debug.Log($"[{GetType().Name}] Request completed: {requestId}");
+            if (enableVerboseLogging)
+                Debug.Log($"[{GetType().Name}] Request completed: {requestId}");
             // Clean up any request-specific resources if needed
         }
 

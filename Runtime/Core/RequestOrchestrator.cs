@@ -91,6 +91,11 @@ namespace Tsc.AIBridge.Core
         [Tooltip("Enable latency metrics tracking for all conversations")]
         [SerializeField] private bool enableMetrics = true;
 
+        [Header("Debug Settings")]
+        [SerializeField]
+        [Tooltip("Enable verbose logging for debugging")]
+        private bool enableVerboseLogging;
+
         #endregion
 
         #region Events
@@ -171,11 +176,13 @@ namespace Tsc.AIBridge.Core
             }
 
             speechInputHandler.AudioStreamProcessor.OnOpusAudioEncoded += ProcessAudioChunk;
-            Debug.Log("[RequestOrchestrator] Subscribed to AudioStreamProcessor.OnOpusAudioEncoded");
+            if (enableVerboseLogging)
+                Debug.Log("[RequestOrchestrator] Subscribed to AudioStreamProcessor.OnOpusAudioEncoded");
 
             // Subscribe to recording stopped event to send EndOfSpeech
             speechInputHandler.OnRecordingStopped += HandleRecordingStopped;
-            Debug.Log("[RequestOrchestrator] Subscribed to SpeechInputHandler.OnRecordingStopped");
+            if (enableVerboseLogging)
+                Debug.Log("[RequestOrchestrator] Subscribed to SpeechInputHandler.OnRecordingStopped");
 
             _processQueueCoroutine = StartCoroutine(ProcessRequestQueues());
         }
@@ -221,7 +228,8 @@ namespace Tsc.AIBridge.Core
         public void SetNpcProvider(INpcProvider provider)
         {
             _npcProvider = provider;
-            Debug.Log($"[RequestOrchestrator] NPC provider set: {provider?.GetType().Name ?? "null"}");
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] NPC provider set: {provider?.GetType().Name ?? "null"}");
         }
 
         /// <summary>
@@ -236,18 +244,21 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
-            Debug.Log($"[RequestOrchestrator] Starting conversation request - NPC: {request.NpcId}, " +
-                     $"Type: {(request.IsNpcInitiated ? "NPC-initiated" : "Player-initiated")}, " +
-                     $"STT: {request.SttProvider}, LLM: {request.LlmModel}");
-
-            // DEBUG: Log message count in request
-            Debug.Log($"[RequestOrchestrator] ConversationRequest has {request.Messages?.Count ?? 0} messages before adapter");
-            if (request.Messages != null)
+            if (enableVerboseLogging)
             {
-                foreach (var msg in request.Messages)
+                Debug.Log($"[RequestOrchestrator] Starting conversation request - NPC: {request.NpcId}, " +
+                         $"Type: {(request.IsNpcInitiated ? "NPC-initiated" : "Player-initiated")}, " +
+                         $"STT: {request.SttProvider}, LLM: {request.LlmModel}");
+
+                // DEBUG: Log message count in request
+                Debug.Log($"[RequestOrchestrator] ConversationRequest has {request.Messages?.Count ?? 0} messages before adapter");
+                if (request.Messages != null)
                 {
-                    var preview = msg.Content?.Length > 50 ? msg.Content.Substring(0, 50) + "..." : msg.Content;
-                    Debug.Log($"  - [{msg.Role}] {preview}");
+                    foreach (var msg in request.Messages)
+                    {
+                        var preview = msg.Content?.Length > 50 ? msg.Content.Substring(0, 50) + "..." : msg.Content;
+                        Debug.Log($"  - [{msg.Role}] {preview}");
+                    }
                 }
             }
 
@@ -258,13 +269,15 @@ namespace Tsc.AIBridge.Core
             if (request.IsNpcInitiated)
             {
                 // NPC-initiated: Skip STT, go directly to text input flow (with empty text)
-                Debug.Log("[RequestOrchestrator] Using text input flow for NPC-initiated conversation");
+                if (enableVerboseLogging)
+                    Debug.Log("[RequestOrchestrator] Using text input flow for NPC-initiated conversation");
                 StartTextRequest(config, ""); // Empty text = NPC initiates based on system prompt/history
             }
             else
             {
                 // Player-initiated: Use normal audio/STT flow
-                Debug.Log("[RequestOrchestrator] Using audio request flow for player-initiated conversation");
+                if (enableVerboseLogging)
+                    Debug.Log("[RequestOrchestrator] Using audio request flow for player-initiated conversation");
                 StartAudioRequest(config);
             }
         }
@@ -280,12 +293,14 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
-            Debug.Log($"[RequestOrchestrator] Starting audio request for NPC: {npcConfig.Name}");
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Starting audio request for NPC: {npcConfig.Name}");
 
             // Check if we're already in a session with a different NPC
             if (_currentSession != null && _activeNpcConfig?.Id != npcConfig.Id)
             {
-                Debug.Log($"[RequestOrchestrator] Switching from {_activeNpcConfig?.Name} to {npcConfig.Name}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Switching from {_activeNpcConfig?.Name} to {npcConfig.Name}");
                 CancelCurrentSession("Switching to different NPC");
             }
 
@@ -306,7 +321,8 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
-            Debug.Log($"[RequestOrchestrator] Found NPC client: {_activeNpcClient.NpcName} for ID: {npcConfig.Id}");
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Found NPC client: {_activeNpcClient.NpcName} for ID: {npcConfig.Id}");
 
             // Notify listeners (e.g., InterruptionManager) about active NPC change
             OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
@@ -323,11 +339,13 @@ namespace Tsc.AIBridge.Core
             if (tracker != null)
             {
                 tracker.MarkRecordingStart();
-                Debug.Log($"[RequestOrchestrator] MarkRecordingStart() called for {_activeNpcClient?.NpcName}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] MarkRecordingStart() called for {_activeNpcClient?.NpcName}");
             }
             else
             {
-                Debug.LogWarning($"[RequestOrchestrator] Could not call MarkRecordingStart() - LatencyTracker is null");
+                if (enableVerboseLogging)
+                    Debug.LogWarning($"[RequestOrchestrator] Could not call MarkRecordingStart() - LatencyTracker is null");
             }
 
             // Note: Animation events should be triggered via the NPC client, not directly
@@ -340,7 +358,8 @@ namespace Tsc.AIBridge.Core
             };
 
             _audioRequestQueue.Enqueue(request);
-            Debug.Log($"[RequestOrchestrator] Audio request queued. Queue size: {_audioRequestQueue.Count}");
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Audio request queued. Queue size: {_audioRequestQueue.Count}");
         }
 
         /// <summary>
@@ -378,8 +397,9 @@ namespace Tsc.AIBridge.Core
             }
 
             var isNpcInitiated = string.IsNullOrEmpty(text);
-            Debug.Log($"[RequestOrchestrator] Starting text request for {npcConfig.Name}" +
-                     (isNpcInitiated ? " (NPC-initiated, no player input)" : $": {text}"));
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Starting text request for {npcConfig.Name}" +
+                         (isNpcInitiated ? " (NPC-initiated, no player input)" : $": {text}"));
 
             _activeNpcConfig = npcConfig;
 
@@ -398,7 +418,8 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
-            Debug.Log($"[RequestOrchestrator] Found NPC client: {_activeNpcClient.NpcName} for ID: {npcConfig.Id}");
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Found NPC client: {_activeNpcClient.NpcName} for ID: {npcConfig.Id}");
 
             // Notify listeners (e.g., InterruptionManager) about active NPC change
             OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
@@ -411,7 +432,8 @@ namespace Tsc.AIBridge.Core
             };
 
             _textRequestQueue.Enqueue(request);
-            Debug.Log($"[RequestOrchestrator] Text request queued. Queue size: {_textRequestQueue.Count}");
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Text request queued. Queue size: {_textRequestQueue.Count}");
         }
 
         /// <summary>
@@ -426,7 +448,8 @@ namespace Tsc.AIBridge.Core
             // Request is no longer accepting new audio chunks
             _isRequestActive = false;
 
-            Debug.Log("[RequestOrchestrator] Audio request ended (PTT released)");
+            if (enableVerboseLogging)
+                Debug.Log("[RequestOrchestrator] Audio request ended (PTT released)");
         }
 
         /// <summary>
@@ -436,13 +459,15 @@ namespace Tsc.AIBridge.Core
         {
             if (_currentSession != null)
             {
-                Debug.Log($"[RequestOrchestrator] Cancelling session {_currentSession.RequestId}: {reason}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Cancelling session {_currentSession.RequestId}: {reason}");
 
                 // Discard any buffered audio (RuleSystem rejection or interruption)
                 if (speechInputHandler?.AudioStreamProcessor != null)
                 {
                     speechInputHandler.AudioStreamProcessor.DiscardBuffer();
-                    Debug.Log("[RequestOrchestrator] Discarded buffered audio due to session cancellation");
+                    if (enableVerboseLogging)
+                        Debug.Log("[RequestOrchestrator] Discarded buffered audio due to session cancellation");
                 }
 
                 // Stop any ongoing recording
@@ -499,7 +524,8 @@ namespace Tsc.AIBridge.Core
                 };
 
                 await _webSocketClient.SendSessionCancelAsync(cancelMessage);
-                Debug.Log($"[RequestOrchestrator] Sent SessionCancel to backend for session {requestId} (reason: {reason})");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Sent SessionCancel to backend for session {requestId} (reason: {reason})");
             }
             catch (Exception ex)
             {
@@ -542,7 +568,8 @@ namespace Tsc.AIBridge.Core
                 };
 
                 await _webSocketClient.SendInterruptionOccurredAsync(interruptionMessage);
-                Debug.Log($"[RequestOrchestrator] Sent InterruptionOccurred to backend for session {requestId} (reason: {reason})");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Sent InterruptionOccurred to backend for session {requestId} (reason: {reason})");
             }
             catch (Exception ex)
             {
@@ -583,7 +610,8 @@ namespace Tsc.AIBridge.Core
             if (_currentSession != null)
             {
                 _currentSession.IsInterruptionActive = true;
-                Debug.Log($"[RequestOrchestrator] Interruption started for session {_currentSession.RequestId}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Interruption started for session {_currentSession.RequestId}");
             }
         }
 
@@ -595,7 +623,8 @@ namespace Tsc.AIBridge.Core
             if (_currentSession != null)
             {
                 _currentSession.IsInterruptionActive = false;
-                Debug.Log($"[RequestOrchestrator] Interruption ended for session {_currentSession.RequestId}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Interruption ended for session {_currentSession.RequestId}");
             }
         }
 
@@ -623,7 +652,8 @@ namespace Tsc.AIBridge.Core
             if (_currentSession != null)
             {
                 _currentSession.Complete();
-                Debug.Log($"[RequestOrchestrator] Session {_currentSession.RequestId} completed");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Session {_currentSession.RequestId} completed");
                 _currentSession = null;
             }
         }
@@ -680,12 +710,14 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         private async void HandleRecordingStopped()
         {
-            Debug.Log("[RequestOrchestrator] Recording stopped - sending EndOfSpeech and EndOfAudio");
+            if (enableVerboseLogging)
+                Debug.Log("[RequestOrchestrator] Recording stopped - sending EndOfSpeech and EndOfAudio");
 
             // Only send messages if there's an active request
             if (!_isRequestActive || _currentSession == null)
             {
-                Debug.LogWarning("[RequestOrchestrator] Recording stopped but no active request - messages not sent");
+                if (enableVerboseLogging)
+                    Debug.LogWarning("[RequestOrchestrator] Recording stopped but no active request - messages not sent");
                 return;
             }
 
@@ -700,22 +732,26 @@ namespace Tsc.AIBridge.Core
             if (tracker != null)
             {
                 tracker.StartMeasurement();
-                Debug.Log($"[RequestOrchestrator] StartMeasurement() called for {_activeNpcClient?.NpcName} at PTT release");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] StartMeasurement() called for {_activeNpcClient?.NpcName} at PTT release");
             }
             else
             {
-                Debug.LogWarning($"[RequestOrchestrator] Could not call StartMeasurement() - LatencyTracker is null");
+                if (enableVerboseLogging)
+                    Debug.LogWarning($"[RequestOrchestrator] Could not call StartMeasurement() - LatencyTracker is null");
             }
 
             try
             {
                 // Send EndOfSpeech - indicates user stopped speaking
                 await _webSocketClient.SendEndOfSpeechAsync(_currentSession.RequestId);
-                Debug.Log($"[RequestOrchestrator] EndOfSpeech sent for session: {_currentSession.RequestId}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] EndOfSpeech sent for session: {_currentSession.RequestId}");
 
                 // Send EndOfAudio - indicates all audio data has been transmitted
                 await _webSocketClient.SendEndOfAudioAsync(_currentSession.RequestId);
-                Debug.Log($"[RequestOrchestrator] EndOfAudio sent for session: {_currentSession.RequestId}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] EndOfAudio sent for session: {_currentSession.RequestId}");
             }
             catch (Exception ex)
             {
@@ -779,7 +815,7 @@ namespace Tsc.AIBridge.Core
             }
 
             // Optional component - just info
-            if (interruptionManager == null)
+            if (interruptionManager == null && enableVerboseLogging)
                 Debug.Log("[RequestOrchestrator] InterruptionManager not set. Interruption detection disabled.");
         }
 
@@ -811,7 +847,8 @@ namespace Tsc.AIBridge.Core
 
             try
             {
-                Debug.Log($"[RequestOrchestrator] Processing audio request for {request.NpcConfig.Name}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Processing audio request for {request.NpcConfig.Name}");
 
                 // CRITICAL: Recording is ALREADY started by SpeechInputHandler at PTT press
                 // Audio is being encoded by AudioStreamProcessor
@@ -832,7 +869,8 @@ namespace Tsc.AIBridge.Core
                 if (_activeNpcClient is INpcMessageHandler handler)
                 {
                     _webSocketClient.RegisterNpc(request.RequestId, handler);
-                    Debug.Log($"[RequestOrchestrator] Registered NPC handler for RequestId: {request.RequestId}");
+                    if (enableVerboseLogging)
+                        Debug.Log($"[RequestOrchestrator] Registered NPC handler for RequestId: {request.RequestId}");
                 }
                 else
                 {
@@ -878,7 +916,8 @@ namespace Tsc.AIBridge.Core
                 if (_activeNpcClient != null)
                 {
                     _activeNpcClient.OnSessionStarted += sessionStartedHandler;
-                    Debug.Log("[RequestOrchestrator] Subscribed to SessionStarted event - ready to receive confirmation");
+                    if (enableVerboseLogging)
+                        Debug.Log("[RequestOrchestrator] Subscribed to SessionStarted event - ready to receive confirmation");
                 }
 
                 // Start the conversation via WebSocket
@@ -896,12 +935,14 @@ namespace Tsc.AIBridge.Core
                     yield break;
                 }
 
-                Debug.Log($"[RequestOrchestrator] SessionStart message sent successfully");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] SessionStart message sent successfully");
 
                 // Wait for SessionStarted confirmation from backend before flushing
                 if (_activeNpcClient != null)
                 {
-                    Debug.Log("[RequestOrchestrator] Waiting for SessionStarted confirmation from backend...");
+                    if (enableVerboseLogging)
+                        Debug.Log("[RequestOrchestrator] Waiting for SessionStarted confirmation from backend...");
 
                     // Wait for SessionStarted confirmation (max 5 seconds)
                     var timeout = 5.0f;
@@ -916,7 +957,8 @@ namespace Tsc.AIBridge.Core
 
                     if (sessionStartedReceived)
                     {
-                        Debug.Log($"[RequestOrchestrator] SessionStarted confirmed after {elapsed:F3}s - now flushing audio buffer");
+                        if (enableVerboseLogging)
+                            Debug.Log($"[RequestOrchestrator] SessionStarted confirmed after {elapsed:F3}s - now flushing audio buffer");
                     }
                     else
                     {
@@ -932,17 +974,20 @@ namespace Tsc.AIBridge.Core
                 if (speechInputHandler?.AudioStreamProcessor != null)
                 {
                     speechInputHandler.AudioStreamProcessor.FlushBuffer();
-                    Debug.Log("[RequestOrchestrator] Backend confirmed ready - flushed buffered audio to WebSocket");
+                    if (enableVerboseLogging)
+                        Debug.Log("[RequestOrchestrator] Backend confirmed ready - flushed buffered audio to WebSocket");
                 }
 
                 // Session might have been completed already (race condition with conversationComplete)
                 if (_currentSession != null)
                 {
-                    Debug.Log($"[RequestOrchestrator] Audio request started. Session: {_currentSession.RequestId}");
+                    if (enableVerboseLogging)
+                        Debug.Log($"[RequestOrchestrator] Audio request started. Session: {_currentSession.RequestId}");
                 }
                 else
                 {
-                    Debug.LogWarning("[RequestOrchestrator] Audio request started but session was already completed (possible race condition)");
+                    if (enableVerboseLogging)
+                        Debug.LogWarning("[RequestOrchestrator] Audio request started but session was already completed (possible race condition)");
                 }
             }
             finally
@@ -957,7 +1002,8 @@ namespace Tsc.AIBridge.Core
 
             try
             {
-                Debug.Log($"[RequestOrchestrator] Processing text request: {request.Text}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Processing text request: {request.Text}");
 
                 // Validate NPC client is available
                 if (_activeNpcClient == null)
@@ -975,7 +1021,8 @@ namespace Tsc.AIBridge.Core
                 if (_activeNpcClient is INpcMessageHandler textHandler)
                 {
                     _webSocketClient.RegisterNpc(request.RequestId, textHandler);
-                    Debug.Log($"[RequestOrchestrator] Registered NPC handler for text request: {request.RequestId}");
+                    if (enableVerboseLogging)
+                        Debug.Log($"[RequestOrchestrator] Registered NPC handler for text request: {request.RequestId}");
                 }
                 else
                 {
@@ -1010,7 +1057,8 @@ namespace Tsc.AIBridge.Core
                 // Send text input via WebSocket
                 yield return _webSocketClient.SendTextInputAsync(textInputMessage);
 
-                Debug.Log($"[RequestOrchestrator] Text request started. Session: {_currentSession.RequestId}");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Text request started. Session: {_currentSession.RequestId}");
 
                 // Start latency measurement for NPC-initiated conversations
                 // For player-initiated: StartMeasurement is called on PTT release
@@ -1019,11 +1067,13 @@ namespace Tsc.AIBridge.Core
                 if (tracker != null)
                 {
                     tracker.StartMeasurement();
-                    Debug.Log($"[RequestOrchestrator] StartMeasurement() called for NPC-initiated conversation: {_activeNpcClient?.NpcName}");
+                    if (enableVerboseLogging)
+                        Debug.Log($"[RequestOrchestrator] StartMeasurement() called for NPC-initiated conversation: {_activeNpcClient?.NpcName}");
                 }
                 else
                 {
-                    Debug.LogWarning($"[RequestOrchestrator] Could not call StartMeasurement() - LatencyTracker is null for {_activeNpcClient?.NpcName}");
+                    if (enableVerboseLogging)
+                        Debug.LogWarning($"[RequestOrchestrator] Could not call StartMeasurement() - LatencyTracker is null for {_activeNpcClient?.NpcName}");
                 }
             }
             finally
@@ -1072,14 +1122,16 @@ namespace Tsc.AIBridge.Core
         {
             if (_activeNpcConfig == null)
             {
-                Debug.LogWarning("[RequestOrchestrator] No active NPC config - returning empty messages");
+                if (enableVerboseLogging)
+                    Debug.LogWarning("[RequestOrchestrator] No active NPC config - returning empty messages");
                 return new List<ChatMessage>();
             }
 
             // Priority 1: Use Messages if provided (RuleSystem path - already complete with system prompt)
             if (_activeNpcConfig.Messages != null && _activeNpcConfig.Messages.Count > 0)
             {
-                Debug.Log($"[RequestOrchestrator] Using {_activeNpcConfig.Messages.Count} messages from config (includes system prompt)");
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Using {_activeNpcConfig.Messages.Count} messages from config (includes system prompt)");
                 return new List<ChatMessage>(_activeNpcConfig.Messages);
             }
 
@@ -1106,13 +1158,16 @@ namespace Tsc.AIBridge.Core
                 }
             }
 
-            if (messages.Count > 0)
+            if (enableVerboseLogging)
             {
-                Debug.Log($"[RequestOrchestrator] Built {messages.Count} messages from SystemPrompt + history");
-            }
-            else
-            {
-                Debug.Log("[RequestOrchestrator] No messages available - using empty array");
+                if (messages.Count > 0)
+                {
+                    Debug.Log($"[RequestOrchestrator] Built {messages.Count} messages from SystemPrompt + history");
+                }
+                else
+                {
+                    Debug.Log("[RequestOrchestrator] No messages available - using empty array");
+                }
             }
 
             return messages;
@@ -1126,13 +1181,15 @@ namespace Tsc.AIBridge.Core
         {
             if (npcClient == null)
             {
-                Debug.LogWarning("[RequestOrchestrator] GetLatencyTracker: npcClient is NULL");
+                if (enableVerboseLogging)
+                    Debug.LogWarning("[RequestOrchestrator] GetLatencyTracker: npcClient is NULL");
                 return null;
             }
 
             if (npcClient.MetadataHandler == null)
             {
-                Debug.LogWarning($"[RequestOrchestrator] GetLatencyTracker: MetadataHandler is NULL for NPC: {npcClient.NpcName}");
+                if (enableVerboseLogging)
+                    Debug.LogWarning($"[RequestOrchestrator] GetLatencyTracker: MetadataHandler is NULL for NPC: {npcClient.NpcName}");
                 return null;
             }
 
@@ -1140,7 +1197,7 @@ namespace Tsc.AIBridge.Core
                 .GetField("_latencyTracker", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
                 ?.GetValue(npcClient.MetadataHandler) as LatencyTracker;
 
-            if (latencyTracker == null)
+            if (latencyTracker == null && enableVerboseLogging)
             {
                 Debug.LogWarning($"[RequestOrchestrator] GetLatencyTracker: Failed to get LatencyTracker via reflection for NPC: {npcClient.NpcName}");
             }

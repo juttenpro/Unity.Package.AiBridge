@@ -44,6 +44,7 @@ namespace Tsc.AIBridge.Audio.Playback
         // Events
         [Header("Events")]
         public UnityEvent OnPlaybackStarted = new();
+        public UnityEvent OnFirstAudioPlayed = new(); // First audio sample actually output (for accurate latency)
         public UnityEvent OnPlaybackComplete = new();  // Natural end of audio
         public UnityEvent OnPlaybackInterrupted = new(); // Audio stopped by interruption
 
@@ -62,6 +63,7 @@ namespace Tsc.AIBridge.Audio.Playback
         private bool _isReceivingResponse; // NEW: Track if we're still receiving response from backend
         private bool _forceStop; // CRITICAL: Force audio to stop immediately for interruptions
         private bool _isPrimingBuffer; // PRIMING BUFFER: Use larger buffer for first chunks to prevent "catching up"
+        private bool _hasFirstAudioPlayed; // Track if first audio sample has been output (for accurate latency)
         private int _totalSamplesReceived;
         private int _totalSamplesPlayed;
         private readonly object _stateLock = new();
@@ -366,6 +368,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 _sampleRate = sampleRate;
                 _isStreamActive = true;
                 _isPlaybackStarted = false; // CRITICAL: Reset for each stream to trigger OnPlaybackStarted event
+                _hasFirstAudioPlayed = false; // CRITICAL: Reset for each stream to trigger OnFirstAudioPlayed event
                 _streamComplete = false;
                 _isReceivingResponse = true; // NEW: Mark that we're receiving a response
                 _isPrimingBuffer = true; // PRIMING BUFFER: Enable larger initial buffer for first chunks
@@ -475,12 +478,11 @@ namespace Tsc.AIBridge.Audio.Playback
                     StartPlayback();
                     _isPrimingBuffer = false; // Disable priming buffer after first playback starts
 
-                    // ALWAYS log playback start - critical for latency metrics debugging
-                    Debug.Log($"[{_cachedGameObjectName}] ✅ Playback started with buffer: {bufferThreshold / (float)_sampleRate:F3}s ({bufferThreshold} samples), Priming: {_isPrimingBuffer}");
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{_cachedGameObjectName}] ✅ Playback started with buffer: {bufferThreshold / (float)_sampleRate:F3}s ({bufferThreshold} samples), Priming: {_isPrimingBuffer}");
                 }
-                else if (_totalSamplesReceived % (_sampleRate) < samples.Length)
+                else if (enableVerboseLogging && _totalSamplesReceived % (_sampleRate) < samples.Length)
                 {
-                    // ALWAYS log why playback didn't start - critical for debugging turn 2+ metrics issue
                     Debug.Log($"[{_cachedGameObjectName}] ⏳ Waiting for playback start - Buffer: {_audioBuffer.Count}/{bufferThreshold} samples, AlreadyStarted: {_isPlaybackStarted}");
                 }
 
@@ -740,7 +742,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 if (!_streamComplete && _samplesPlayedSinceStart > UNDERRUN_GRACE_PERIOD_SAMPLES)
                 {
                     _underrunCount++;
-                    if (_underrunCount % 50 == 1) // Log every 50th underrun
+                    if (enableVerboseLogging && _underrunCount % 50 == 1) // Log every 50th underrun when verbose
                     {
                         Debug.LogWarning($"[{_cachedGameObjectName}] Buffer underrun #{_underrunCount} - Only {samplesProvided}/{samplesNeeded} samples available");
                     }
@@ -749,6 +751,16 @@ namespace Tsc.AIBridge.Audio.Playback
 
             _totalSamplesPlayed += samplesProvided;
             _samplesPlayedSinceStart += samplesProvided; // Track samples played since StartPlayback()
+
+            // Mark when first audio sample is actually output
+            // This is the TRUE perceived latency moment - when user actually hears audio
+            // Set flag here (audio thread) but fire event in Update() (main thread)
+            if (!_hasFirstAudioPlayed && samplesProvided > 0)
+            {
+                _hasFirstAudioPlayed = true;
+                if (enableVerboseLogging)
+                    UnityEngine.Debug.Log($"[{_cachedGameObjectName}] 🔊 First audio sample output at frame");
+            }
 
             // Store the last played audio frame for feedback detection
             // Only store if we actually played audio
@@ -797,6 +809,26 @@ namespace Tsc.AIBridge.Audio.Playback
             // OPTIMIZATION: Only process when streaming is active
             if (!_isStreamActive)
                 return;
+
+            // Fire OnFirstAudioPlayed event on main thread when first audio sample is output
+            // Flag is set in FillAudioBuffer() (audio thread), event fired here (main thread)
+            // IMPORTANT: Check if flag is true AND we haven't fired yet this stream
+            if (_hasFirstAudioPlayed && _isPlaybackStarted)
+            {
+                // Double-checked locking pattern to ensure we only fire once per stream
+                lock (_stateLock)
+                {
+                    // Check again inside lock - prevents race conditions
+                    if (_hasFirstAudioPlayed)
+                    {
+                        // Set to false BEFORE firing to prevent duplicate events in subsequent frames
+                        _hasFirstAudioPlayed = false;
+
+                        // Now fire the event - only happens once per stream
+                        OnFirstAudioPlayed?.Invoke();
+                    }
+                }
+            }
 
             // OPTIMIZATION: Cache AudioSource.isPlaying check (expensive Unity API call)
             // Check once per second instead of every frame at 60fps

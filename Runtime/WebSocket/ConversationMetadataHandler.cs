@@ -163,7 +163,8 @@ namespace Tsc.AIBridge.WebSocket
                     //Debug.Log($"[{_personaName}] Received AiResponse: \"{aiMsg.Text}\" (Timing: {(aiMsg.Timing != null ? $"{aiMsg.Timing.FirstResponseMs}ms" : "null")})");
                     
                     // CRITICAL: Log the COMPLETE response for debugging audio artifacts
-                    Debug.Log($"[{_personaName}] COMPLETE AI RESPONSE (full text):\n{aiMsg.Text}");
+                    if (_enableVerboseLogging)
+                        Debug.Log($"[{_personaName}] COMPLETE AI RESPONSE (full text):\n{aiMsg.Text}");
                     //Debug.Log($"[{_personaName}] Response length: {aiMsg.Text?.Length ?? 0} characters, estimated sentences: {aiMsg.Text?.Split(new[] {'.', '!', '?'}, System.StringSplitOptions.RemoveEmptyEntries).Length ?? 0}")
                     
                     // Debug logging to investigate timing issue
@@ -302,14 +303,16 @@ namespace Tsc.AIBridge.WebSocket
                     var bufferHintMsg = JsonConvert.DeserializeObject<BufferHintMessage>(json);
                     if (bufferHintMsg != null)
                     {
-                        Debug.Log($"[{_personaName}] ✅ BufferHint received - TTS Latency: {bufferHintMsg.TtsLatencyMs}ms ({bufferHintMsg.LatencyLevel}), " +
-                                 $"Buffer: {bufferHintMsg.RecommendedBufferSize}, Network: {bufferHintMsg.NetworkQuality}");
+                        if(_enableVerboseLogging)
+                            Debug.Log($"[{_personaName}] ✅ BufferHint received - TTS Latency: {bufferHintMsg.TtsLatencyMs}ms ({bufferHintMsg.LatencyLevel}), " +
+                                     $"Buffer: {bufferHintMsg.RecommendedBufferSize}, Network: {bufferHintMsg.NetworkQuality}");
 
                         // Update TTS latency in tracker (required for metrics reporting)
                         if (_latencyTracker != null && bufferHintMsg.TtsLatencyMs > 0)
                         {
                             _latencyTracker.UpdateTtsLatency(bufferHintMsg.TtsLatencyMs, bufferHintMsg.LatencyLevel ?? "Unknown");
-                            Debug.Log($"[{_personaName}] Updated LatencyTracker with TTS latency: {bufferHintMsg.TtsLatencyMs}ms");
+                            if(_enableVerboseLogging)
+                                Debug.Log($"[{_personaName}] Updated LatencyTracker with TTS latency: {bufferHintMsg.TtsLatencyMs}ms");
                         }
                         else
                         {

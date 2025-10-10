@@ -238,26 +238,14 @@ namespace Tsc.AIBridge.WebSocket
                 throw new InvalidOperationException("WebSocket is not connected");
             }
 
-            // CRITICAL DEBUG: Log before/after EnhancedWebSocket send
-            var messageType = message.Contains("\"type\":") ? message.Substring(message.IndexOf("\"type\":") + 8, 20) : "unknown";
-            Debug.LogError($"[DEBUG-WS-CONNECTION] SendTextAsync BEFORE EnhancedWebSocket.SendTextAsync - type: {messageType}, length: {message.Length}");
-
             // NativeWebSocket requires SendText for proper text frame
             await _webSocket.SendTextAsync(message);
-
-            Debug.LogError($"[DEBUG-WS-CONNECTION] SendTextAsync AFTER EnhancedWebSocket.SendTextAsync completed - type: {messageType}");
         }
 
         public async Task SendJsonAsync(object obj)
         {
-            // CRITICAL DEBUG: Log JSON serialization
             var json = JsonConvert.SerializeObject(obj);
-            var messageType = obj.GetType().Name;
-            Debug.LogError($"[DEBUG-WS-CONNECTION] SendJsonAsync - serialized {messageType}, JSON length: {json.Length}");
-
             await SendTextAsync(json);
-
-            Debug.LogError($"[DEBUG-WS-CONNECTION] SendJsonAsync - SendTextAsync completed for {messageType}");
         }
 
         // IWebSocketConnection sync wrappers for compatibility
