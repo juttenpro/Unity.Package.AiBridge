@@ -343,8 +343,9 @@ namespace Tsc.AIBridge.Core
             _hasPlaybackStarted = true;
             _pendingPerceivedLatency = totalPerceivedLatency;
 
-            // SIMPLE: Report immediately! No waiting for backend timings (avoids race conditions)
-            ReportLatencyStats(totalPerceivedLatency);
+            // Check if we can report immediately (if TTS timing already arrived)
+            // Otherwise, wait for CheckAndReportIfComplete() when TTS timing arrives
+            CheckAndReportIfComplete();
         }
         
         /// <summary>
