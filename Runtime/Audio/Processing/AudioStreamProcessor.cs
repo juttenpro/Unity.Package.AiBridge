@@ -78,6 +78,10 @@ namespace Tsc.AIBridge.Audio.Processing
         private bool _isDecodingPaused;
         private readonly object _pauseLock = new();
 
+        // Constants for periodic logging and size estimation
+        private const int BUFFER_LOG_INTERVAL = 50; // Log every Nth buffer operation (~1 second at 50 chunks/sec)
+        private const int AVERAGE_OPUS_CHUNK_SIZE = 350; // Bytes - average size for 64kbps @ 20ms frames
+
         /// <summary>
         /// Initializes the audio processor with required components and settings.
         /// </summary>
@@ -330,7 +334,7 @@ namespace Tsc.AIBridge.Audio.Processing
                     _audioQueue.Enqueue(encodedData);
 
                     // Periodic logging only (every 50 chunks = ~1 second)
-                    if (_isVerboseLogging && _audioQueue.Count % 50 == 0)
+                    if (_isVerboseLogging && _audioQueue.Count % BUFFER_LOG_INTERVAL == 0)
                     {
                         Debug.Log($"[AudioStreamProcessor] Buffered {_audioQueue.Count} audio chunks");
                     }
@@ -401,7 +405,7 @@ namespace Tsc.AIBridge.Audio.Processing
                 _pausedOpusQueue.Enqueue(clonedData);
 
                 // Periodic logging to track queue size during long pauses
-                if (_isVerboseLogging && _pausedOpusQueue.Count % 50 == 0)
+                if (_isVerboseLogging && _pausedOpusQueue.Count % BUFFER_LOG_INTERVAL == 0)
                 {
                     var queueSizeKB = _pausedOpusQueue.Count * audioData.Length / 1024;
                     Debug.Log($"[AudioStreamProcessor] Queued Opus during pause: {_pausedOpusQueue.Count} chunks (~{queueSizeKB}KB)");
@@ -635,7 +639,7 @@ namespace Tsc.AIBridge.Audio.Processing
                 var queuedCount = _pausedOpusQueue.Count;
                 if (_isVerboseLogging && queuedCount > 0)
                 {
-                    var estimatedKB = queuedCount * 350 / 1024; // ~350 bytes average per Opus chunk
+                    var estimatedKB = queuedCount * AVERAGE_OPUS_CHUNK_SIZE / 1024;
                     Debug.Log($"[AudioStreamProcessor] Resuming decoding - processing {queuedCount} queued Opus chunks (~{estimatedKB}KB)");
                 }
 

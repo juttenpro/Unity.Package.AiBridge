@@ -8,28 +8,64 @@ Core AI conversation and audio streaming system for Unity, providing WebSocket-b
 - 🔊 **Audio Streaming**: Real-time Opus codec support with adaptive buffering
 - 🌐 **WebSocket Communication**: Binary and text message handling
 - 🎯 **VAD Processing**: Multiple Voice Activity Detection implementations
-- 📦 **Zero Dependencies**: Standalone package with only Unity module dependencies
+- 📦 **Minimal Dependencies**: Only requires NativeWebSocket and Unity modules
 - 🔌 **Extensible**: Interface-based design for custom implementations
+
+## Dependencies
+
+### Required External Packages
+
+**NativeWebSocket** (v1.1.4 or higher)
+- High-performance WebSocket implementation for Unity
+- GitHub: https://github.com/endel/NativeWebSocket
+- Installation via Package Manager:
+  ```
+  https://github.com/endel/NativeWebSocket.git#upm
+  ```
+
+### Unity Modules
+- `com.unity.modules.audio`: Audio system integration
+- `com.unity.modules.jsonserialize`: JSON serialization
+- `com.unity.modules.unitywebrequest`: HTTP requests
+
+### Optional Dependencies
+**Concentus** (Opus codec via NuGet for Unity)
+- Required for audio encoding/decoding
+- Pre-compiled DLLs included in package
 
 ## Installation
 
-### Via Unity Package Manager
+### Step 1: Install NativeWebSocket
+
+**REQUIRED**: Install NativeWebSocket before installing AI Bridge.
+
+In Unity Package Manager → Add package from git URL:
+```
+https://github.com/endel/NativeWebSocket.git#upm
+```
+
+### Step 2: Install AI Bridge
+
+#### Via Unity Package Manager
 
 Add to your `manifest.json`:
 ```json
 {
   "dependencies": {
+    "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm",
     "com.simulationcrew.aibridge": "1.0.0"
   }
 }
 ```
 
-### Via Git URL
+#### Via Git URL
 
 In Unity Package Manager, add package from git URL:
 ```
 https://github.com/simulationcrew/aibridge.git
 ```
+
+**Note**: If NativeWebSocket is not installed, Unity will show a missing dependency error.
 
 ## Core Components
 
