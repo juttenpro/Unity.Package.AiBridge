@@ -63,6 +63,7 @@ namespace Tsc.AIBridge.Services
         /// <param name="llmModel">LLM model to use</param>
         /// <param name="temperature">Temperature for response generation</param>
         /// <param name="maxTokens">Maximum tokens for response</param>
+        /// <param name="responseFormat">Response format - use "json_object" for clean JSON without markdown (OpenAI/Azure OpenAI only)</param>
         /// <param name="onSuccess">Callback when analysis completes</param>
         /// <param name="onError">Callback on error</param>
         public IEnumerator RequestAnalysis(
@@ -71,6 +72,7 @@ namespace Tsc.AIBridge.Services
             string llmModel,
             float temperature,
             int maxTokens,
+            string responseFormat,
             Action<AnalysisResponse> onSuccess,
             Action<string> onError)
         {
@@ -114,6 +116,7 @@ namespace Tsc.AIBridge.Services
                     llmModel = llmModel,
                     temperature = temperature,
                     maxTokens = maxTokens,
+                    responseFormat = responseFormat, // NEW: "json_object" for clean JSON without markdown
                     // Language and VoiceId are optional - backend provides defaults
                     language = null,
                     voiceId = null,

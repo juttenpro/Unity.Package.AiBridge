@@ -82,6 +82,15 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("sttProvider")]
         public string sttProvider;
 
+        /// <summary>
+        /// Response format for LLM output (OpenAI-compatible providers only).
+        /// Use "json_object" to request clean JSON without markdown code blocks.
+        /// Null = use LLM default format (typically text with potential markdown).
+        /// Only applied for OpenAI and Azure OpenAI providers.
+        /// </summary>
+        [JsonProperty("responseFormat")]
+        public string responseFormat;
+
         // REMOVED: audioFormat, sampleRate, opusBitrate
         // These are misleading - API always uses opus_48000_64 hardcoded
         // ElevenLabs supports different bitrates but API doesn't expose this

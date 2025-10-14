@@ -57,6 +57,7 @@ namespace Tsc.AIBridge.Tests.Runtime
         private MockSpeechInputHandler _mockInputHandler;
         private MockWebSocketClient _mockWebSocket;
         private MockNpcClient _mockNpcClient;
+        private MockNpcProvider _mockNpcProvider;
         private GameObject _inputHandlerObject;
         private GameObject _webSocketObject;
         private GameObject _npcClientObject;
@@ -96,6 +97,9 @@ namespace Tsc.AIBridge.Tests.Runtime
             // Register the NPC in the NpcMessageRouter
             NpcMessageRouter.Instance.RegisterNpc(_mockNpcClient);
 
+            // Create mock NPC provider
+            _mockNpcProvider = new MockNpcProvider(_mockNpcClient);
+
             // Wire up dependencies using reflection (Unity serialized fields)
             var inputField = typeof(RequestOrchestrator).GetField("speechInputHandler",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -109,6 +113,9 @@ namespace Tsc.AIBridge.Tests.Runtime
             var activeNpcField = typeof(RequestOrchestrator).GetField("_activeNpcClient",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             activeNpcField?.SetValue(_orchestrator, _mockNpcClient);
+
+            // Set the NPC provider (NEW REQUIREMENT)
+            _orchestrator.SetNpcProvider(_mockNpcProvider);
 
             // DON'T call Start manually - Unity will call it automatically in the first frame
             // Calling it twice causes double subscription to events!
@@ -402,6 +409,8 @@ namespace Tsc.AIBridge.Tests.Runtime
             yield return null;
 
             // Act: Cancel session (e.g., RuleSystem rejection or interruption)
+            // Expect error from WebSocket trying to send SessionCancel when not connected
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("Cannot send SessionCancel - not connected"));
             _orchestrator.CancelCurrentSession("Test cancellation");
             yield return null;
 
@@ -454,7 +463,10 @@ namespace Tsc.AIBridge.Tests.Runtime
             _orchestrator.EndAudioRequest();
             yield return null;
 
-            // Second request
+            // Second request - will auto-cancel first request if still active
+            // Expect error from WebSocket trying to send SessionCancel when not connected
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("Cannot send SessionCancel - not connected"));
+
             var request2 = new ConversationRequest
             {
                 NpcId = "TestNPC2",
@@ -519,9 +531,8 @@ namespace Tsc.AIBridge.Tests.Runtime
             // and disables itself if critical components are missing. Since we have a proper
             // mock setup, no "Cannot start buffering" error occurs anymore.
 
-            // Expect warnings for missing optional components (MetadataHandler for latency tracking)
-            LogAssert.Expect(LogType.Warning, "[RequestOrchestrator] GetLatencyTracker: MetadataHandler is NULL for NPC: TestNPC");
-            LogAssert.Expect(LogType.Warning, "[RequestOrchestrator] Could not call MarkRecordingStart() - LatencyTracker is null");
+            // NOTE: The warnings for missing MetadataHandler are no longer generated
+            // as the RequestOrchestrator now handles missing optional components gracefully
 
             // Start request
             _orchestrator.StartConversationRequest(request);
@@ -622,6 +633,218 @@ namespace Tsc.AIBridge.Tests.Runtime
             StreamingAudioPlayer.OnPlaybackStartedStatic -= playbackStartHandler;
             Object.DestroyImmediate(audioPlayerObject);
             audioProcessor.Dispose();
+        }
+
+        #endregion
+
+        #region Test 9: Concurrent Requests - Privacy & Isolation
+
+        /// <summary>
+        /// BUSINESS REQUIREMENT: Quick successive requests should be treated as continuous session
+        ///
+        /// WHY: PTT debouncing - nervous users releasing and quickly re-pressing should continue same session
+        /// WHAT: Starting new request immediately after previous continues same session
+        /// SUCCESS: Audio from both requests goes to same session, no cancellation
+        ///
+        /// BUSINESS IMPACT:
+        /// - Better UX = nervous users don't accidentally split their sentence across sessions
+        /// - Less backend load = fewer session starts/stops
+        /// - More natural conversation flow
+        /// </summary>
+        [UnityTest]
+        public IEnumerator ConcurrentRequests_QuickSuccession_ContinuesSameSession()
+        {
+            // Wait for Unity to call Start() on all components
+            yield return null;
+
+            // Arrange: Start first request
+            var request1 = new ConversationRequest
+            {
+                NpcId = "TestNPC",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Session 1" }
+                },
+                LlmProvider = "openai",
+                LlmModel = "gpt-4"
+            };
+
+            _orchestrator.StartConversationRequest(request1);
+            yield return null;
+
+            // Send audio for first request
+            var chunk1 = new byte[] { 1, 1, 1 };
+            _mockInputHandler.TriggerOnOpusAudioEncoded(chunk1);
+            yield return null;
+
+            // Act: Start second request WITHOUT ending first (quick re-press!)
+            // This simulates: press PTT -> release quickly -> press again
+            // System should treat this as continuation, NOT as new session
+            var request2 = new ConversationRequest
+            {
+                NpcId = "TestNPC",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Session 1 continued" }
+                },
+                LlmProvider = "openai",
+                LlmModel = "gpt-4"
+            };
+
+            _orchestrator.StartConversationRequest(request2);
+            yield return null;
+
+            // Send audio for "second" request (actually same session)
+            var chunk2 = new byte[] { 2, 2, 2 };
+            _mockInputHandler.TriggerOnOpusAudioEncoded(chunk2);
+            yield return null;
+
+            // Send more audio
+            var chunk3 = new byte[] { 3, 3, 3 };
+            _mockInputHandler.TriggerOnOpusAudioEncoded(chunk3);
+            yield return null;
+
+            // Assert: All chunks accepted as part of same continuous session
+            Assert.AreEqual(3, _mockWebSocket.SentBinaryMessages.Count, "All chunks should be accepted in continuous session");
+            CollectionAssert.AreEqual(chunk1, _mockWebSocket.SentBinaryMessages[0]);
+            CollectionAssert.AreEqual(chunk2, _mockWebSocket.SentBinaryMessages[1]);
+            CollectionAssert.AreEqual(chunk3, _mockWebSocket.SentBinaryMessages[2]);
+
+            // Request should still be active (continuous session)
+            Assert.IsTrue(GetRequestActiveState(), "Request should still be active");
+        }
+
+        #endregion
+
+        #region Test 10: NPC Provider Failures - Robustness
+
+        /// <summary>
+        /// BUSINESS REQUIREMENT: System must handle NPC provider failures gracefully
+        ///
+        /// WHY: External components (RuleSystem) can fail or return null
+        /// WHAT: Request with null NPC configuration should fail safely with clear error
+        /// SUCCESS: No crash, clear error message, system remains stable
+        ///
+        /// BUSINESS IMPACT:
+        /// - Failure = System crash, training session interrupted
+        /// - Affects all 100+ users if singleton fails
+        /// - Clear errors = faster debugging in production
+        /// </summary>
+        [UnityTest]
+        public IEnumerator NpcProviderReturnsNull_RequestFailsGracefully()
+        {
+            // Wait for Unity to call Start() on all components
+            yield return null;
+
+            // Arrange: Create provider that returns null
+            var nullProvider = new MockNullReturningNpcProvider();
+            _orchestrator.SetNpcProvider(nullProvider);
+
+            var request = new ConversationRequest
+            {
+                NpcId = "NonExistentNPC",  // This NPC doesn't exist
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Test" }
+                },
+                LlmProvider = "openai",
+                LlmModel = "gpt-4"
+            };
+
+            // Act & Assert: Expect error when NPC provider returns null
+            // Error message: "[RequestOrchestrator] NPC provider returned null for NPC ID: 'NonExistentNPC'..."
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("NPC provider returned null for NPC ID"));
+            _orchestrator.StartConversationRequest(request);
+            yield return null;
+
+            // Try to send audio (should be rejected - no active request)
+            var chunk = new byte[] { 1, 2, 3 };
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("no active request"));
+            _mockInputHandler.TriggerOnOpusAudioEncoded(chunk);
+            yield return null;
+
+            // Assert: No audio sent, system still stable
+            Assert.AreEqual(0, _mockWebSocket.SentBinaryMessages.Count, "Should not send audio when request failed");
+            Assert.IsFalse(GetRequestActiveState(), "Request should not be active after failure");
+
+            // Restore working provider for other tests
+            _orchestrator.SetNpcProvider(_mockNpcProvider);
+        }
+
+        #endregion
+
+        #region Test 11: Rapid PTT Presses - Stress Test
+
+        /// <summary>
+        /// BUSINESS REQUIREMENT: Rapid PTT presses should be treated as continuous session (PTT debouncing)
+        ///
+        /// WHY: Nervous users release and quickly re-press PTT - should continue same session
+        /// WHAT: 10 rapid StartConversationRequest calls should all be part of ONE continuous session
+        /// SUCCESS: All 10 audio chunks accepted, no SessionCancel, same continuous session
+        ///
+        /// BUSINESS IMPACT:
+        /// - Better UX = nervous users don't accidentally split sentences across sessions
+        /// - Less backend load = no session cancellations/restarts
+        /// - Common in emergency training scenarios (panic situations)
+        /// - More natural conversation flow for all users
+        /// </summary>
+        [UnityTest]
+        public IEnumerator RapidPTTPresses_HandlesGracefully()
+        {
+            // Wait for Unity to call Start() on all components
+            yield return null;
+
+            const int RAPID_PRESS_COUNT = 10;
+            var sentChunks = new List<byte[]>();
+
+            // Act: Simulate 10 rapid PTT presses (press -> quick release -> press again pattern)
+            // System should treat this as ONE continuous session (PTT debouncing)
+            for (int i = 0; i < RAPID_PRESS_COUNT; i++)
+            {
+                // NO SessionCancel expected - continuous session!
+                var request = new ConversationRequest
+                {
+                    NpcId = "TestNPC",
+                    Messages = new List<ChatMessage>
+                    {
+                        new ChatMessage { Role = "system", Content = $"Rapid press {i}" }
+                    },
+                    LlmProvider = "openai",
+                    LlmModel = "gpt-4"
+                };
+
+                _orchestrator.StartConversationRequest(request);
+                yield return null; // Let request queue process
+
+                // Send one chunk per "press" - should all be accepted as part of continuous session
+                var chunk = new byte[] { (byte)i, (byte)i, (byte)i };
+                sentChunks.Add(chunk);
+                _mockInputHandler.TriggerOnOpusAudioEncoded(chunk);
+                yield return null;
+
+                // Immediately start next request (rapid press!)
+                // Don't call EndAudioRequest - simulating quick release/re-press
+            }
+
+            // Assert: All chunks accepted as part of continuous session
+            Assert.IsTrue(_orchestrator != null, "Orchestrator should still exist (no crash)");
+            Assert.AreEqual(RAPID_PRESS_COUNT, _mockWebSocket.SentBinaryMessages.Count,
+                "All chunks should be accepted in continuous session (PTT debouncing)");
+
+            // Verify each chunk was sent correctly (data integrity)
+            for (int i = 0; i < RAPID_PRESS_COUNT; i++)
+            {
+                CollectionAssert.AreEqual(sentChunks[i], _mockWebSocket.SentBinaryMessages[i],
+                    $"Chunk {i} should match sent data");
+            }
+
+            // Verify session is still active (continuous session, not cancelled)
+            Assert.IsTrue(GetRequestActiveState(), "Session should still be active after rapid presses");
+
+            // Cleanup
+            _orchestrator.EndAudioRequest();
+            yield return null;
+            Assert.IsFalse(GetRequestActiveState(), "Request should be inactive after cleanup");
         }
 
         #endregion
@@ -796,6 +1019,60 @@ namespace Tsc.AIBridge.Tests.Runtime
                 CompletedRequests.Add(requestId);
                 Debug.Log($"[MockNpcClient] Request completed: {requestId}");
             }
+        }
+
+        /// <summary>
+        /// Mock NPC provider that implements INpcProvider and INpcConfiguration
+        /// Provides test NPC configuration and client references
+        /// </summary>
+#pragma warning disable CS0067 // Event is never used - these are interface requirements not used in tests
+        private class MockNpcProvider : INpcProvider, INpcConfiguration
+        {
+            private readonly MockNpcClient _npcClient;
+
+            public MockNpcProvider(MockNpcClient npcClient)
+            {
+                _npcClient = npcClient;
+            }
+
+            // INpcProvider implementation
+            public INpcConfiguration GetNpcConfiguration(string npcId) => this;
+            public NpcClientBase GetNpcClient(string npcId) => _npcClient;
+
+            // INpcConfiguration implementation
+            public string Id => "TestNPC";
+            public string Name => "TestNPC";
+            public string SystemPrompt => "Test system prompt";
+            public System.Collections.Generic.List<Messages.ChatMessage> Messages => null;
+            public string TtsStreamingMode => "streaming";
+            public string TtsModel => "eleven_turbo_v2_5";
+            public string VoiceId => "test-voice";
+            public string Language => "nl-NL";
+            public string SttProvider => "google";
+            public string LlmProvider => "openai";
+            public string LlmModel => "gpt-4";
+            public float Temperature => 0.7f;
+            public int MaxTokens => 500;
+            public bool AllowInterruption => false;
+            public float InterruptionPersistenceTime => 1.5f;
+            public bool IsActive => true;
+            public bool IsTalking => false;
+
+            // Animation events (not used in tests)
+            public event Action OnStartListening;
+            public event Action OnStopListening;
+            public event Action OnStartSpeaking;
+            public event Action OnStopSpeaking;
+        }
+#pragma warning restore CS0067
+
+        /// <summary>
+        /// Mock NPC provider that returns null for testing failure scenarios
+        /// </summary>
+        private class MockNullReturningNpcProvider : INpcProvider
+        {
+            public INpcConfiguration GetNpcConfiguration(string npcId) => null;
+            public NpcClientBase GetNpcClient(string npcId) => null;
         }
 
         #endregion

@@ -130,6 +130,12 @@ namespace Tsc.AIBridge.Core
         // For tracking whether we're waiting for audio to finish
         private bool _isWaitingForAudioStart;
 
+        // Connection state tracking (prevent warning spam)
+        private bool _wasConnectedLastFrame = true;
+        private float _lastConnectionWarningTime;
+        private const float CONNECTION_WARNING_COOLDOWN = 2.0f; // Only log warning every 2 seconds
+        private int _droppedAudioChunks;
+
         #endregion
 
         #region Unity Lifecycle
@@ -694,13 +700,47 @@ namespace Tsc.AIBridge.Core
 
             // Audio is sent directly to WebSocket
             // Buffering is handled by AudioStreamProcessor itself (StartBuffering/FlushBuffer)
-            if (_webSocketClient != null && _webSocketClient.IsConnected)
+            bool isConnected = _webSocketClient != null && _webSocketClient.IsConnected;
+
+            if (isConnected)
             {
                 _ = _webSocketClient.SendBinaryAsync(encodedAudio);
+
+                // Reset dropped chunks counter on successful send
+                if (_droppedAudioChunks > 0)
+                {
+                    Debug.Log($"[RequestOrchestrator] Connection restored - {_droppedAudioChunks} audio chunks were dropped during disconnection");
+                    _droppedAudioChunks = 0;
+                }
+
+                _wasConnectedLastFrame = true;
             }
             else
             {
-                Debug.LogWarning($"[RequestOrchestrator] WebSocket not connected - cannot send {encodedAudio.Length} bytes");
+                // Track disconnection and dropped chunks
+                _droppedAudioChunks++;
+
+                // THROTTLED WARNING: Only log once when connection drops, then every N seconds
+                bool shouldLogWarning = false;
+
+                if (_wasConnectedLastFrame)
+                {
+                    // Connection just dropped - always log this transition
+                    shouldLogWarning = true;
+                    _wasConnectedLastFrame = false;
+                    _lastConnectionWarningTime = Time.time;
+                }
+                else if (Time.time - _lastConnectionWarningTime >= CONNECTION_WARNING_COOLDOWN)
+                {
+                    // Still disconnected after cooldown period - log update
+                    shouldLogWarning = true;
+                    _lastConnectionWarningTime = Time.time;
+                }
+
+                if (shouldLogWarning)
+                {
+                    Debug.LogWarning($"[RequestOrchestrator] WebSocket not connected - audio buffering disabled, {_droppedAudioChunks} chunks dropped. WebSocket may be reconnecting...");
+                }
             }
         }
 
@@ -724,6 +764,13 @@ namespace Tsc.AIBridge.Core
             if (_webSocketClient == null || !_webSocketClient.IsConnected)
             {
                 Debug.LogError("[RequestOrchestrator] Cannot send end messages - WebSocket not connected");
+
+                // Log summary of what was lost
+                if (_droppedAudioChunks > 0)
+                {
+                    Debug.LogError($"[RequestOrchestrator] Recording session lost: {_droppedAudioChunks} audio chunks could not be sent due to disconnection");
+                }
+
                 return;
             }
 

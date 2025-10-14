@@ -92,8 +92,14 @@ namespace Tsc.AIBridge.WebSocket
             IsConnecting = true;
             _jwtToken = jwtToken;
 
+            var connectionStartTime = DateTime.UtcNow;
+
             try
             {
+                // LOG: Connection attempt details (sanitize URL to hide token)
+                var sanitizedUrl = SanitizeUrl(wsUrl);
+                Debug.Log($"[WebSocketConnection] 🔌 Starting connection attempt to: {sanitizedUrl}");
+
                 // Use the URL as-is (already contains all parameters)
                 _webSocket = new EnhancedWebSocket(wsUrl);
 
@@ -103,9 +109,6 @@ namespace Tsc.AIBridge.WebSocket
                 _webSocket.OnBinaryMessage += HandleBinaryMessage;
                 _webSocket.OnError += HandleError;
                 _webSocket.OnClose += HandleClose;
-
-                //Debug.Log($"[WebSocketConnection] Connecting to: {wsUrl}");
-                //Debug.Log($"[WebSocketConnection] Starting connection attempt");
 
                 // Create cancellation token for this connection attempt
                 _cancellationTokenSource = new CancellationTokenSource();
@@ -131,19 +134,30 @@ namespace Tsc.AIBridge.WebSocket
                     ws = _webSocket; // Re-check in case it changed
                 }
 
-                //var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
-                //Debug.Log($"[WebSocketConnection] Connection attempt completed after {elapsed:F1}s, state: {ws?.State}");
+                var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
 
                 // Check connection result - use local reference and null-check
                 if (ws != null && ws.State == WebSocketState.Open)
                 {
-                    //Debug.Log($"[WebSocketConnection] Connection successful");
+                    Debug.Log($"[WebSocketConnection] ✅ Connection successful after {elapsed:F1}s");
                     return true;
                 }
 
                 // Connection failed or timed out
                 var finalState = ws?.State.ToString() ?? "null (cleaned up)";
-                Debug.LogError($"[WebSocketConnection] Connection failed, final state: {finalState}");
+                var totalElapsed = (DateTime.UtcNow - connectionStartTime).TotalSeconds;
+
+                // DIAGNOSTIC LOGGING: Detailed failure information
+                Debug.LogError($"[WebSocketConnection] ❌ CONNECTION FAILED\n" +
+                              $"  URL: {sanitizedUrl}\n" +
+                              $"  Final State: {finalState}\n" +
+                              $"  Time Elapsed: {totalElapsed:F2}s\n" +
+                              $"  Reconnect Attempt: #{_reconnectAttempts}/{_maxReconnectAttempts}\n" +
+                              $"  Auto-Reconnect: {(_autoReconnectEnabled ? "Enabled" : "Disabled")}");
+
+                // Trigger health check to diagnose if backend is reachable
+                _ = DiagnoseConnectionFailure(sanitizedUrl);
+
                 _cancellationTokenSource?.Cancel();
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
@@ -452,6 +466,91 @@ namespace Tsc.AIBridge.WebSocket
 
         //    return $"{wsScheme}://{wsBaseUrl.TrimEnd('/')}{endpoint}?token={_jwtToken}";
         //}
+
+        /// <summary>
+        /// Removes sensitive information (JWT tokens) from WebSocket URL for safe logging.
+        /// </summary>
+        /// <param name="wsUrl">Original WebSocket URL</param>
+        /// <returns>Sanitized URL with token values replaced with [REDACTED]</returns>
+        private string SanitizeUrl(string wsUrl)
+        {
+            if (string.IsNullOrEmpty(wsUrl))
+                return wsUrl;
+
+            // Hide JWT token from URL for logging
+            // Handles both ?token=... and &token=...
+            var sanitized = System.Text.RegularExpressions.Regex.Replace(
+                wsUrl,
+                @"([?&])(token|jwt)=([^&]+)",
+                "$1$2=[REDACTED]",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            );
+
+            return sanitized;
+        }
+
+        /// <summary>
+        /// Performs diagnostic checks when connection failure occurs to help identify root cause.
+        /// Checks DNS resolution, Unity network state, and component lifecycle status.
+        /// </summary>
+        /// <param name="sanitizedUrl">Sanitized WebSocket URL (without tokens)</param>
+        private async Task DiagnoseConnectionFailure(string sanitizedUrl)
+        {
+            try
+            {
+                Debug.Log($"[WebSocketConnection] 🔍 Running connection diagnostics...");
+
+                // Extract host from WebSocket URL
+                var uri = new Uri(sanitizedUrl.Replace("[REDACTED]", "dummy"));
+                var host = uri.Host;
+                var port = uri.Port;
+
+                Debug.Log($"[WebSocketConnection] 📍 Target: {host}:{port} (scheme: {uri.Scheme})");
+
+                // Log Unity network state
+                Debug.Log($"[WebSocketConnection] 📡 Unity Network Reachability: {Application.internetReachability}");
+
+                // Check if we can resolve DNS
+                try
+                {
+                    var addresses = await System.Net.Dns.GetHostAddressesAsync(host);
+                    if (addresses != null && addresses.Length > 0)
+                    {
+                        var addressList = new System.Text.StringBuilder();
+                        for (int i = 0; i < addresses.Length; i++)
+                        {
+                            if (i > 0) addressList.Append(", ");
+                            addressList.Append(addresses[i].ToString());
+                        }
+                        Debug.Log($"[WebSocketConnection] ✅ DNS resolution successful: {addressList}");
+                    }
+                    else
+                    {
+                        Debug.LogError($"[WebSocketConnection] ❌ DNS resolution returned no addresses");
+                    }
+                }
+                catch (Exception dnsEx)
+                {
+                    Debug.LogError($"[WebSocketConnection] ❌ DNS resolution failed: {dnsEx.Message}");
+                    Debug.LogError($"[WebSocketConnection] This could indicate: No internet connection, DNS server issues, or invalid hostname");
+                }
+
+                // Check if owner still exists (might be shutting down)
+                if (!_owner || !_owner.gameObject)
+                {
+                    Debug.LogWarning($"[WebSocketConnection] ⚠️ Owner MonoBehaviour or GameObject is null - component may be shutting down");
+                }
+
+                // Log current reconnection state
+                Debug.Log($"[WebSocketConnection] 🔄 Reconnection state: Attempts={_reconnectAttempts}/{_maxReconnectAttempts}, " +
+                         $"Delay={_currentReconnectDelay:F1}s, IsReconnecting={_isReconnecting}, AutoReconnect={_autoReconnectEnabled}");
+
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[WebSocketConnection] Diagnostics failed: {ex.Message}");
+            }
+        }
 
         private void Cleanup()
         {
