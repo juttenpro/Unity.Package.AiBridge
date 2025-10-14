@@ -164,6 +164,7 @@ namespace Tsc.AIBridge.Audio.Interruption
             {
                 _pttPressedDuringNpcSpeech = false;
                 _overlapTimer = 0f;
+                _hasValidInterruption = false; // CRITICAL: Reset for next PTT press
                 return;
             }
 
