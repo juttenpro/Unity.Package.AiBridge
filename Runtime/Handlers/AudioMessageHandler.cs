@@ -19,6 +19,7 @@ namespace Tsc.AIBridge.Handlers
         private bool _interruptionOccurredThisSession = false;
         private string _currentRequestId = null;
         private string _interruptedRequestId = null; // Track which RequestId was interrupted
+        private bool _waitingForNewSession = false; // Block all audio until SessionStarted after interruption
         
         /// <summary>
         /// Event fired when an OGG stream is detected
@@ -47,9 +48,17 @@ namespace Tsc.AIBridge.Handlers
                 return;
             }
             
-            // CRITICAL: Block audio from interrupted RequestId
-            // But allow audio from new RequestId (follow-up response)
-            if (_interruptionOccurredThisSession && 
+            // CRITICAL: Block ALL audio after interruption until SessionStarted from new request
+            // This prevents old audio chunks (still in transit) from playing after interruption
+            if (_waitingForNewSession)
+            {
+                Debug.Log($"[{_personaName}] Blocking audio chunk - waiting for SessionStarted from new request (current: {_currentRequestId})");
+                return;
+            }
+
+            // Legacy check: Block audio from interrupted RequestId
+            // This shouldn't trigger anymore since we use _waitingForNewSession, but keep as safety net
+            if (_interruptionOccurredThisSession &&
                 !string.IsNullOrEmpty(_interruptedRequestId) &&
                 _currentRequestId == _interruptedRequestId)
             {
@@ -117,7 +126,8 @@ namespace Tsc.AIBridge.Handlers
         {
             _interruptionOccurredThisSession = true;
             _interruptedRequestId = _currentRequestId; // Remember which RequestId was interrupted
-            Debug.Log($"[{_personaName}] Interruption marked for RequestId: {_interruptedRequestId} - blocking its audio");
+            _waitingForNewSession = true; // Block ALL audio until SessionStarted from new request
+            Debug.Log($"[{_personaName}] Interruption marked for RequestId: {_interruptedRequestId} - blocking ALL audio until new SessionStarted");
         }
         
         /// <summary>
@@ -137,6 +147,9 @@ namespace Tsc.AIBridge.Handlers
                 _interruptionOccurredThisSession = false;
                 _interruptedRequestId = null;
             }
+
+            // CRITICAL: Don't clear _waitingForNewSession here!
+            // It will be cleared when SessionStarted arrives with new RequestId
 
             // CRITICAL FIX: Reset decoder to clear old audio buffers after interruption
             // This prevents corrupt audio state (old data mixing with new stream)
@@ -166,18 +179,26 @@ namespace Tsc.AIBridge.Handlers
         public void OnNewRequest(string requestId)
         {
             // If RequestId changes, reset state automatically
-            if (!string.IsNullOrEmpty(requestId) && 
-                !string.IsNullOrEmpty(_currentRequestId) && 
+            if (!string.IsNullOrEmpty(requestId) &&
+                !string.IsNullOrEmpty(_currentRequestId) &&
                 requestId != _currentRequestId)
             {
                 if (_enableVerboseLogging)
                     Debug.Log($"[{_personaName}] RequestId changed from {_currentRequestId} to {requestId} - resetting audio state");
-                
+
                 Reset();
             }
-            
+
             _currentRequestId = requestId;
-            
+
+            // CRITICAL: Clear _waitingForNewSession when SessionStarted arrives with new RequestId
+            // This allows audio from the new request to flow through
+            if (_waitingForNewSession)
+            {
+                _waitingForNewSession = false;
+                Debug.Log($"[{_personaName}] SessionStarted received for new RequestId: {requestId} - audio unblocked");
+            }
+
             if (_enableVerboseLogging)
                 Debug.Log($"[{_personaName}] Processing RequestId: {requestId}");
         }
