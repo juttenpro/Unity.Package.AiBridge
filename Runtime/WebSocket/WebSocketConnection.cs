@@ -57,6 +57,7 @@ namespace Tsc.AIBridge.WebSocket
 
         // Message tracking
         private int _binaryMessageCount;
+        private DateTime _connectionStartTime;
 
         public WebSocketConnection(MonoBehaviour owner, /*string apiBaseUrl,*/ float reconnectBaseDelay = 1f, float reconnectMaxDelay = 30f, bool isVerboseLogging = false, int maxReconnectAttempts = 10)
         {
@@ -305,6 +306,7 @@ namespace Tsc.AIBridge.WebSocket
             _reconnectAttempts = 0; // Reset attempt counter
             _isReconnecting = false; // Clear reconnecting flag
             _binaryMessageCount = 0; // Reset counter for new connection
+            _connectionStartTime = DateTime.UtcNow; // Track connection start for diagnostics
             OnConnected?.Invoke();
         }
 
@@ -352,7 +354,17 @@ namespace Tsc.AIBridge.WebSocket
             // Only log if not intentionally disconnecting
             if (!_isDisconnecting)
             {
-                //Debug.Log($"[WebSocketConnection] Disconnected: {code}");
+                // DIAGNOSTIC: Log with timestamp and connection info
+                var timeSinceConnect = DateTime.UtcNow - _connectionStartTime;
+                var messagesSent = _binaryMessageCount;
+
+                Debug.Log($"[WebSocketConnection] 🔌 DISCONNECTED\n" +
+                         $"  Code: {code}\n" +
+                         $"  Duration: {timeSinceConnect.TotalSeconds:F1}s\n" +
+                         $"  Messages sent: {messagesSent}\n" +
+                         $"  Auto-reconnect: {_autoReconnectEnabled}\n" +
+                         $"  Will reconnect: {(_autoReconnectEnabled && ShouldReconnect(code) ? "YES" : "NO")}\n" +
+                         $"  URL: {SanitizeUrl(_lastWsUrl ?? "null")}");
 
                 // Check if we should attempt reconnection
                 if (_autoReconnectEnabled && ShouldReconnect(code))
@@ -383,6 +395,7 @@ namespace Tsc.AIBridge.WebSocket
         /// <summary>
         /// Attempts to reconnect to the WebSocket server with exponential backoff.
         /// Implements retry logic with configurable maximum attempts and delay limits.
+        /// CRITICAL: Uses OLD JWT token - consider refreshing for long-running sessions
         /// </summary>
         /// <returns>Task representing the asynchronous reconnection attempt</returns>
         private async Task AttemptReconnectAsync()
@@ -397,9 +410,9 @@ namespace Tsc.AIBridge.WebSocket
             }
 
             // Validate we have the necessary connection info
-            if (string.IsNullOrEmpty(_lastWsUrl) || string.IsNullOrEmpty(_jwtToken))
+            if (string.IsNullOrEmpty(_lastWsUrl))
             {
-                Debug.LogError($"[WebSocketConnection] Cannot reconnect - missing connection parameters");
+                Debug.LogError($"[WebSocketConnection] Cannot reconnect - missing WebSocket URL");
                 return;
             }
 
@@ -408,7 +421,7 @@ namespace Tsc.AIBridge.WebSocket
 
             try
             {
-                //Debug.Log($"[WebSocketConnection] Attempting reconnect #{_reconnectAttempts}/{_maxReconnectAttempts} after {_currentReconnectDelay}s delay");
+                Debug.Log($"[WebSocketConnection] 🔄 Attempting reconnect #{_reconnectAttempts}/{_maxReconnectAttempts} after {_currentReconnectDelay}s delay");
 
                 // Wait for the current delay
                 await Task.Delay((int)(_currentReconnectDelay * 1000));
@@ -416,11 +429,21 @@ namespace Tsc.AIBridge.WebSocket
                 // Check if we should still reconnect (avoid race conditions)
                 if (_isDisconnecting || !_owner || !_owner.gameObject)
                 {
-                    //Debug.Log($"[WebSocketConnection] Reconnect cancelled - component shutting down");
+                    Debug.Log($"[WebSocketConnection] Reconnect cancelled - component shutting down");
                     return;
                 }
 
-                // Try to reconnect
+                // CRITICAL FIX: Check if JWT token might be expired
+                // For now, we reuse the old token, but log a warning if reconnect happens after long duration
+                // TODO: Add JWT refresh mechanism for long-running sessions
+                if (string.IsNullOrEmpty(_jwtToken))
+                {
+                    Debug.LogError($"[WebSocketConnection] Cannot reconnect - JWT token is null. This should not happen!");
+                    return;
+                }
+
+                // Try to reconnect with existing token
+                // NOTE: If token expired (>55min old), this will fail and user needs to restart session
                 var success = await ConnectAsync(_lastWsUrl, _lastPersonaName, _jwtToken);
 
                 if (success)

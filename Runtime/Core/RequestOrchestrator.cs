@@ -136,6 +136,11 @@ namespace Tsc.AIBridge.Core
         private const float CONNECTION_WARNING_COOLDOWN = 2.0f; // Only log warning every 2 seconds
         private int _droppedAudioChunks;
 
+        // Audio buffering during reconnection
+        private readonly Queue<byte[]> _reconnectionAudioBuffer = new();
+        private const int MAX_RECONNECTION_BUFFER_SIZE = 500; // ~10 seconds @ 16kHz with 20ms frames
+        private int _reconnectionBufferOverflows;
+
         #endregion
 
         #region Unity Lifecycle
@@ -704,21 +709,37 @@ namespace Tsc.AIBridge.Core
 
             if (isConnected)
             {
-                _ = _webSocketClient.SendBinaryAsync(encodedAudio);
+                // CRITICAL: First flush any buffered audio from reconnection
+                FlushReconnectionBuffer();
 
-                // Reset dropped chunks counter on successful send
-                if (_droppedAudioChunks > 0)
-                {
-                    Debug.Log($"[RequestOrchestrator] Connection restored - {_droppedAudioChunks} audio chunks were dropped during disconnection");
-                    _droppedAudioChunks = 0;
-                }
+                // Then send current chunk
+                _ = _webSocketClient.SendBinaryAsync(encodedAudio);
 
                 _wasConnectedLastFrame = true;
             }
             else
             {
-                // Track disconnection and dropped chunks
-                _droppedAudioChunks++;
+                // CRITICAL FIX: Buffer audio during disconnection instead of dropping it
+                // This ensures no audio is lost during WebSocket reconnection
+
+                if (_reconnectionAudioBuffer.Count < MAX_RECONNECTION_BUFFER_SIZE)
+                {
+                    // Buffer the audio chunk
+                    _reconnectionAudioBuffer.Enqueue(encodedAudio);
+
+                    if (enableVerboseLogging && _reconnectionAudioBuffer.Count % 50 == 1)
+                        Debug.Log($"[RequestOrchestrator] Buffering audio during reconnection: {_reconnectionAudioBuffer.Count} chunks buffered");
+                }
+                else
+                {
+                    // Buffer full - drop oldest chunk to make room (FIFO)
+                    _reconnectionAudioBuffer.Dequeue();
+                    _reconnectionAudioBuffer.Enqueue(encodedAudio);
+                    _reconnectionBufferOverflows++;
+
+                    if (_reconnectionBufferOverflows % 50 == 1)
+                        Debug.LogWarning($"[RequestOrchestrator] Reconnection buffer overflow - dropping oldest chunks ({_reconnectionBufferOverflows} overflows total)");
+                }
 
                 // THROTTLED WARNING: Only log once when connection drops, then every N seconds
                 bool shouldLogWarning = false;
@@ -739,7 +760,7 @@ namespace Tsc.AIBridge.Core
 
                 if (shouldLogWarning)
                 {
-                    Debug.LogWarning($"[RequestOrchestrator] WebSocket not connected - audio buffering disabled, {_droppedAudioChunks} chunks dropped. WebSocket may be reconnecting...");
+                    Debug.LogWarning($"[RequestOrchestrator] WebSocket not connected - buffering audio for reconnection ({_reconnectionAudioBuffer.Count}/{MAX_RECONNECTION_BUFFER_SIZE} chunks). WebSocket may be reconnecting...");
                 }
             }
         }
@@ -809,6 +830,36 @@ namespace Tsc.AIBridge.Core
         #endregion
 
         #region Private Methods
+
+        /// <summary>
+        /// Flush buffered audio chunks after WebSocket reconnection
+        /// </summary>
+        private void FlushReconnectionBuffer()
+        {
+            if (_reconnectionAudioBuffer.Count == 0)
+                return;
+
+            var bufferSize = _reconnectionAudioBuffer.Count;
+            var overflows = _reconnectionBufferOverflows;
+
+            Debug.Log($"[RequestOrchestrator] 🔄 Connection restored! Flushing {bufferSize} buffered audio chunks" +
+                     (overflows > 0 ? $" (⚠️ {overflows} chunks were dropped due to buffer overflow)" : ""));
+
+            // Send all buffered chunks
+            var sentCount = 0;
+            while (_reconnectionAudioBuffer.Count > 0)
+            {
+                var chunk = _reconnectionAudioBuffer.Dequeue();
+                _ = _webSocketClient.SendBinaryAsync(chunk);
+                sentCount++;
+            }
+
+            // Reset counters
+            _droppedAudioChunks = 0;
+            _reconnectionBufferOverflows = 0;
+
+            Debug.Log($"[RequestOrchestrator] ✅ Successfully sent {sentCount} buffered chunks to backend");
+        }
 
         private void ValidateRequiredComponents()
         {

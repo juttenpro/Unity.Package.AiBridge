@@ -1,6 +1,6 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using Tsc.AIBridge.Messages;
 using Tsc.AIBridge.WebSocket;
@@ -20,16 +20,21 @@ namespace Tsc.AIBridge.Services
     ///
     /// NOTE: This service has NO external dependencies (RuleSystem, Training, etc.)
     /// and therefore belongs in the base AIBridge package for 3rd party use.
+    ///
+    /// ARCHITECTURE: Pure C# singleton using async/await - no MonoBehaviour overhead.
+    /// Uses TaskCompletionSource for event-driven async patterns.
     /// </summary>
-    public class AnalysisService : MonoBehaviour, INpcMessageHandler
+    public class AnalysisService : INpcMessageHandler
     {
         private static AnalysisService _instance;
-        private AnalysisResponse _pendingResponse;
+        private TaskCompletionSource<AnalysisResponse> _pendingTask;
         private string _pendingRequestId;
-        private Action<string> _pendingErrorCallback;
+
+        // Dependency injection for testability - public for test assembly access
+        public IWebSocketClientAdapter WebSocketAdapter { get; set; }
 
         /// <summary>
-        /// Get or create singleton instance
+        /// Get singleton instance
         /// </summary>
         public static AnalysisService Instance
         {
@@ -37,22 +42,17 @@ namespace Tsc.AIBridge.Services
             {
                 if (_instance == null)
                 {
-                    var go = new GameObject("[AnalysisService]");
-                    _instance = go.AddComponent<AnalysisService>();
-                    DontDestroyOnLoad(go);
+                    _instance = new AnalysisService();
                 }
                 return _instance;
             }
         }
 
-        private void Awake()
+        private AnalysisService()
         {
-            if (_instance != null && _instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
-            _instance = this;
+            // Private constructor for singleton pattern
+            // Default to production WebSocketClient adapter
+            WebSocketAdapter = new WebSocketClientProductionAdapter();
         }
 
         /// <summary>
@@ -64,36 +64,34 @@ namespace Tsc.AIBridge.Services
         /// <param name="temperature">Temperature for response generation</param>
         /// <param name="maxTokens">Maximum tokens for response</param>
         /// <param name="responseFormat">Response format - use "json_object" for clean JSON without markdown (OpenAI/Azure OpenAI only)</param>
-        /// <param name="onSuccess">Callback when analysis completes</param>
-        /// <param name="onError">Callback on error</param>
-        public IEnumerator RequestAnalysis(
+        /// <returns>Task that completes with AnalysisResponse when analysis is done</returns>
+        /// <exception cref="InvalidOperationException">Thrown when WebSocket is not connected</exception>
+        /// <exception cref="ArgumentException">Thrown when messages array is null or empty</exception>
+        /// <exception cref="TimeoutException">Thrown when request times out after 30 seconds</exception>
+        public async Task<AnalysisResponse> RequestAnalysisAsync(
             List<ChatMessage> messages,
             string llmProvider,
             string llmModel,
             float temperature,
             int maxTokens,
-            string responseFormat,
-            Action<AnalysisResponse> onSuccess,
-            Action<string> onError)
+            string responseFormat)
         {
             // Check WebSocket connection
-            if (WebSocketClient.Instance == null || !WebSocketClient.Instance.IsConnected)
+            if (!WebSocketAdapter.IsConnected)
             {
-                Debug.LogError($"[AnalysisService] WebSocket not connected - Instance null: {WebSocketClient.Instance == null}, Connected: {WebSocketClient.Instance?.IsConnected ?? false}");
-                onError?.Invoke("WebSocket not connected - ensure connection is established first");
-                yield break;
+                Debug.LogError($"[AnalysisService] WebSocket not connected");
+                throw new InvalidOperationException("WebSocket not connected - ensure connection is established first");
+            }
+
+            // Validate messages array has at least one message
+            if (messages == null || messages.Count == 0)
+            {
+                throw new ArgumentException("At least one message is required for analysis");
             }
 
             // Create request
             var requestId = Guid.NewGuid().ToString();
             Debug.Log($"[AnalysisService] Creating analysis request with ID: {requestId}");
-
-            // Validate messages array has at least one message
-            if (messages == null || messages.Count == 0)
-            {
-                onError?.Invoke("At least one message is required for analysis");
-                yield break;
-            }
 
             // LOG: Show all messages being sent to API for debugging
             Debug.Log($"[AnalysisService] === ANALYSIS REQUEST MESSAGES ({messages.Count} total) ===");
@@ -128,50 +126,43 @@ namespace Tsc.AIBridge.Services
                 }
             };
 
-            // Store callbacks
+            // Create TaskCompletionSource for async result
+            _pendingTask = new TaskCompletionSource<AnalysisResponse>();
             _pendingRequestId = requestId;
-            _pendingErrorCallback = onError;
-            _pendingResponse = null;
 
             // Register as handler for this RequestId
             Debug.Log($"[AnalysisService] Registering as handler for RequestId: {requestId}");
-            WebSocketClient.Instance.RegisterNpc(requestId, this);
+            WebSocketAdapter.RegisterNpc(requestId, this);
 
-            // Send request via WebSocket
-            Debug.Log($"[AnalysisService] Sending analysis request to backend - LLM: {llmProvider}/{llmModel}, Temp: {temperature}, MaxTokens: {maxTokens}");
-            _ = WebSocketClient.Instance.SendAnalysisRequestAsync(request);
-            Debug.Log($"[AnalysisService] Analysis request sent, waiting for response...");
-
-            // Wait for response (with timeout)
-            var timeout = 30f; // 30 second timeout
-            var elapsed = 0f;
-
-            while (_pendingResponse == null && elapsed < timeout)
+            try
             {
-                yield return new WaitForSeconds(0.1f);
-                elapsed += 0.1f;
-            }
+                // Send request via WebSocket
+                Debug.Log($"[AnalysisService] Sending analysis request to backend - LLM: {llmProvider}/{llmModel}, Temp: {temperature}, MaxTokens: {maxTokens}");
+                await WebSocketAdapter.SendAnalysisRequestAsync(request);
+                Debug.Log($"[AnalysisService] Analysis request sent, waiting for response...");
 
-            // Unregister handler
-            if (WebSocketClient.Instance != null)
-            {
-                WebSocketClient.Instance.UnregisterNpc(requestId);
-            }
+                // Wait for response with 30 second timeout
+                var timeoutTask = Task.Delay(30000);
+                var completedTask = await Task.WhenAny(_pendingTask.Task, timeoutTask);
 
-            // Handle result
-            if (_pendingResponse != null)
-            {
-                onSuccess?.Invoke(_pendingResponse);
-            }
-            else
-            {
-                onError?.Invoke($"Analysis request timed out after {timeout} seconds");
-            }
+                if (completedTask == timeoutTask)
+                {
+                    Debug.LogError($"[AnalysisService] Analysis request timed out after 30 seconds");
+                    throw new TimeoutException($"Analysis request timed out after 30 seconds");
+                }
 
-            // Clear state
-            _pendingRequestId = null;
-            _pendingErrorCallback = null;
-            _pendingResponse = null;
+                // Return the successful result
+                return await _pendingTask.Task;
+            }
+            finally
+            {
+                // Always unregister handler
+                WebSocketAdapter.UnregisterNpc(requestId);
+
+                // Clear state
+                _pendingRequestId = null;
+                _pendingTask = null;
+            }
         }
 
         public string NpcId => _pendingRequestId;
@@ -182,16 +173,28 @@ namespace Tsc.AIBridge.Services
             {
                 Debug.Log($"[AnalysisService] OnTextMessage received: {(json.Length > 200 ? json.Substring(0, 200) + "..." : json)}");
 
-                // Check if it's an analysis response
-                if (!json.Contains("\"type\":\"analysisresponse\""))
+                // Quick check if JSON contains "type" field (optimization before full parse)
+                if (!json.Contains("\"type\"", System.StringComparison.OrdinalIgnoreCase))
                 {
-                    Debug.Log($"[AnalysisService] Message is not analysisresponse, ignoring");
+                    Debug.Log($"[AnalysisService] Message has no type field, ignoring");
                     return;
                 }
 
-                Debug.Log($"[AnalysisService] Parsing analysis response...");
+                // Parse to check actual type value
+                Debug.Log($"[AnalysisService] Parsing message to check type...");
                 var message = Newtonsoft.Json.JsonConvert.DeserializeObject<AnalysisResponseMessage>(json);
-                if (message != null && message.RequestId == _pendingRequestId)
+
+                // Check if it's actually an analysis response
+                if (message == null ||
+                    !string.Equals(message.Type, "analysisresponse", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.Log($"[AnalysisService] Message type is '{message?.Type ?? "null"}', not analysisresponse, ignoring");
+                    return;
+                }
+
+                Debug.Log($"[AnalysisService] Analysis response received successfully");
+
+                if (message.RequestId == _pendingRequestId)
                 {
                     // Convert llmResponse object to JObject if needed
                     Newtonsoft.Json.Linq.JObject llmResponseJObject = null;
@@ -206,7 +209,7 @@ namespace Tsc.AIBridge.Services
                         }
                     }
 
-                    _pendingResponse = new AnalysisResponse
+                    var response = new AnalysisResponse
                     {
                         analysis = message.Analysis,
                         llmResponse = llmResponseJObject,
@@ -214,17 +217,22 @@ namespace Tsc.AIBridge.Services
                         timing = message.Timing
                     };
 
-                    Debug.Log($"[AnalysisService] Analysis response received successfully for RequestId: {message.RequestId}");
+                    Debug.Log($"[AnalysisService] Analysis response processed for RequestId: {message.RequestId}");
+
+                    // Complete the task with the result
+                    _pendingTask?.TrySetResult(response);
                 }
                 else
                 {
-                    Debug.LogWarning($"[AnalysisService] Analysis response received but RequestId mismatch. Expected: {_pendingRequestId}, Got: {message?.RequestId}");
+                    Debug.LogWarning($"[AnalysisService] Analysis response received but RequestId mismatch. Expected: {_pendingRequestId}, Got: {message.RequestId}");
                 }
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[AnalysisService] Failed to parse response: {ex.Message}\nStack trace: {ex.StackTrace}");
-                _pendingErrorCallback?.Invoke($"Failed to parse response: {ex.Message}");
+
+                // Complete the task with an exception
+                _pendingTask?.TrySetException(new InvalidOperationException($"Failed to parse response: {ex.Message}", ex));
             }
         }
 
@@ -252,6 +260,42 @@ namespace Tsc.AIBridge.Services
             public Newtonsoft.Json.Linq.JObject llmResponse;
             public object metadata;
             public object timing;
+        }
+    }
+
+    /// <summary>
+    /// Adapter interface for WebSocketClient to enable testing.
+    /// Public for test assembly access.
+    /// </summary>
+    public interface IWebSocketClientAdapter
+    {
+        bool IsConnected { get; }
+        void RegisterNpc(string requestId, WebSocket.INpcMessageHandler handler);
+        void UnregisterNpc(string requestId);
+        Task SendAnalysisRequestAsync(AnalysisRequestMessage message);
+    }
+
+    /// <summary>
+    /// Production adapter that wraps WebSocketClient.Instance.
+    /// Public for test assembly access to reset adapter in TearDown.
+    /// </summary>
+    public class WebSocketClientProductionAdapter : IWebSocketClientAdapter
+    {
+        public bool IsConnected => WebSocket.WebSocketClient.Instance != null && WebSocket.WebSocketClient.Instance.IsConnected;
+
+        public void RegisterNpc(string requestId, WebSocket.INpcMessageHandler handler)
+        {
+            WebSocket.WebSocketClient.Instance?.RegisterNpc(requestId, handler);
+        }
+
+        public void UnregisterNpc(string requestId)
+        {
+            WebSocket.WebSocketClient.Instance?.UnregisterNpc(requestId);
+        }
+
+        public Task SendAnalysisRequestAsync(AnalysisRequestMessage message)
+        {
+            return WebSocket.WebSocketClient.Instance?.SendAnalysisRequestAsync(message) ?? Task.CompletedTask;
         }
     }
 }

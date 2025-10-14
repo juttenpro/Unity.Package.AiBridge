@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using UnityEngine;
 using UnityEngine.Events;
+using Tsc.AIBridge.Audio.VAD;
 
 namespace Tsc.AIBridge.Audio.Playback
 {
@@ -167,6 +168,9 @@ namespace Tsc.AIBridge.Audio.Playback
         private float[] _lastPlayedAudioFrame;
         public float[] GetLastPlayedAudioFrame() => _lastPlayedAudioFrame;
 
+        // VAD processor for NPC speech detection (actual speech vs pauses)
+        private SimpleVADProcessor _npcVadProcessor;
+
         protected virtual void Awake()
         {
             _cachedGameObjectName = gameObject.name;
@@ -209,6 +213,22 @@ namespace Tsc.AIBridge.Audio.Playback
             else if (enableVerboseLogging)
             {
                 Debug.Log($"[{_cachedGameObjectName}] AdaptiveBufferManager not found - using default buffer settings");
+            }
+
+            // Initialize NPC VAD processor for speech detection (pauses vs actual speech)
+            // Low threshold (0.001) for clean TTS audio - no environmental noise
+            _npcVadProcessor = new SimpleVADProcessor($"NPC-{_cachedGameObjectName}", volumeThreshold: 0.001f, isVerboseLogging: enableVerboseLogging);
+
+            // Subscribe to AudioFilterRelay audio processing events
+            if (audioFilterRelay != null)
+            {
+                audioFilterRelay.OnAudioProcessed += HandleAudioProcessed;
+                if (enableVerboseLogging)
+                    Debug.Log($"[{_cachedGameObjectName}] NPC VAD initialized and subscribed to AudioFilterRelay");
+            }
+            else if (enableVerboseLogging)
+            {
+                Debug.LogWarning($"[{_cachedGameObjectName}] AudioFilterRelay not available - NPC speech detection disabled");
             }
         }
 
@@ -340,6 +360,48 @@ namespace Tsc.AIBridge.Audio.Playback
                     Debug.Log($"[{_cachedGameObjectName}] Buffer update notification received: {newBufferDuration:F3}s from AdaptiveBufferManager");
                 }
             }
+        }
+
+        /// <summary>
+        /// Handle audio processing from AudioFilterRelay for NPC speech detection.
+        /// Processes audio through VAD to detect actual speech vs pauses.
+        /// CRITICAL: This enables InterruptionManager to distinguish:
+        /// - Real interruption (user talks over NPC speech)
+        /// - Back-channeling (user says "ja" then stops)
+        /// - Pause filling (user talks during NPC pause)
+        /// </summary>
+        private void HandleAudioProcessed(float[] audioData, int channels)
+        {
+            if (_npcVadProcessor == null || audioData == null || audioData.Length == 0)
+                return;
+
+            // Convert multichannel to mono for VAD processing
+            float[] monoAudio;
+            if (channels == 1)
+            {
+                monoAudio = audioData;
+            }
+            else
+            {
+                // Average channels to mono
+                int sampleCount = audioData.Length / channels;
+                monoAudio = new float[sampleCount];
+                for (int i = 0; i < sampleCount; i++)
+                {
+                    float sum = 0f;
+                    for (int ch = 0; ch < channels; ch++)
+                    {
+                        sum += audioData[i * channels + ch];
+                    }
+                    monoAudio[i] = sum / channels;
+                }
+            }
+
+            // Process through VAD - deltaTime estimated at ~20ms (50Hz audio callbacks)
+            bool isSpeaking = _npcVadProcessor.ProcessAudioFrame(monoAudio, deltaTime: 0.02f);
+
+            // Update IsNPCSpeaking state for InterruptionManager
+            SetNPCSpeechState(isSpeaking);
         }
 
         /// <summary>
@@ -544,6 +606,12 @@ namespace Tsc.AIBridge.Audio.Playback
             _forceStop = true; // Ensure force stop is set
             _samplesPlayedSinceStart = 0; // Reset grace period counter
             _cachedIsPlaying = false; // Update cached state
+
+            // CRITICAL: Reset NPC speech state for InterruptionManager
+            // Without this, old VAD state causes false overlap detection
+            IsNPCSpeaking = false;
+            if (enableVerboseLogging)
+                Debug.Log($"[{_cachedGameObjectName}] 🤐 NPC speech state reset (playback stopped)");
 
             // Stop relay if it exists (may be null in tests)
             audioFilterRelay?.StopPlayback();
@@ -919,6 +987,12 @@ namespace Tsc.AIBridge.Audio.Playback
                 {
                     bufferManager.OnBufferUpdateEvent -= OnBufferUpdateReceived;
                 }
+            }
+
+            // Unsubscribe from audio processing events
+            if (audioFilterRelay != null)
+            {
+                audioFilterRelay.OnAudioProcessed -= HandleAudioProcessed;
             }
 
             #if UNITY_EDITOR

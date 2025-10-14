@@ -186,11 +186,15 @@ namespace Tsc.AIBridge.Audio.Interruption
                          $"IsUserSpeaking property: {speechInputHandler?.IsUserSpeaking}");
             }
 
-            // SIMPLIFIED: For interruption detection, use IsTalking (response active)
-            // Original design used VAD (IsNPCSpeaking) to detect pauses, but this is too complex
-            // and unreliable during real-time overlapping audio. Simple IsTalking is more robust.
+            // Use IsTalking for response phase tracking
             bool npcResponding = _activeNpcClient.IsTalking;
-            bool npcActuallySpeaking = _activeNpcClient.IsTalking; // Use same as npcResponding for reliability
+
+            // CRITICAL: Use VAD-based speech detection to distinguish actual speech from pauses
+            // This enables proper interruption type detection:
+            // - Back-channeling: User says "ja" briefly, stops when NPC continues
+            // - Real interruption: User persists talking over NPC speech
+            // - Pause filling: User talks during NPC pause, stops when NPC resumes
+            bool npcActuallySpeaking = GetNpcActualSpeech(_activeNpcClient);
 
             if (enableVerboseLogging && npcResponding)
             {

@@ -258,8 +258,14 @@ namespace Tsc.AIBridge.Audio.Codecs
             if (_isVerboseLogging)
                 Debug.Log($"[OpusStreamDecoder] Reset called after {_totalPacketsDecoded} packets, {_totalBytesReceived} bytes");
 
-            // Clear the continuous stream
-            _continuousStream?.SetLength(0);
+            // CRITICAL FIX: Dispose and recreate stream instead of SetLength()
+            // SetLength() fails if stream is already disposed or in read-only mode
+            // This happens during Unity OnDestroy() cleanup sequences
+            if (_continuousStream != null)
+            {
+                _continuousStream.Dispose();
+                _continuousStream = new MemoryStream();
+            }
             _streamPosition = 0;
 
             // Reset parser state

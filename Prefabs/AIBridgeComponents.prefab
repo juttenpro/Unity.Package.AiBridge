@@ -49,6 +49,7 @@ MonoBehaviour:
   interruptionManager: {fileID: 5081136985733067195}
   npcProviderComponent: {fileID: 0}
   enableMetrics: 1
+  enableVerboseLogging: 0
 --- !u!1 &8102201241617361769
 GameObject:
   m_ObjectHideFlags: 0
@@ -195,6 +196,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Tsc.Conversation.Audio.Capture.MicrophoneCapture
   enableEchoCancellation: 1
   calculateVolume: 0
+  enableVerboseLogging: 0
 --- !u!114 &8575396105609367692
 MonoBehaviour:
   m_ObjectHideFlags: 0

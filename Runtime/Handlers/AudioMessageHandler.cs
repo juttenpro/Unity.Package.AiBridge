@@ -127,15 +127,25 @@ namespace Tsc.AIBridge.Handlers
         {
             if (_enableVerboseLogging)
                 Debug.Log($"[{_personaName}] AudioMessageHandler reset - Previous stream count: {_receivedStreamCount}");
-            
+
             _receivedStreamCount = 0;
-            
+
             // Reset interruption flag to allow new audio
             if (_interruptionOccurredThisSession)
             {
                 Debug.Log($"[{_personaName}] Interruption flag cleared - ready for new audio");
                 _interruptionOccurredThisSession = false;
                 _interruptedRequestId = null;
+            }
+
+            // CRITICAL FIX: Reset decoder to clear old audio buffers after interruption
+            // This prevents corrupt audio state (old data mixing with new stream)
+            // See: unity_session_2025-10-14_12-14-26.log line 535 (222,613 bytes from old stream)
+            if (_audioProcessor != null)
+            {
+                _audioProcessor.ResetDecoder();
+                if (_enableVerboseLogging)
+                    Debug.Log($"[{_personaName}] Decoder reset - old audio buffers cleared");
             }
         }
         
