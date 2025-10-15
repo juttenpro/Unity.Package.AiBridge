@@ -554,11 +554,21 @@ namespace Tsc.AIBridge.Input
                 return;
             }
 
-            // Update VAD
-            var pttDuration = _isPttPressed ? Time.time - _pttPressTime : 0f;
-            var isSpeaking = _vadManager?.ProcessAudioFrame(samples, pttDuration) ?? false;
+            // CRITICAL FIX: Only process VAD when needed to prevent false positives from NPC audio feedback
+            // VAD should only run when:
+            // 1. PTT is active (user is actively speaking), OR
+            // 2. Voice activation is enabled (open mic mode), OR
+            // 3. Smart mic offset is active (checking if user continues after PTT release)
+            var shouldProcessVAD = _isPttPressed || useVoiceActivation || (useSmartMicOffset && _isRecording);
 
-            // IsUserSpeaking is now a property that reads from _vadManager
+            bool isSpeaking = false;
+            if (shouldProcessVAD)
+            {
+                // Update VAD only when relevant
+                var pttDuration = _isPttPressed ? Time.time - _pttPressTime : 0f;
+                isSpeaking = _vadManager?.ProcessAudioFrame(samples, pttDuration) ?? false;
+            }
+            // If VAD is not needed, isSpeaking remains false (prevents NPC audio feedback detection)
 
             // Handle voice activation
             if (useVoiceActivation && !_isPttPressed)
