@@ -180,13 +180,6 @@ namespace Tsc.AIBridge.Audio.Interruption
             // Get user speaking state from VAD (with calibration)
             bool userSpeaking = DetectUserSpeech();
 
-            if (enableVerboseLogging)
-            {
-                Debug.Log($"[InterruptionManager] VAD State - userSpeaking: {userSpeaking}, " +
-                         $"speechInputHandler: {speechInputHandler != null}, " +
-                         $"IsUserSpeaking property: {speechInputHandler?.IsUserSpeaking}");
-            }
-
             // Use IsTalking for response phase tracking
             bool npcResponding = _activeNpcClient.IsTalking;
 
@@ -196,11 +189,6 @@ namespace Tsc.AIBridge.Audio.Interruption
             // - Real interruption: User persists talking over NPC speech
             // - Pause filling: User talks during NPC pause, stops when NPC resumes
             bool npcActuallySpeaking = GetNpcActualSpeech(_activeNpcClient);
-
-            if (enableVerboseLogging && npcResponding)
-            {
-                Debug.Log($"[InterruptionManager] NPC is talking - IsTalking: {npcResponding}, userSpeaking: {userSpeaking}, overlapTimer: {_overlapTimer:F2}s");
-            }
 
             // Track if PTT was pressed while NPC was responding (crucial for buffer inclusion)
             // Use npcResponding (not npcActuallySpeaking) because we want to include buffer even during pauses
@@ -289,12 +277,6 @@ namespace Tsc.AIBridge.Audio.Interruption
             {
                 _overlapTimer += Time.deltaTime;
 
-                if (enableVerboseLogging && _overlapTimer > 0 && Mathf.Floor(_overlapTimer * 10) != Mathf.Floor((_overlapTimer - Time.deltaTime) * 10))
-                {
-                    // Log every 100ms during overlap
-                    Debug.Log($"[InterruptionManager] Overlap detected: {_overlapTimer:F2}s (isNearEnd: {isNearEnd}, persistence: {persistenceTime:F1}s)");
-                }
-
                 // NEAR-END: Use FULL persistenceTime from PersonaSO
                 // Near-end still requires sustained overlap to avoid back-channeling false positives
                 if (isNearEnd)
@@ -327,10 +309,6 @@ namespace Tsc.AIBridge.Audio.Interruption
             {
                 // Reset overlap timer if user not speaking OR NPC not actually producing speech (pause)
                 // This ensures we don't count pauses as interruption overlap
-                if (enableVerboseLogging && _overlapTimer > 0)
-                {
-                    Debug.Log($"[InterruptionManager] Overlap ended - resetting timer (userSpeaking: {userSpeaking}, npcActuallySpeaking: {npcActuallySpeaking})");
-                }
                 _overlapTimer = 0f;
             }
         }
