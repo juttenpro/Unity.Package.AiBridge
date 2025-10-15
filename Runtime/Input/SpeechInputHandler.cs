@@ -622,13 +622,22 @@ namespace Tsc.AIBridge.Input
                         _isVoiceActivated = true;
                         StartRecording();
 
-                        // Send pre-buffered audio
+                        // CRITICAL FIX: Send pre-buffered audio to encoder to capture the start of speech
+                        // The pre-buffer contains audio from BEFORE VAD detected speech,
+                        // preventing the first word from being cut off
                         if (_preBuffer != null)
                         {
                             var preBufferedAudio = _preBuffer.GetAllSamples();
                             if (preBufferedAudio != null && preBufferedAudio.Length > 0)
                             {
+                                // Send to encoder (will be buffered until FlushBuffer is called)
+                                _audioStreamProcessor?.ProcessRecordingData(preBufferedAudio);
+
+                                // Also fire event for other listeners (e.g., InterruptionManager)
                                 OnAudioDataReceived?.Invoke(preBufferedAudio);
+
+                                if (enableVerboseLogging)
+                                    Debug.Log($"[SpeechInputHandler] Sent {preBufferedAudio.Length} pre-buffered samples to encoder");
                             }
                         }
 
@@ -646,6 +655,9 @@ namespace Tsc.AIBridge.Input
                     // Deactivate recording
                     _isVoiceActivated = false;
                     StopRecording();
+
+                    // Clear pre-buffer to prevent reusing old audio in next activation
+                    _preBuffer?.Clear();
 
                     if (enableVerboseLogging)
                         Debug.Log("[SpeechInputHandler] Voice activation ended");
