@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using Tsc.AIBridge.Core;
 using Tsc.AIBridge.Input;
@@ -7,8 +8,9 @@ using Tsc.AIBridge.Audio.Playback;
 namespace Tsc.AIBridge.Audio.Interruption
 {
     /// <summary>
-    /// Interruption detection system that works with INpcConfiguration.
+    /// Event-driven interruption detection system that works with INpcConfiguration.
     /// Lives on the PLAYER GameObject alongside SpeechInputHandler.
+    /// Uses events + coroutines instead of Update() for better performance and testability.
     /// No PersonaSO dependencies - works with any INpcConfiguration implementation.
     /// </summary>
     public class InterruptionManager : MonoBehaviour
@@ -19,7 +21,7 @@ namespace Tsc.AIBridge.Audio.Interruption
         [Header("Near-End Detection")]
         [SerializeField]
         [Range(0.5f, 3.0f)]
-        [Tooltip("After the NPC has been speaking for this many seconds, the user can respond with minimal overlap (0.3s). For short responses (<1s), near-end is always triggered to ensure buffered audio is included. This ensures complete STT even when user starts talking during brief NPC responses.")]
+        [Tooltip("Buffer threshold for near-end detection. When stream is complete and buffer < this value, near-end is triggered.")]
         private float nearEndThresholdSeconds = 1.0f;
 
         [Header("Debug")]
@@ -42,12 +44,14 @@ namespace Tsc.AIBridge.Audio.Interruption
         private INpcConfiguration _activeNpcConfig;
         private StreamingAudioPlayer _activeAudioPlayer; // Cached for performance (GetComponent is expensive)
 
-        private float _overlapTimer;
+        // State tracking
         private bool _hasValidInterruption;
         private float _npcResponseStartTime;
-        private float _estimatedResponseDuration;
-        private bool _pttPressedDuringNpcSpeech;
+        private bool _userInputStartedDuringNpcResponse;
         private float _npcStoppedSpeakingTime;
+
+        // Coroutine tracking
+        private Coroutine _overlapMonitorCoroutine;
 
         private void Awake()
         {
@@ -74,6 +78,17 @@ namespace Tsc.AIBridge.Audio.Interruption
             {
                 Debug.LogWarning("[InterruptionManager] RequestOrchestrator not found - interruption detection may not work");
             }
+
+            // Subscribe to SpeechInputHandler events for user input tracking
+            if (speechInputHandler != null)
+            {
+                speechInputHandler.OnRecordingStarted += OnUserInputStarted;
+                speechInputHandler.OnRecordingStopped += OnUserInputStopped;
+                if (enableVerboseLogging)
+                {
+                    Debug.Log("[InterruptionManager] Subscribed to SpeechInputHandler events");
+                }
+            }
         }
 
         private void OnDestroy()
@@ -83,6 +98,20 @@ namespace Tsc.AIBridge.Audio.Interruption
             if (RequestOrchestrator.HasInstance)
             {
                 RequestOrchestrator.Instance.OnActiveNpcChanged -= HandleActiveNpcChanged;
+            }
+
+            // Unsubscribe from SpeechInputHandler events
+            if (speechInputHandler != null)
+            {
+                speechInputHandler.OnRecordingStarted -= OnUserInputStarted;
+                speechInputHandler.OnRecordingStopped -= OnUserInputStopped;
+            }
+
+            // Stop any running coroutines
+            if (_overlapMonitorCoroutine != null)
+            {
+                StopCoroutine(_overlapMonitorCoroutine);
+                _overlapMonitorCoroutine = null;
             }
         }
 
@@ -151,166 +180,247 @@ namespace Tsc.AIBridge.Audio.Interruption
             return npcClient.IsTalking;
         }
 
-        private void Update()
+        /// <summary>
+        /// Event handler: User started recording/input (PTT or voice activation)
+        /// </summary>
+        private void OnUserInputStarted()
         {
-            if (speechInputHandler == null)
-                return;
-
-            // Check if user is providing input (abstracts PTT, voice activation, and future input methods)
-            bool userInputActive = speechInputHandler.IsUserInputActive;
-
-            // Early return if no user input active - no need for interruption detection
-            if (!userInputActive)
+            if (enableVerboseLogging)
             {
-                _pttPressedDuringNpcSpeech = false;
-                _overlapTimer = 0f;
-                _hasValidInterruption = false; // CRITICAL: Reset for next input session
-                return;
+                Debug.Log("[InterruptionManager] User input started");
             }
 
-            // User input is active - check if we have an active NPC
-            // _activeNpcClient is set via event subscription (no reflection!)
-            if (_activeNpcClient == null)
-                return;
+            // Check if NPC is currently responding
+            bool npcResponding = _activeNpcClient?.IsTalking ?? false;
 
-            // Get interruption settings from cached config (no reflection!)
-            bool allowInterruption = _activeNpcConfig?.AllowInterruption ?? true;
-            float persistenceTime = _activeNpcConfig?.InterruptionPersistenceTime ?? 1.5f;
-
-            // Get user speaking state from VAD (with calibration)
-            bool userSpeaking = DetectUserSpeech();
-
-            // Use IsTalking for response phase tracking
-            bool npcResponding = _activeNpcClient.IsTalking;
-
-            // CRITICAL: Use VAD-based speech detection to distinguish actual speech from pauses
-            // This enables proper interruption type detection:
-            // - Back-channeling: User says "ja" briefly, stops when NPC continues
-            // - Real interruption: User persists talking over NPC speech
-            // - Pause filling: User talks during NPC pause, stops when NPC resumes
-            bool npcActuallySpeaking = GetNpcActualSpeech(_activeNpcClient);
-
-            // Track if user started input while NPC was responding (crucial for buffer inclusion)
-            // Use npcResponding (not npcActuallySpeaking) because we want to include buffer even during pauses
-            if (npcResponding && !_pttPressedDuringNpcSpeech)
-            {
-                _pttPressedDuringNpcSpeech = true;
-                if (enableVerboseLogging)
-                {
-                    Debug.Log("[InterruptionManager] User input started during NPC response - buffer will be included");
-                }
-            }
-
-            // Track NPC response time (use npcResponding for full response duration)
             if (npcResponding)
             {
+                // User started input during NPC response - track for buffer inclusion
+                _userInputStartedDuringNpcResponse = true;
+
+                // Track NPC response start time if not already set
                 if (_npcResponseStartTime <= 0)
                 {
                     _npcResponseStartTime = Time.time;
-                    if (enableVerboseLogging)
-                    {
-                        Debug.Log($"[InterruptionManager] NPC started responding at {_npcResponseStartTime:F2}");
-                    }
                 }
-                _npcStoppedSpeakingTime = 0; // Reset stop time while responding
-            }
-            else if (_npcResponseStartTime > 0)
-            {
-                // NPC just stopped responding
-                if (_npcStoppedSpeakingTime <= 0)
+
+                if (enableVerboseLogging)
                 {
-                    _npcStoppedSpeakingTime = Time.time;
-                    if (enableVerboseLogging)
-                    {
-                        float duration = _npcStoppedSpeakingTime - _npcResponseStartTime;
-                        Debug.Log($"[InterruptionManager] NPC stopped responding after {duration:F2}s");
-                    }
-                }
-                _npcResponseStartTime = 0;
-            }
-
-            // Calculate NPC speaking duration (for logging only)
-            float npcSpeakingDuration = _npcResponseStartTime > 0 ?
-                Time.time - _npcResponseStartTime : 0f;
-
-            // NEAR-END DETECTION:
-            // Near-end = AudioStreamEnd received (no more audio coming) + buffer almost empty
-            // This detects REAL near-end, not "after 1s of speaking"
-            bool isNearEnd = false;
-
-            if (_pttPressedDuringNpcSpeech)
-            {
-                // Use cached StreamingAudioPlayer for performance (cached in HandleActiveNpcChanged)
-                if (_activeAudioPlayer != null)
-                {
-                    // CORRECT: Near-end = AudioStreamEnd received + BufferLevel < threshold
-                    // IsReceivingResponse becomes false when AudioStreamEnd is received
-                    bool streamCompleted = !_activeAudioPlayer.IsReceivingResponse;
-                    float bufferRemaining = _activeAudioPlayer.BufferLevel;
-
-                    isNearEnd = streamCompleted && bufferRemaining < nearEndThresholdSeconds;
-
-                    if (enableVerboseLogging && streamCompleted)
-                    {
-                        Debug.Log($"[InterruptionManager] Stream completed, buffer remaining: {bufferRemaining:F2}s, threshold: {nearEndThresholdSeconds:F2}s, isNearEnd: {isNearEnd}");
-                    }
+                    Debug.Log("[InterruptionManager] User input started during NPC response - starting overlap monitoring");
                 }
 
-                // Also check if NPC recently stopped (within 500ms) - still counts as near-end
-                if (!npcResponding && _npcStoppedSpeakingTime > 0)
-                {
-                    float timeSinceNpcStopped = Time.time - _npcStoppedSpeakingTime;
-                    if (timeSinceNpcStopped < 0.5f) // 500ms grace period
-                    {
-                        isNearEnd = true;
-                        if (enableVerboseLogging)
-                        {
-                            Debug.Log($"[InterruptionManager] Near-end: User continuing {timeSinceNpcStopped:F2}s after NPC stopped");
-                        }
-                    }
-                }
-            }
-
-            // Process interruption detection
-            // CRITICAL: Use npcActuallySpeaking for overlap detection to avoid false positives during pauses
-            if (userSpeaking && npcActuallySpeaking)
-            {
-                _overlapTimer += Time.deltaTime;
-
-                // NEAR-END: Use FULL persistenceTime from PersonaSO
-                // Near-end still requires sustained overlap to avoid back-channeling false positives
-                if (isNearEnd)
-                {
-                    if (_overlapTimer >= persistenceTime && !_hasValidInterruption)
-                    {
-                        _hasValidInterruption = true;
-                        if (enableVerboseLogging)
-                        {
-                            Debug.Log($"[InterruptionManager] Near-end interruption detected after {_overlapTimer:F2}s persistence (NPC spoke for {npcSpeakingDuration:F1}s)");
-                        }
-                        OnInterruptionDetected();
-                    }
-                }
-                // NORMAL INTERRUPTION: Only if allowed and actually overlapping with audible NPC speech
-                else if (allowInterruption)
-                {
-                    if (_overlapTimer >= persistenceTime && !_hasValidInterruption)
-                    {
-                        _hasValidInterruption = true;
-                        if (enableVerboseLogging)
-                        {
-                            Debug.Log($"[InterruptionManager] Normal interruption after {_overlapTimer:F2}s persistence");
-                        }
-                        OnInterruptionDetected();
-                    }
-                }
+                // Start monitoring for interruption
+                StartOverlapMonitoring();
             }
             else
             {
-                // Reset overlap timer if user not speaking OR NPC not actually producing speech (pause)
-                // This ensures we don't count pauses as interruption overlap
-                _overlapTimer = 0f;
+                _userInputStartedDuringNpcResponse = false;
+                if (enableVerboseLogging)
+                {
+                    Debug.Log("[InterruptionManager] User input started - NPC not responding, no monitoring needed");
+                }
             }
+        }
+
+        /// <summary>
+        /// Event handler: User stopped recording/input
+        /// </summary>
+        private void OnUserInputStopped()
+        {
+            if (enableVerboseLogging)
+            {
+                Debug.Log("[InterruptionManager] User input stopped - stopping overlap monitoring");
+            }
+
+            // Stop overlap monitoring
+            StopOverlapMonitoring();
+
+            // Reset state for next input session
+            _userInputStartedDuringNpcResponse = false;
+            _hasValidInterruption = false;
+        }
+
+        /// <summary>
+        /// Start the overlap monitoring coroutine
+        /// </summary>
+        private void StartOverlapMonitoring()
+        {
+            // Stop any existing monitoring
+            StopOverlapMonitoring();
+
+            // Start new monitoring coroutine
+            _overlapMonitorCoroutine = StartCoroutine(MonitorOverlapCoroutine());
+        }
+
+        /// <summary>
+        /// Stop the overlap monitoring coroutine
+        /// </summary>
+        private void StopOverlapMonitoring()
+        {
+            if (_overlapMonitorCoroutine != null)
+            {
+                StopCoroutine(_overlapMonitorCoroutine);
+                _overlapMonitorCoroutine = null;
+            }
+        }
+
+        /// <summary>
+        /// Coroutine: Monitor for interruption while user and NPC are both potentially talking
+        /// This replaces the Update() loop with event-driven + coroutine approach
+        /// </summary>
+        private IEnumerator MonitorOverlapCoroutine()
+        {
+            float overlapTimer = 0f;
+
+            // Get interruption settings from cached config
+            bool allowInterruption = _activeNpcConfig?.AllowInterruption ?? true;
+            float persistenceTime = _activeNpcConfig?.InterruptionPersistenceTime ?? 1.5f;
+
+            if (enableVerboseLogging)
+            {
+                Debug.Log($"[InterruptionManager] Overlap monitoring started - allowInterruption: {allowInterruption}, persistence: {persistenceTime}s");
+            }
+
+            while (_activeNpcClient != null && speechInputHandler != null && speechInputHandler.IsUserInputActive)
+            {
+                // Get user speaking state from VAD
+                bool userSpeaking = DetectUserSpeech();
+
+                // Get NPC responding state
+                bool npcResponding = _activeNpcClient.IsTalking;
+
+                // CRITICAL: Use VAD-based speech detection to distinguish actual speech from pauses
+                bool npcActuallySpeaking = GetNpcActualSpeech(_activeNpcClient);
+
+                // Track NPC response time
+                if (npcResponding)
+                {
+                    if (_npcResponseStartTime <= 0)
+                    {
+                        _npcResponseStartTime = Time.time;
+                    }
+                    _npcStoppedSpeakingTime = 0;
+                }
+                else if (_npcResponseStartTime > 0)
+                {
+                    // NPC stopped responding
+                    if (_npcStoppedSpeakingTime <= 0)
+                    {
+                        _npcStoppedSpeakingTime = Time.time;
+                        if (enableVerboseLogging)
+                        {
+                            float duration = _npcStoppedSpeakingTime - _npcResponseStartTime;
+                            Debug.Log($"[InterruptionManager] NPC stopped responding after {duration:F2}s");
+                        }
+                    }
+                    _npcResponseStartTime = 0;
+                }
+
+                // Check for near-end condition
+                bool isNearEnd = CheckNearEndCondition(npcResponding);
+
+                // Detect interruption: user and NPC both producing speech
+                if (userSpeaking && npcActuallySpeaking)
+                {
+                    overlapTimer += Time.deltaTime;
+
+                    if (enableVerboseLogging && overlapTimer > 0 && Mathf.Approximately(overlapTimer % 0.5f, 0f))
+                    {
+                        Debug.Log($"[InterruptionManager] Overlap timer: {overlapTimer:F2}s / {persistenceTime:F2}s");
+                    }
+
+                    // Check if persistence threshold reached
+                    bool shouldInterrupt = false;
+
+                    if (isNearEnd)
+                    {
+                        // Near-end: still requires full persistence time
+                        shouldInterrupt = overlapTimer >= persistenceTime;
+                        if (shouldInterrupt && enableVerboseLogging)
+                        {
+                            Debug.Log($"[InterruptionManager] Near-end interruption threshold reached");
+                        }
+                    }
+                    else if (allowInterruption)
+                    {
+                        // Normal interruption: must be allowed + persistence threshold
+                        shouldInterrupt = overlapTimer >= persistenceTime;
+                        if (shouldInterrupt && enableVerboseLogging)
+                        {
+                            Debug.Log($"[InterruptionManager] Normal interruption threshold reached");
+                        }
+                    }
+
+                    if (shouldInterrupt && !_hasValidInterruption)
+                    {
+                        _hasValidInterruption = true;
+                        OnInterruptionDetected();
+                        yield break; // Stop monitoring after interruption detected
+                    }
+                }
+                else
+                {
+                    // Reset overlap timer if not both speaking
+                    if (overlapTimer > 0)
+                    {
+                        if (enableVerboseLogging)
+                        {
+                            Debug.Log($"[InterruptionManager] Overlap ended - resetting timer (user: {userSpeaking}, npc: {npcActuallySpeaking})");
+                        }
+                        overlapTimer = 0f;
+                    }
+                }
+
+                yield return null; // Check every frame
+            }
+
+            if (enableVerboseLogging)
+            {
+                Debug.Log("[InterruptionManager] Overlap monitoring ended");
+            }
+        }
+
+        /// <summary>
+        /// Check if near-end condition is met
+        /// </summary>
+        private bool CheckNearEndCondition(bool npcResponding)
+        {
+            if (!_userInputStartedDuringNpcResponse)
+                return false;
+
+            // Use cached StreamingAudioPlayer for performance
+            if (_activeAudioPlayer != null)
+            {
+                // Near-end = AudioStreamEnd received + BufferLevel < threshold
+                bool streamCompleted = !_activeAudioPlayer.IsReceivingResponse;
+                float bufferRemaining = _activeAudioPlayer.BufferLevel;
+
+                bool isNearEnd = streamCompleted && bufferRemaining < nearEndThresholdSeconds;
+
+                if (enableVerboseLogging && streamCompleted)
+                {
+                    Debug.Log($"[InterruptionManager] Stream completed, buffer: {bufferRemaining:F2}s, threshold: {nearEndThresholdSeconds:F2}s, near-end: {isNearEnd}");
+                }
+
+                if (isNearEnd)
+                    return true;
+            }
+
+            // Also check if NPC recently stopped (within 500ms grace period)
+            if (!npcResponding && _npcStoppedSpeakingTime > 0)
+            {
+                float timeSinceNpcStopped = Time.time - _npcStoppedSpeakingTime;
+                if (timeSinceNpcStopped < 0.5f)
+                {
+                    if (enableVerboseLogging)
+                    {
+                        Debug.Log($"[InterruptionManager] Near-end: {timeSinceNpcStopped:F2}s after NPC stopped");
+                    }
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private bool DetectUserSpeech()
@@ -333,22 +443,9 @@ namespace Tsc.AIBridge.Audio.Interruption
         public void ClearInterruptionFlag()
         {
             _hasValidInterruption = false;
-            _overlapTimer = 0f;
             if (enableVerboseLogging)
             {
                 Debug.Log("[InterruptionManager] Interruption flag cleared");
-            }
-        }
-
-        /// <summary>
-        /// Reset calibration when PTT is released
-        /// </summary>
-        public void ResetCalibration()
-        {
-            // VAD calibration is now handled by SpeechInputHandler
-            if (enableVerboseLogging)
-            {
-                Debug.Log("[InterruptionManager] Reset requested (handled by SpeechInputHandler)");
             }
         }
 
@@ -413,86 +510,5 @@ namespace Tsc.AIBridge.Audio.Interruption
                 }
             }
         }
-
-        #region Test Support Methods
-
-        /// <summary>
-        /// Initialize for testing without requiring full NPC setup
-        /// </summary>
-        public void InitializeForTesting(bool allowInterruption = true, float persistenceTime = 1.5f)
-        {
-            // No local VAD needed - we use SpeechInputHandler's VAD
-            if (enableVerboseLogging)
-            {
-                Debug.Log($"[InterruptionManager] Initialized for testing - Allow: {allowInterruption}, Persistence: {persistenceTime}");
-            }
-            // Test initialization doesn't require NPC provider
-        }
-
-        /// <summary>
-        /// Handle PTT pressed event for testing
-        /// </summary>
-        public void HandlePTTPressed()
-        {
-            ResetCalibration();
-            if (enableVerboseLogging)
-            {
-                Debug.Log("[InterruptionManager] PTT pressed - calibration reset");
-            }
-        }
-
-        /// <summary>
-        /// Check for interruption with audio frame (test compatibility)
-        /// </summary>
-        public bool CheckForInterruption(float[] audioFrame)
-        {
-            // Simple VAD check on audio frame for testing
-            float rms = 0f;
-            for (int i = 0; i < audioFrame.Length; i++)
-            {
-                rms += audioFrame[i] * audioFrame[i];
-            }
-            rms = Mathf.Sqrt(rms / audioFrame.Length);
-            bool userSpeaking = rms > 0.01f; // Use fixed threshold for tests
-
-            // For tests, assume NPC is talking if we're checking
-            return CheckForInterruption(userSpeaking, true, Time.deltaTime);
-        }
-
-        /// <summary>
-        /// Check for interruption with test parameters
-        /// </summary>
-        public bool CheckForInterruption(bool userSpeaking, bool npcSpeaking, float deltaTime,
-            bool allowInterruption = true, float persistenceTime = 1.5f)
-        {
-            if (!allowInterruption)
-                return false;
-
-            if (userSpeaking && npcSpeaking)
-            {
-                _overlapTimer += deltaTime;
-
-                if (_overlapTimer >= persistenceTime)
-                {
-                    if (!_hasValidInterruption)
-                    {
-                        _hasValidInterruption = true;
-                        if (enableVerboseLogging)
-                        {
-                            Debug.Log($"[InterruptionManager] Test interruption detected after {_overlapTimer:F2}s");
-                        }
-                        return true;
-                    }
-                }
-            }
-            else
-            {
-                _overlapTimer = 0f;
-            }
-
-            return false;
-        }
-
-        #endregion
     }
 }
