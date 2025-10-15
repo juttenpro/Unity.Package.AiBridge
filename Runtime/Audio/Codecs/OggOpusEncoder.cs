@@ -44,6 +44,12 @@ namespace Tsc.AIBridge.Audio.Codecs
             random.NextBytes(_serialNumber);
         }
 
+        /// <summary>
+        /// Initialize the encoder with audio parameters
+        /// </summary>
+        /// <param name="sampleRate">Input sample rate (will be converted to Opus internal 48kHz)</param>
+        /// <param name="channels">Number of audio channels (1 for mono, 2 for stereo)</param>
+        /// <param name="isVerboseLogging">Enable detailed logging for debugging</param>
         public void Initialize(int sampleRate = 48000, int channels = 1, bool isVerboseLogging = false)
         {
             // Note: Opus always operates at 48kHz internally, regardless of input sample rate

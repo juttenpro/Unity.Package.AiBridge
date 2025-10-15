@@ -36,7 +36,11 @@ namespace Tsc.AIBridge.Auth
                 }
             }
         }
-        
+
+        /// <summary>
+        /// Create a new JWT authentication service
+        /// </summary>
+        /// <param name="baseUrl">API base URL (defaults to WebSocketClient instance URL or fallback URL)</param>
         public JwtAuthenticationService(string baseUrl = null)
         {
             _baseUrl = baseUrl ?? WebSocketClient.Instance?.ApiBaseUrl ?? "https://conversation-api.com";
