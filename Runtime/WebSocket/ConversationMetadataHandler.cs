@@ -269,15 +269,16 @@ namespace Tsc.AIBridge.WebSocket
                             // With audio, AudioStreamEnd handles cleanup. Without audio, we do it here.
                             if (!audioReceived)
                             {
-                                Debug.Log($"[{_personaName}] No audio received for session {completeRequestId} - completing session now");
+                                if(_enableVerboseLogging)
+                                    Debug.Log($"[{_personaName}] No audio received for session {completeRequestId} - completing session now");
                                 orchestrator.CompleteCurrentSession();
                             }
-                            else
+                            else if(_enableVerboseLogging)
                             {
                                 Debug.Log($"[{_personaName}] Audio was received ({orchestrator.GetCurrentSessionStreamsReceived()} streams) for session {completeRequestId} - AudioStreamEnd will handle cleanup");
                             }
                         }
-                        else
+                        else if(_enableVerboseLogging)
                         {
                             Debug.Log($"[{_personaName}] conversationComplete for old session {completeRequestId}, current is {currentSessionId} - ignoring cleanup");
                         }

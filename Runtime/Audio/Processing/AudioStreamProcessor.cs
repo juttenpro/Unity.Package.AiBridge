@@ -142,7 +142,8 @@ namespace Tsc.AIBridge.Audio.Processing
         /// </summary>
         public ConversationSession StartEncoding()
         {
-            Debug.Log("[AudioStreamProcessor] StartEncoding called");
+            if(_isVerboseLogging)
+                Debug.Log("[AudioStreamProcessor] StartEncoding called");
 
             // NOTE: Session is now created externally by ConversationSessionManager
             // We should NOT create our own session here anymore
@@ -161,9 +162,12 @@ namespace Tsc.AIBridge.Audio.Processing
             // Start Opus encoder
             if (_opusEncoder != null)
             {
-                Debug.Log($"[AudioStreamProcessor] Calling _opusEncoder.StartRecording()...");
+                if(_isVerboseLogging)
+                    Debug.Log($"[AudioStreamProcessor] Calling _opusEncoder.StartRecording()...");
+
                 _opusEncoder.StartRecording();
-                Debug.Log($"[AudioStreamProcessor] Opus encoder started - IsRecording: {_opusEncoder.IsRecording}");
+                if(_isVerboseLogging)
+                    Debug.Log($"[AudioStreamProcessor] Opus encoder started - IsRecording: {_opusEncoder.IsRecording}");
             }
             else
             {

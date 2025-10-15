@@ -40,10 +40,7 @@ namespace Tsc.AIBridge.Services
         {
             get
             {
-                if (_instance == null)
-                {
-                    _instance = new AnalysisService();
-                }
+                _instance ??= new AnalysisService();
                 return _instance;
             }
         }
@@ -91,17 +88,17 @@ namespace Tsc.AIBridge.Services
 
             // Create request
             var requestId = Guid.NewGuid().ToString();
-            Debug.Log($"[AnalysisService] Creating analysis request with ID: {requestId}");
+            //Debug.Log($"[AnalysisService] Creating analysis request with ID: {requestId}");
 
             // LOG: Show all messages being sent to API for debugging
-            Debug.Log($"[AnalysisService] === ANALYSIS REQUEST MESSAGES ({messages.Count} total) ===");
-            for (int i = 0; i < messages.Count; i++)
-            {
-                var msg = messages[i];
-                var preview = msg.Content.Length > 150 ? msg.Content.Substring(0, 150) + "..." : msg.Content;
-                Debug.Log($"[AnalysisService] Message {i}: Role='{msg.Role}', Content='{preview}'");
-            }
-            Debug.Log($"[AnalysisService] === END MESSAGES ===");
+            //Debug.Log($"[AnalysisService] === ANALYSIS REQUEST MESSAGES ({messages.Count} total) ===");
+            //for (int i = 0; i < messages.Count; i++)
+            //{
+            //    var msg = messages[i];
+            //    var preview = msg.Content.Length > 150 ? msg.Content.Substring(0, 150) + "..." : msg.Content;
+            //    Debug.Log($"[AnalysisService] Message {i}: Role='{msg.Role}', Content='{preview}'");
+            //}
+            //Debug.Log($"[AnalysisService] === END MESSAGES ===");
 
             var request = new AnalysisRequestMessage
             {
@@ -131,15 +128,15 @@ namespace Tsc.AIBridge.Services
             _pendingRequestId = requestId;
 
             // Register as handler for this RequestId
-            Debug.Log($"[AnalysisService] Registering as handler for RequestId: {requestId}");
+            //Debug.Log($"[AnalysisService] Registering as handler for RequestId: {requestId}");
             WebSocketAdapter.RegisterNpc(requestId, this);
 
             try
             {
                 // Send request via WebSocket
-                Debug.Log($"[AnalysisService] Sending analysis request to backend - LLM: {llmProvider}/{llmModel}, Temp: {temperature}, MaxTokens: {maxTokens}");
+                //Debug.Log($"[AnalysisService] Sending analysis request to backend - LLM: {llmProvider}/{llmModel}, Temp: {temperature}, MaxTokens: {maxTokens}");
                 await WebSocketAdapter.SendAnalysisRequestAsync(request);
-                Debug.Log($"[AnalysisService] Analysis request sent, waiting for response...");
+                //Debug.Log($"[AnalysisService] Analysis request sent, waiting for response...");
 
                 // Wait for response with 30 second timeout
                 var timeoutTask = Task.Delay(30000);
@@ -171,28 +168,28 @@ namespace Tsc.AIBridge.Services
         {
             try
             {
-                Debug.Log($"[AnalysisService] OnTextMessage received: {(json.Length > 200 ? json.Substring(0, 200) + "..." : json)}");
+                //Debug.Log($"[AnalysisService] OnTextMessage received: {(json.Length > 200 ? json.Substring(0, 200) + "..." : json)}");
 
                 // Quick check if JSON contains "type" field (optimization before full parse)
-                if (!json.Contains("\"type\"", System.StringComparison.OrdinalIgnoreCase))
+                if (!json.Contains("\"type\"", StringComparison.OrdinalIgnoreCase))
                 {
                     Debug.Log($"[AnalysisService] Message has no type field, ignoring");
                     return;
                 }
 
                 // Parse to check actual type value
-                Debug.Log($"[AnalysisService] Parsing message to check type...");
+                //Debug.Log($"[AnalysisService] Parsing message to check type...");
                 var message = Newtonsoft.Json.JsonConvert.DeserializeObject<AnalysisResponseMessage>(json);
 
                 // Check if it's actually an analysis response
                 if (message == null ||
-                    !string.Equals(message.Type, "analysisresponse", System.StringComparison.OrdinalIgnoreCase))
+                    !string.Equals(message.Type, "analysisresponse", StringComparison.OrdinalIgnoreCase))
                 {
-                    Debug.Log($"[AnalysisService] Message type is '{message?.Type ?? "null"}', not analysisresponse, ignoring");
+                    //Debug.Log($"[AnalysisService] Message type is '{message?.Type ?? "null"}', not analysisresponse, ignoring");
                     return;
                 }
 
-                Debug.Log($"[AnalysisService] Analysis response received successfully");
+                //Debug.Log($"[AnalysisService] Analysis response received successfully");
 
                 if (message.RequestId == _pendingRequestId)
                 {
@@ -217,7 +214,7 @@ namespace Tsc.AIBridge.Services
                         timing = message.Timing
                     };
 
-                    Debug.Log($"[AnalysisService] Analysis response processed for RequestId: {message.RequestId}");
+                    //Debug.Log($"[AnalysisService] Analysis response processed for RequestId: {message.RequestId}");
 
                     // Complete the task with the result
                     _pendingTask?.TrySetResult(response);
@@ -244,10 +241,10 @@ namespace Tsc.AIBridge.Services
         public void OnRequestComplete(string requestId)
         {
             // Request is complete - analysis response should have been received by now
-            if (requestId == _pendingRequestId)
-            {
-                Debug.Log($"[AnalysisService] Request {requestId} marked as complete");
-            }
+            //if (requestId == _pendingRequestId)
+            //{
+            //    Debug.Log($"[AnalysisService] Request {requestId} marked as complete");
+            //}
         }
 
         /// <summary>
@@ -270,7 +267,7 @@ namespace Tsc.AIBridge.Services
     public interface IWebSocketClientAdapter
     {
         bool IsConnected { get; }
-        void RegisterNpc(string requestId, WebSocket.INpcMessageHandler handler);
+        void RegisterNpc(string requestId, INpcMessageHandler handler);
         void UnregisterNpc(string requestId);
         Task SendAnalysisRequestAsync(AnalysisRequestMessage message);
     }
@@ -281,21 +278,21 @@ namespace Tsc.AIBridge.Services
     /// </summary>
     public class WebSocketClientProductionAdapter : IWebSocketClientAdapter
     {
-        public bool IsConnected => WebSocket.WebSocketClient.Instance != null && WebSocket.WebSocketClient.Instance.IsConnected;
+        public bool IsConnected => WebSocketClient.Instance != null && WebSocketClient.Instance.IsConnected;
 
-        public void RegisterNpc(string requestId, WebSocket.INpcMessageHandler handler)
+        public void RegisterNpc(string requestId, INpcMessageHandler handler)
         {
-            WebSocket.WebSocketClient.Instance?.RegisterNpc(requestId, handler);
+            WebSocketClient.Instance?.RegisterNpc(requestId, handler);
         }
 
         public void UnregisterNpc(string requestId)
         {
-            WebSocket.WebSocketClient.Instance?.UnregisterNpc(requestId);
+            WebSocketClient.Instance?.UnregisterNpc(requestId);
         }
 
         public Task SendAnalysisRequestAsync(AnalysisRequestMessage message)
         {
-            return WebSocket.WebSocketClient.Instance?.SendAnalysisRequestAsync(message) ?? Task.CompletedTask;
+            return WebSocketClient.Instance?.SendAnalysisRequestAsync(message) ?? Task.CompletedTask;
         }
     }
 }

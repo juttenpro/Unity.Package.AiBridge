@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -11,7 +12,7 @@ namespace Tsc.AIBridge.Core
     {
         #region Singleton
 
-        private static readonly object _lock = new object();
+        private static readonly object Lock = new();
         private static NpcMessageRouter _instance;
 
         /// <summary>
@@ -28,7 +29,7 @@ namespace Tsc.AIBridge.Core
             {
                 if (_instance == null)
                 {
-                    lock (_lock)
+                    lock (Lock)
                     {
                         if (_instance == null)
                         {
@@ -104,7 +105,7 @@ namespace Tsc.AIBridge.Core
                     _activeNpcsByRequestId.Remove(key);
                 }
 
-                Debug.Log($"[NpcMessageRouter] Unregistered NPC: {npcName}");
+                //Debug.Log($"[NpcMessageRouter] Unregistered NPC: {npcName}");
             }
         }
 
@@ -119,7 +120,7 @@ namespace Tsc.AIBridge.Core
             if (_npcsByName.TryGetValue(npcName, out var npcClient))
             {
                 _activeNpcsByRequestId[requestId] = npcClient;
-                Debug.Log($"[NpcMessageRouter] Set active request {requestId} for NPC: {npcName}");
+                //Debug.Log($"[NpcMessageRouter] Set active request {requestId} for NPC: {npcName}");
             }
             else
             {
@@ -163,9 +164,8 @@ namespace Tsc.AIBridge.Core
             }
 
             // Find the target NPC
-            NpcClientBase targetNpc = null;
 
-            if (!string.IsNullOrEmpty(requestId) && _activeNpcsByRequestId.TryGetValue(requestId, out targetNpc))
+            if (!string.IsNullOrEmpty(requestId) && _activeNpcsByRequestId.TryGetValue(requestId, out var targetNpc))
             {
                 // Route to specific NPC based on RequestId
                 if (targetNpc.MetadataHandler != null)
@@ -199,7 +199,7 @@ namespace Tsc.AIBridge.Core
             if (!string.IsNullOrEmpty(requestId) && _activeNpcsByRequestId.ContainsKey(requestId))
             {
                 _activeNpcsByRequestId.Remove(requestId);
-                Debug.Log($"[NpcMessageRouter] Cleared request: {requestId}");
+                //Debug.Log($"[NpcMessageRouter] Cleared request: {requestId}");
             }
         }
 
@@ -238,7 +238,7 @@ namespace Tsc.AIBridge.Core
         {
             _activeNpcsByRequestId.Clear();
             _npcsByName.Clear();
-            Debug.Log("[NpcMessageRouter] Reset - all NPCs and requests cleared");
+            //Debug.Log("[NpcMessageRouter] Reset - all NPCs and requests cleared");
         }
 
         #endregion
@@ -254,9 +254,9 @@ namespace Tsc.AIBridge.Core
             {
                 // Simple extraction without full deserialization
                 // Look for "requestId":"..." or "RequestId":"..."
-                var requestIdIndex = json.IndexOf("\"requestId\":");
+                var requestIdIndex = json.IndexOf("\"requestId\":", StringComparison.Ordinal);
                 if (requestIdIndex < 0)
-                    requestIdIndex = json.IndexOf("\"RequestId\":");
+                    requestIdIndex = json.IndexOf("\"RequestId\":", StringComparison.Ordinal);
 
                 if (requestIdIndex >= 0)
                 {
@@ -317,7 +317,7 @@ namespace Tsc.AIBridge.Core
                     );
                 }
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 Debug.LogError($"[NpcMessageRouter] Error processing BufferHint: {ex.Message}");
             }

@@ -331,7 +331,9 @@ namespace Tsc.AIBridge.Input
             }
             else
             {
-                Debug.Log("[SpeechInputHandler] Calling StartEncoding() on AudioStreamProcessor");
+                if (enableVerboseLogging)
+                    Debug.Log("[SpeechInputHandler] Calling StartEncoding() on AudioStreamProcessor");
+
                 _audioStreamProcessor.StartEncoding();
             }
 

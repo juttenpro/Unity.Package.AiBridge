@@ -88,7 +88,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 _audioSource.Play();
             }
 
-            Debug.Log($"[AudioFilterRelay] Initialized on {gameObject.name}");
+            //Debug.Log($"[AudioFilterRelay] Initialized on {gameObject.name}");
         }
 
         /// <summary>
