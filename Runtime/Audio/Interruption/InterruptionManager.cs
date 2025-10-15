@@ -156,19 +156,19 @@ namespace Tsc.AIBridge.Audio.Interruption
             if (speechInputHandler == null)
                 return;
 
-            // OPTIMIZATION: Check PTT state FIRST before any operations
-            bool pttActive = speechInputHandler.IsPushToTalkActive();
+            // Check if user is providing input (abstracts PTT, voice activation, and future input methods)
+            bool userInputActive = speechInputHandler.IsUserInputActive;
 
-            // Early return if PTT not active - no need for interruption detection
-            if (!pttActive)
+            // Early return if no user input active - no need for interruption detection
+            if (!userInputActive)
             {
                 _pttPressedDuringNpcSpeech = false;
                 _overlapTimer = 0f;
-                _hasValidInterruption = false; // CRITICAL: Reset for next PTT press
+                _hasValidInterruption = false; // CRITICAL: Reset for next input session
                 return;
             }
 
-            // PTT is active - check if we have an active NPC
+            // User input is active - check if we have an active NPC
             // _activeNpcClient is set via event subscription (no reflection!)
             if (_activeNpcClient == null)
                 return;
@@ -190,14 +190,14 @@ namespace Tsc.AIBridge.Audio.Interruption
             // - Pause filling: User talks during NPC pause, stops when NPC resumes
             bool npcActuallySpeaking = GetNpcActualSpeech(_activeNpcClient);
 
-            // Track if PTT was pressed while NPC was responding (crucial for buffer inclusion)
+            // Track if user started input while NPC was responding (crucial for buffer inclusion)
             // Use npcResponding (not npcActuallySpeaking) because we want to include buffer even during pauses
             if (npcResponding && !_pttPressedDuringNpcSpeech)
             {
                 _pttPressedDuringNpcSpeech = true;
                 if (enableVerboseLogging)
                 {
-                    Debug.Log("[InterruptionManager] PTT pressed during NPC response - buffer will be included");
+                    Debug.Log("[InterruptionManager] User input started during NPC response - buffer will be included");
                 }
             }
 

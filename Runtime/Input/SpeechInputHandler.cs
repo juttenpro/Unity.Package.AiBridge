@@ -199,6 +199,13 @@ namespace Tsc.AIBridge.Input
         public bool IsUserSpeaking => _vadManager?.IsUserSpeaking ?? false;
 
         /// <summary>
+        /// Gets whether user is currently providing input (regardless of input mode).
+        /// Abstracts PTT, voice activation, and future input methods.
+        /// Other components should use this instead of checking PTT/recording state directly.
+        /// </summary>
+        public bool IsUserInputActive => _isPttPressed || _isRecording;
+
+        /// <summary>
         /// Get the VAD manager for advanced operations
         /// </summary>
         public VADManager VadManager => _vadManager;
