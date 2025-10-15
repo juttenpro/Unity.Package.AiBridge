@@ -376,17 +376,20 @@ namespace Tsc.AIBridge.Core
             }
             else
             {
-                // Log what we're still waiting for
-                var waiting = new List<string>();
-                if (!_hasPlaybackStarted) waiting.Add("playback start");
-                if (!_hasLlmCompleted) waiting.Add("LLM timing");
-                if (!_hasTtsTimingReceived) waiting.Add("TTS timing");
-                
-                // Log what we're still waiting for to help debug (only once per request)
-                if (waiting.Count > 0 && _pendingPerceivedLatency > 0)
+                // Log what we're still waiting for (but not during Unity shutdown)
+                if (UnityEngine.Application.isPlaying)
                 {
-                    UnityEngine.Debug.LogWarning($"[{_personaName}] ⏳ Metrics blocked - waiting for: {string.Join(", ", waiting)} | " +
-                        $"Playback: {_hasPlaybackStarted}, LLM: {_hasLlmCompleted}, TTS: {_hasTtsTimingReceived}, Latency: {_pendingPerceivedLatency}ms");
+                    var waiting = new List<string>();
+                    if (!_hasPlaybackStarted) waiting.Add("playback start");
+                    if (!_hasLlmCompleted) waiting.Add("LLM timing");
+                    if (!_hasTtsTimingReceived) waiting.Add("TTS timing");
+
+                    // Log what we're still waiting for to help debug (only once per request)
+                    if (waiting.Count > 0 && _pendingPerceivedLatency > 0)
+                    {
+                        UnityEngine.Debug.LogWarning($"[{_personaName}] ⏳ Metrics blocked - waiting for: {string.Join(", ", waiting)} | " +
+                            $"Playback: {_hasPlaybackStarted}, LLM: {_hasLlmCompleted}, TTS: {_hasTtsTimingReceived}, Latency: {_pendingPerceivedLatency}ms");
+                    }
                 }
             }
         }
