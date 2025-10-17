@@ -159,8 +159,9 @@ namespace Tsc.AIBridge.Audio.Playback
             // Singleton pattern - only one instance allowed
             if (_instance != null && _instance != this)
             {
-                Debug.LogError($"[AdaptiveBufferManager] Multiple instances detected! Destroying duplicate on {gameObject.name}");
-                Destroy(gameObject);
+                Debug.LogWarning($"[AdaptiveBufferManager] Multiple instances detected! Destroying duplicate component on {gameObject.name}. " +
+                                 $"This is expected when WebSocketClient persists across scenes.");
+                Destroy(this); // Only destroy the component, not the entire GameObject
                 return;
             }
 

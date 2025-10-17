@@ -114,8 +114,13 @@ namespace Tsc.AIBridge.WebSocket
         public string ApiBaseUrl => apiBaseUrl;
 
         [Header("Connection Settings")]
-        [SerializeField] private bool preEstablishConnection = true;
-        [SerializeField] private bool sendWakeUpCall = true;
+        [SerializeField]
+        [Tooltip("Establish WebSocket connection during scene initialization for instant availability")]
+        private bool establishConnection = true;
+
+        [SerializeField]
+        [Tooltip("Send HTTP wake-up call to prevent Cloud Run cold start")]
+        private bool sendWakeUpCall = true;
 
         [Header("Debug Settings")]
         [SerializeField] private bool enableVerboseLogging;
@@ -125,7 +130,9 @@ namespace Tsc.AIBridge.WebSocket
         [SerializeField] private bool persistAcrossScenes = false;
 
         [Header("API Key Configuration")]
-        [SerializeField] private string orchestratorApiKey = "";
+        [SerializeField]
+        [Tooltip("Provider component implementing IApiKeyProvider or IAsyncApiKeyProvider.\nRequired for authentication with backend services.")]
+        private MonoBehaviour apiKeyProviderComponent;
 
         // Connection state
         public virtual bool IsConnected => _webSocket != null && _webSocket.IsConnected;
@@ -167,8 +174,8 @@ namespace Tsc.AIBridge.WebSocket
                 Debug.Log("[WebSocketClient] Set to persist across scenes");
             }
 
-            // Initialize authentication with configurable API key
-            _apiKeyProvider = new SimpleApiKeyProvider(orchestratorApiKey);
+            // Initialize authentication with configurable API key provider
+            InitializeApiKeyProvider();
             _authService = new JwtAuthenticationService(apiBaseUrl);
 
             // Delay initialization to Start() to avoid interfering with scene loading
@@ -179,6 +186,45 @@ namespace Tsc.AIBridge.WebSocket
         {
             // Start initialization sequence after scene is properly loaded
             StartCoroutine(InitializeConnectionSequence());
+        }
+
+        /// <summary>
+        /// Initialize API key provider from Inspector configuration.
+        /// Supports both sync (IApiKeyProvider) and async (IAsyncApiKeyProvider) providers.
+        /// REQUIRED: apiKeyProviderComponent must be assigned in Inspector.
+        /// </summary>
+        private void InitializeApiKeyProvider()
+        {
+            if (apiKeyProviderComponent == null)
+            {
+                Debug.LogError("[WebSocketClient] apiKeyProviderComponent is not assigned! " +
+                    "Assign a component implementing IApiKeyProvider or IAsyncApiKeyProvider in the Inspector.");
+                _apiKeyProvider = new SimpleApiKeyProvider(string.Empty); // Prevent null reference
+                return;
+            }
+
+            // Check if it implements IApiKeyProvider (sync)
+            if (apiKeyProviderComponent is IApiKeyProvider syncProvider)
+            {
+                _apiKeyProvider = syncProvider;
+                if (enableVerboseLogging)
+                    Debug.Log($"[WebSocketClient] Using sync API key provider: {apiKeyProviderComponent.GetType().Name}");
+                return;
+            }
+
+            // Check if it implements IAsyncApiKeyProvider (async)
+            if (apiKeyProviderComponent is IAsyncApiKeyProvider asyncProvider)
+            {
+                _apiKeyProvider = new AsyncApiKeyProviderAdapter(this, asyncProvider);
+                if (enableVerboseLogging)
+                    Debug.Log($"[WebSocketClient] Using async API key provider: {apiKeyProviderComponent.GetType().Name}");
+                return;
+            }
+
+            // Provider assigned but doesn't implement required interface
+            Debug.LogError($"[WebSocketClient] apiKeyProviderComponent ({apiKeyProviderComponent.GetType().Name}) " +
+                "does not implement IApiKeyProvider or IAsyncApiKeyProvider!");
+            _apiKeyProvider = new SimpleApiKeyProvider(string.Empty); // Prevent null reference
         }
 
         /// <summary>
@@ -864,17 +910,65 @@ namespace Tsc.AIBridge.WebSocket
         }
 
         /// <summary>
-        /// Initialize connection in PARALLEL for optimal performance
+        /// Wait for API key provider to be ready (if it's a caching provider like OrchestratorApiKeyProvider).
+        ///
+        /// OrchestratorApiKeyProvider waits for login and NetworkHelper initialization, then fetches the API key.
+        /// This method polls the IsCached property to know when it's ready.
+        /// Expected wait time: A few seconds after login (includes login time + API key fetch).
+        /// </summary>
+        private System.Collections.IEnumerator WaitForApiKeyProviderReady()
+        {
+            // Check if the provider component is OrchestratorApiKeyProvider (Extended package)
+            // We use reflection to avoid tight coupling to Extended package
+            if (apiKeyProviderComponent != null)
+            {
+                var providerType = apiKeyProviderComponent.GetType();
+                var isCachedProperty = providerType.GetProperty("IsCached",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+                if (isCachedProperty != null)
+                {
+                    // This is a caching provider - wait for cache to be ready
+                    // (Provider fetches API key via event-driven mechanism, not polling!)
+                    float waitTime = 0f;
+                    float maxWait = 15f; // Max 15 seconds wait (generous timeout)
+
+                    while (waitTime < maxWait)
+                    {
+                        var isCached = (bool)isCachedProperty.GetValue(apiKeyProviderComponent);
+                        if (isCached)
+                        {
+                            if (enableVerboseLogging)
+                                Debug.Log($"[WebSocketClient] API key provider cache ready after {waitTime:F1}s");
+                            yield break;
+                        }
+
+                        yield return new WaitForSeconds(0.1f);
+                        waitTime += 0.1f;
+                    }
+
+                    Debug.LogWarning($"[WebSocketClient] API key provider cache not ready after {maxWait}s - proceeding anyway");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initialize connection sequence for optimal performance.
+        /// Handles both wake-up call (server warm-up) and connection establishment in parallel.
         /// </summary>
         private System.Collections.IEnumerator InitializeConnectionSequence()
         {
+            // IMPORTANT: If using OrchestratorApiKeyProvider (or any caching provider),
+            // wait for it to cache the API key before attempting connection establishment
+            yield return WaitForApiKeyProviderReady();
+
             // Start BOTH operations in parallel for speed!
             // JWT pre-fetch and wake-up call can happen simultaneously
 
             Task jwtTask = null;
 
             // 1. Start JWT pre-fetch immediately (this takes 4+ seconds!)
-            if (sendWakeUpCall || preEstablishConnection)
+            if (sendWakeUpCall || establishConnection)
             {
                 if (enableVerboseLogging)
                     Debug.Log("[UnifiedWebSocket] Starting JWT pre-fetch in parallel...");
@@ -905,10 +999,10 @@ namespace Tsc.AIBridge.WebSocket
                 }
             }
 
-            // 4. Then pre-establish connection (JWT should be cached by now)
-            if (preEstablishConnection)
+            // 4. Then establish connection (JWT should be cached by now)
+            if (establishConnection)
             {
-                yield return StartCoroutine(PreEstablishConnection());
+                yield return StartCoroutine(EstablishConnection());
             }
         }
 
@@ -974,13 +1068,13 @@ namespace Tsc.AIBridge.WebSocket
         }
 
         /// <summary>
-        /// Pre-establish WebSocket connection on scene load
+        /// Establish WebSocket connection during scene initialization
         /// </summary>
-        private System.Collections.IEnumerator PreEstablishConnection()
+        private System.Collections.IEnumerator EstablishConnection()
         {
 
             if (enableVerboseLogging)
-                Debug.Log("[UnifiedWebSocket] Pre-establishing WebSocket connection...");
+                Debug.Log("[UnifiedWebSocket] Establishing WebSocket connection...");
 
             // Use the new public GetConnectionAsync method
             var connectionTask = GetConnectionAsync();
@@ -1003,11 +1097,11 @@ namespace Tsc.AIBridge.WebSocket
             else if (connectionTask.IsCompletedSuccessfully)
             {
                 if (enableVerboseLogging)
-                    Debug.Log("[UnifiedWebSocket] ✅ Connection pre-established successfully");
+                    Debug.Log("[UnifiedWebSocket] ✅ Connection established successfully");
             }
             else
             {
-                Debug.LogWarning("[UnifiedWebSocket] ⚠️ Failed to pre-establish connection");
+                Debug.LogWarning("[UnifiedWebSocket] ⚠️ Failed to establish connection");
             }
         }
 

@@ -2,8 +2,10 @@ namespace Tsc.AIBridge.Auth
 {
     /// <summary>
     /// Simple implementation of IApiKeyProvider that returns a hardcoded API key.
-    /// Useful for testing or when the API key is provided directly in code.
-    /// WARNING: Never hardcode production API keys in source code!
+    ///
+    /// ⚠️ WARNING: ONLY FOR UNIT TESTING AND DEVELOPMENT!
+    /// DO NOT use this in production code - use EnvironmentApiKeyProvider or custom provider instead.
+    /// Never hardcode production API keys in source code or version control!
     /// </summary>
     public class SimpleApiKeyProvider : IApiKeyProvider
     {
@@ -11,6 +13,7 @@ namespace Tsc.AIBridge.Auth
 
         /// <summary>
         /// Initializes a new instance of the SimpleApiKeyProvider with the specified API key.
+        /// WARNING: Only use this for unit tests or local development!
         /// </summary>
         /// <param name="apiKey">The API key to use for authentication</param>
         public SimpleApiKeyProvider(string apiKey)
