@@ -47,11 +47,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Tsc.AIBridge::Tsc.AIBridge.WebSocket.WebSocketClient
   apiBaseUrl: https://api-orchestrator-service-104588943109.europe-west4.run.app
   webSocketEndpoint: /api/websocket
-  preEstablishConnection: 1
+  establishConnection: 1
   sendWakeUpCall: 1
   enableVerboseLogging: 0
   persistAcrossScenes: 1
-  orchestratorApiKey: 
+  apiKeyProviderComponent: {fileID: 0} 
 --- !u!114 &8976894198535387740
 MonoBehaviour:
   m_ObjectHideFlags: 0
