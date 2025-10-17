@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using Newtonsoft.Json;
 using Tsc.AIBridge.Core;
@@ -24,7 +25,7 @@ namespace Tsc.AIBridge.WebSocket
 
         // Events for different message types
         public event Action<string> OnTranscription;
-        public event Action<string> OnAIResponse;
+        public event Action<string, string[]> OnAIResponse; // response text, intents array
         public event Action<string> OnError;
         // AudioStreamStart removed - audio starts automatically on first chunk
         public event Action<AudioStreamEndMessage> OnAudioStreamEnd;  // Now passes complete message with verification data
@@ -194,7 +195,11 @@ namespace Tsc.AIBridge.WebSocket
                     {
                         _latencyTracker.MarkLlmComplete(aiMsg.Text, aiMsg.Timing);
                     }
-                    OnAIResponse?.Invoke(aiMsg.Text);
+
+                    // Extract intents array (or empty array if null)
+                    var intents = aiMsg.Intents ?? new string[0];
+
+                    OnAIResponse?.Invoke(aiMsg.Text, intents);
                     OnMetadataReceived?.Invoke(new ConversationTurnResponse { NpcResponseText = aiMsg.Text });
                     break;
                     

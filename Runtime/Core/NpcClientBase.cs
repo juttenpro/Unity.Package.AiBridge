@@ -162,10 +162,10 @@ namespace Tsc.AIBridge.Core
                 OnSessionStarted?.Invoke();
             };
 
-            // Subscribe to AI response event and call OnAiResponseReceived method
-            _metadataHandler.OnAIResponse += (response) =>
+            // Subscribe to AI response event and call OnAiResponseReceived method with intents
+            _metadataHandler.OnAIResponse += (response, intents) =>
             {
-                OnAiResponseReceived(response);
+                OnAiResponseReceived(response, intents);
             };
 
             // Note: AudioStreamEnd message removed - stream end is now detected via
@@ -312,9 +312,9 @@ namespace Tsc.AIBridge.Core
         public event Action OnSessionStarted;
 
         /// <summary>
-        /// Event fired when response is received
+        /// Event fired when response is received with JObject containing "text" (string) and "intents" (string[] array) fields
         /// </summary>
-        public event Action<string> OnResponseReceived;
+        public event Action<Newtonsoft.Json.Linq.JObject> OnResponseReceived;
 
         /// <summary>
         /// Event fired when audio starts playing
@@ -469,8 +469,8 @@ namespace Tsc.AIBridge.Core
         /// Stores the response and triggers relevant events.
         /// </summary>
         /// <param name="response">The text response from the AI</param>
-        /// <param name="metadata">Optional metadata about the response (timing, model info, etc.)</param>
-        public virtual void OnAiResponseReceived(string response, Dictionary<string, object> metadata = null)
+        /// <param name="intents">Intent classifications from the LLM response (empty array if none)</param>
+        public virtual void OnAiResponseReceived(string response, string[] intents = null)
         {
             if (enableVerboseLogging)
                 Debug.Log($"[{GetType().Name}] AI response: {response}");
@@ -481,8 +481,13 @@ namespace Tsc.AIBridge.Core
             // Fire static event for test UI (LatencyLogUI)
             OnAIResponseReceivedStatic?.Invoke(NpcName, response);
 
+            // Create JObject with text and intents
+            var responseObject = new Newtonsoft.Json.Linq.JObject();
+            responseObject["text"] = response;
+            responseObject["intents"] = new Newtonsoft.Json.Linq.JArray(intents ?? new string[0]);
+
             // Fire events
-            OnResponseReceived?.Invoke(response);
+            OnResponseReceived?.Invoke(responseObject);
             OnNpcResponse?.Invoke(response);
         }
 
