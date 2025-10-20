@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>OpusSharp.Natives</id>
+    <version>1.5.2.1</version>
+    <authors>The Opus Authors.</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectUrl>https://avionblock.github.io/OpusSharp/index.html</projectUrl>
+    <description>Contains native binaries for OpusSharp.</description>
+    <repository type="git" url="https://github.com/xiph/opus" />
+  </metadata>
+</package>

@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>OpusSharp.Core</id>
+    <version>1.5.2.1</version>
+    <authors>SineVector241</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <license type="file">LICENSE.txt</license>
+    <licenseUrl>https://aka.ms/deprecateLicenseUrl</licenseUrl>
+    <readme>docs/README.md</readme>
+    <projectUrl>https://avionblock.github.io/OpusSharp/index.html</projectUrl>
+    <description>Standard library for OpusSharp.</description>
+    <copyright>Copyright MIT</copyright>
+    <repository type="git" url="https://github.com/AvionBlock/OpusSharp" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.1" />
+    </dependencies>
+  </metadata>
+</package>

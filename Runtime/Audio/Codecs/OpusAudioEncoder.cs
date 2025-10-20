@@ -1,8 +1,5 @@
 using System;
 using UnityEngine;
-
-// Use OpusSharp when the define is available
-#if OPUSSHARP_AVAILABLE
 using OpusSharp.Core;
 
 namespace Tsc.AIBridge.Audio.Codecs
@@ -212,33 +209,3 @@ namespace Tsc.AIBridge.Audio.Codecs
         }
     }
 }
-#else
-namespace Tsc.AIBridge.Audio.Codecs
-{
-    /// <summary>
-    /// Placeholder when OpusSharp is not available
-    /// </summary>
-    public class OpusAudioEncoder : System.IDisposable
-    {
-        public event System.Action<byte[]> OnAudioEncoded;
-        public bool IsRecording => false;
-        public int FrameSizeMs => 20;
-
-        public OpusAudioEncoder(int sampleRate = 16000, int channels = 1, int bitrate = 24000, bool isVerboseLogging = false)
-        {
-            UnityEngine.Debug.LogError("[OpusAudioEncoder] OpusSharp NOT available! Audio encoding is disabled!");
-            UnityEngine.Debug.LogError("[OpusAudioEncoder] To fix: Add 'OPUSSHARP_AVAILABLE' to Player Settings > Scripting Define Symbols");
-            UnityEngine.Debug.LogError("[OpusAudioEncoder] Or make sure OpusSharp package is properly installed");
-        }
-
-        public void StartRecording()
-        {
-            UnityEngine.Debug.LogError("[OpusAudioEncoder] StartRecording called but OpusSharp not available!");
-        }
-
-        public void StopRecording() { }
-        public void ProcessAudioData(float[] samples) { }
-        public void Dispose() { }
-    }
-}
-#endif

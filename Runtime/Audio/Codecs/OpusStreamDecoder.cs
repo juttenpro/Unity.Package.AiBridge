@@ -1,4 +1,3 @@
-#if OPUSSHARP_AVAILABLE // Define this when OpusSharp package is installed
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -299,27 +298,3 @@ namespace Tsc.AIBridge.Audio.Codecs
         }
     }
 }
-#else
-namespace Tsc.AIBridge.Audio.Codecs
-{
-    /// <summary>
-    /// Placeholder when OpusSharp is not available
-    /// </summary>
-    public class OpusStreamDecoder : System.IDisposable
-    {
-        public event System.Action<float[]> OnAudioDecoded;
-        public static event System.Action<string> OnDecoderError;
-        public static event System.Action<int, int> OnDecoderInitialized;
-
-        public OpusStreamDecoder(bool isVerboseLogging = false)
-        {
-            UnityEngine.Debug.LogWarning("[OpusStreamDecoder] OpusSharp not available - decoder disabled");
-        }
-
-        public void ProcessData(byte[] data) { }
-        public int GetPacketCount() => 0;
-        public void Reset() { }
-        public void Dispose() { }
-    }
-}
-#endif
