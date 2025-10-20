@@ -171,7 +171,8 @@ namespace Tsc.AIBridge.WebSocket
             if (persistAcrossScenes)
             {
                 DontDestroyOnLoad(gameObject);
-                Debug.Log("[WebSocketClient] Set to persist across scenes");
+                if(enableVerboseLogging)
+                    Debug.Log("[WebSocketClient] Set to persist across scenes");
             }
 
             // Initialize authentication with configurable API key provider

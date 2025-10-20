@@ -299,7 +299,7 @@ namespace Tsc.AIBridge.WebSocket
         {
             if (!_owner || !_owner.gameObject || _isDisconnecting) return;
 
-            Debug.Log($"[WebSocketConnection] Connected successfully");
+            //Debug.Log($"[WebSocketConnection] Connected successfully");
 
             IsConnecting = false;
             _currentReconnectDelay = _reconnectBaseDelay; // Reset reconnect delay

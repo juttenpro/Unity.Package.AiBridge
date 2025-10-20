@@ -34,7 +34,7 @@ namespace Tsc.AIBridge.Core
                         if (_instance == null)
                         {
                             _instance = new NpcMessageRouter();
-                            Debug.Log("[NpcMessageRouter] Created singleton instance");
+                            //Debug.Log("[NpcMessageRouter] Created singleton instance");
                         }
                     }
                 }
