@@ -698,6 +698,11 @@ namespace Tsc.AIBridge.WebSocket
                             ? errorData["message"].ToString()
                             : errorData.ContainsKey("error") ? errorData["error"].ToString() : "Unknown error";
 
+                        // Extract details field for more specific error information
+                        var errorDetails = errorData.ContainsKey("details") && !string.IsNullOrEmpty(errorData["details"].ToString())
+                            ? errorData["details"].ToString()
+                            : null;
+
                         // Service can be explicit field, or derived from type/error
                         var service = errorData.ContainsKey("service") && !string.IsNullOrEmpty(errorData["service"].ToString())
                             ? errorData["service"].ToString()
@@ -715,6 +720,7 @@ namespace Tsc.AIBridge.WebSocket
                                 $"⚠️ CONFIGURATION ERROR - {service}\n" +
                                 $"════════════════════════════════════════════════════════\n" +
                                 $"\n{errorMessage}\n" +
+                                (!string.IsNullOrEmpty(errorDetails) ? $"Details: {errorDetails}\n" : "") +
                                 $"Request ID: {errorRequestId}\n");
 
                             if (!string.IsNullOrEmpty(suggestion))
@@ -726,7 +732,9 @@ namespace Tsc.AIBridge.WebSocket
                         else
                         {
                             // Regular error logging with request ID for debugging
-                            Debug.LogError($"[BACKEND ERROR - {service}] {errorMessage} (RequestId: {errorRequestId})");
+                            Debug.LogError($"[BACKEND ERROR - {service}] {errorMessage}" +
+                                (!string.IsNullOrEmpty(errorDetails) ? $"\nDetails: {errorDetails}" : "") +
+                                $"\n(RequestId: {errorRequestId})");
                             if (!string.IsNullOrEmpty(suggestion))
                             {
                                 Debug.LogWarning($"[SUGGESTION] {suggestion}");
