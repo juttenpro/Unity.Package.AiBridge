@@ -297,9 +297,13 @@ namespace Tsc.AIBridge.WebSocket
                     var noTranscriptMsg = JsonConvert.DeserializeObject<NoTranscriptMessage>(json);
                     Debug.LogWarning($"[{_personaName}] No transcript detected - Reason: {noTranscriptMsg.Reason}, " +
                                    $"Duration: {noTranscriptMsg.AudioDuration}ms, Provider: {noTranscriptMsg.SttProvider}");
-                    
+
                     // No need to mark anything on latency tracker - session completion is handled by StreamingApiClient
-                    
+
+                    // CRITICAL: Fire OnTranscription with empty string so AIBridgeRulesHandler can send noSpeechDetected to RuleSystem
+                    // This ensures RuleSystem receives the "no speech" event even when STT fails
+                    OnTranscription?.Invoke("");
+
                     // Notify listeners so they can handle this (e.g., play "Pardon?" audio)
                     OnNoTranscript?.Invoke(noTranscriptMsg);
                     break;

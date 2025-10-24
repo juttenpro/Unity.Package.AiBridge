@@ -264,27 +264,18 @@ namespace Tsc.AIBridge.Audio.Capture
                     Debug.Log($"[MicrophoneCapture] Using default device: {SelectedDevice}");
             }
 
-            // Check device capabilities
-            Microphone.GetDeviceCaps(SelectedDevice, out int minFreq, out int maxFreq);
-
-            // Check if device supports our sample rate
-            int actualSampleRate = SAMPLE_RATE;
-            if (maxFreq > 0 && actualSampleRate > maxFreq)
-            {
-                Debug.LogWarning($"[MicrophoneCapture] Device max frequency {maxFreq}Hz is lower than required {SAMPLE_RATE}Hz");
-                actualSampleRate = maxFreq;
-            }
-            else if (minFreq > 0 && actualSampleRate < minFreq)
-            {
-                Debug.LogWarning($"[MicrophoneCapture] Device min frequency {minFreq}Hz is higher than required {SAMPLE_RATE}Hz");
-                actualSampleRate = minFreq;
-            }
+            // CRITICAL: Always use SAMPLE_RATE (16kHz), let Unity handle resampling
+            // This matches RecorderBase behavior which works reliably across all devices
+            // Unity will automatically resample if the device doesn't natively support 16kHz
+            // Attempting to "smartly" adapt to device capabilities breaks Opus encoding
+            // because Frequency property would return 16kHz while actual recording is 48kHz
 
             // Stop AudioSource first (like RecorderBase)
             audioSource.Stop();
 
             // Start recording with 10 second circular buffer (like RecorderBase)
-            recordingClip = Microphone.Start(SelectedDevice, true, RECORDING_LENGTH, actualSampleRate);
+            // ALWAYS use SAMPLE_RATE (16kHz) - Unity will resample if needed
+            recordingClip = Microphone.Start(SelectedDevice, true, RECORDING_LENGTH, SAMPLE_RATE);
 
             if (recordingClip == null)
             {
@@ -299,7 +290,7 @@ namespace Tsc.AIBridge.Audio.Capture
             audioSource.clip = recordingClip;
 
             // Start waiting for microphone to be ready (like RecorderBase)
-            StartCoroutine(WaitForMicrophoneReady(actualSampleRate));
+            StartCoroutine(WaitForMicrophoneReady());
         }
 
         public void StopCapture()
@@ -434,7 +425,7 @@ namespace Tsc.AIBridge.Audio.Capture
         }
 #endif
 
-        private IEnumerator WaitForMicrophoneReady(int actualSampleRate)
+        private IEnumerator WaitForMicrophoneReady()
         {
             float muteTimer = MUTE_CHECK_TIMEOUT;
 
@@ -470,7 +461,7 @@ namespace Tsc.AIBridge.Audio.Capture
             OnCaptureStarted?.Invoke();
             RecordingStarted?.Invoke(); // Fire static event for RecorderBase compatibility
             if (enableVerboseLogging)
-                Debug.Log($"[MicrophoneCapture] Started capture - Device: {SelectedDevice}, SampleRate: {actualSampleRate}Hz, Channels: {Channels}");
+                Debug.Log($"[MicrophoneCapture] Started capture - Device: {SelectedDevice}, SampleRate: {SAMPLE_RATE}Hz, Channels: {Channels}");
         }
 
         private IEnumerator CaptureRoutine()
