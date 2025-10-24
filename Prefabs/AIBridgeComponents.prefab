@@ -209,10 +209,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d7a2bde339df01a41afb6cc69a467cc4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  talkButtons:
-  - {fileID: -5982496924579745919, guid: c348712bda248c246b8c49b3db54643f, type: 3}
-  - {fileID: 83097790271614945, guid: c348712bda248c246b8c49b3db54643f, type: 3}
-  - {fileID: -2276575735353374141, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+  talkButtons: []
   stopRecordingDelay: 0.3
   useSmartMicOffset: 1
   smartOffsetMaxDuration: 0.5
