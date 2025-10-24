@@ -517,20 +517,24 @@ namespace Tsc.AIBridge.Audio.Capture
                     _reusableBuffer = new float[newSize];
                 }
 
+                // Clamp requiredSize to actual buffer size to prevent Array.Copy overflow
+                // This handles edge cases where timing glitches cause abnormally large sample counts
+                int actualSize = Mathf.Min(requiredSize, _reusableBuffer.Length);
+
                 // Read data into reusable buffer
                 recordingClip.GetData(_reusableBuffer, lastReadPosition);
 
                 // Calculate current volume only if needed (optimization)
                 if (CalculateVolume)
                 {
-                    CurrentVolume = CalculateRMS(_reusableBuffer, requiredSize);
+                    CurrentVolume = CalculateRMS(_reusableBuffer, actualSize);
                 }
 
                 // Create array segment to pass only the actual data
                 // Note: We must create a new array here because listeners expect ownership
                 // But this is now the ONLY allocation, and it's necessary
-                float[] audioData = new float[requiredSize];
-                System.Array.Copy(_reusableBuffer, 0, audioData, 0, requiredSize);
+                float[] audioData = new float[actualSize];
+                System.Array.Copy(_reusableBuffer, 0, audioData, 0, actualSize);
 
                 OnAudioDataAvailable?.Invoke(audioData);
                 RecordingDataReceived?.Invoke(audioData); // Fire static event for RecorderBase compatibility
@@ -550,21 +554,24 @@ namespace Tsc.AIBridge.Audio.Capture
                 int samplesToRead = currentPosition - lastReadPosition;
                 int requiredSize = samplesToRead * Channels;
 
+                // Clamp to maximum buffer size to prevent overflow from timing glitches
+                int actualSize = Mathf.Min(requiredSize, MAX_BUFFER_SIZE);
+
                 // Reuse buffer if possible for final read
-                if (_reusableBuffer != null && _reusableBuffer.Length >= requiredSize)
+                if (_reusableBuffer != null && _reusableBuffer.Length >= actualSize)
                 {
                     recordingClip.GetData(_reusableBuffer, lastReadPosition);
 
                     // Must create new array for final data as ownership transfers
-                    float[] finalData = new float[requiredSize];
-                    System.Array.Copy(_reusableBuffer, 0, finalData, 0, requiredSize);
+                    float[] finalData = new float[actualSize];
+                    System.Array.Copy(_reusableBuffer, 0, finalData, 0, actualSize);
                     OnAudioDataAvailable?.Invoke(finalData);
                     RecordingDataReceived?.Invoke(finalData); // Fire static event
                 }
                 else
                 {
                     // Fallback if buffer not available
-                    float[] finalData = new float[requiredSize];
+                    float[] finalData = new float[actualSize];
                     recordingClip.GetData(finalData, lastReadPosition);
                     OnAudioDataAvailable?.Invoke(finalData);
                     RecordingDataReceived?.Invoke(finalData); // Fire static event
