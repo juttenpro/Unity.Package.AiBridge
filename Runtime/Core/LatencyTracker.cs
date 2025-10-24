@@ -436,17 +436,9 @@ namespace Tsc.AIBridge.Core
             };
             
             OnLatencyStatsUpdated?.Invoke(stats);
-
-            // Debug: Log static event invocation
-            if (OnLatencyStatsUpdatedStatic != null)
-            {
-                //UnityEngine.Debug.Log($"[{_personaName}] Invoking static event with {OnLatencyStatsUpdatedStatic.GetInvocationList().Length} subscribers");
-                OnLatencyStatsUpdatedStatic.Invoke(stats);
-            }
-            else
-            {
-                UnityEngine.Debug.LogWarning($"[{_personaName}] No subscribers to OnLatencyStatsUpdatedStatic event!");
-            }
+            
+            //UnityEngine.Debug.Log($"[{_personaName}] Invoking static event with {OnLatencyStatsUpdatedStatic.GetInvocationList().Length} subscribers");
+            OnLatencyStatsUpdatedStatic?.Invoke(stats);
             
             // Clear the pending latency since it's been reported
             _pendingPerceivedLatency = 0;
