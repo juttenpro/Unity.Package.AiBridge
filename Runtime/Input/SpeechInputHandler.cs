@@ -54,14 +54,32 @@ namespace Tsc.AIBridge.Input
         public static event Action OnSpeechProcessingCompleted;
 
         /// <summary>
-        /// Event fired when recording starts
+        /// Event fired when recording starts (instance)
         /// </summary>
         public event Action OnRecordingStarted;
 
         /// <summary>
-        /// Event fired when recording stops
+        /// Event fired when recording stops (instance)
         /// </summary>
         public event Action OnRecordingStopped;
+
+        /// <summary>
+        /// Static event fired when recording starts (for UI components that need global access)
+        /// Compatible with RecorderBase.RecordingStarted pattern
+        /// </summary>
+        public static event Action RecordingStarted;
+
+        /// <summary>
+        /// Static event fired when recording stops (for UI components that need global access)
+        /// Compatible with RecorderBase.RecordingStopped pattern
+        /// </summary>
+        public static event Action RecordingStopped;
+
+        /// <summary>
+        /// Static event fired when audio data is received (for UI components that need global access)
+        /// Compatible with RecorderBase.RecordingDataReceived pattern
+        /// </summary>
+        public static event Action<float[]> RecordingDataReceived;
 
         #endregion
 
@@ -338,6 +356,7 @@ namespace Tsc.AIBridge.Input
             }
 
             OnRecordingStarted?.Invoke();
+            RecordingStarted?.Invoke(); // Fire static event for UI components
 
             if (enableVerboseLogging)
                 Debug.Log("[SpeechInputHandler] Recording and encoding started");
@@ -372,6 +391,7 @@ namespace Tsc.AIBridge.Input
             _audioStreamProcessor?.StopEncoding();
 
             OnRecordingStopped?.Invoke();
+            RecordingStopped?.Invoke(); // Fire static event for UI components
 
             if (enableVerboseLogging)
                 Debug.Log("[SpeechInputHandler] Recording and encoding stopped (microphone still running)");
@@ -594,6 +614,7 @@ namespace Tsc.AIBridge.Input
 
                 // Also fire event for other listeners (e.g., InterruptionManager)
                 OnAudioDataReceived?.Invoke(samples);
+                RecordingDataReceived?.Invoke(samples); // Fire static event for UI components
             }
 
             // Track silence for smart offset
@@ -644,6 +665,7 @@ namespace Tsc.AIBridge.Input
 
                                 // Also fire event for other listeners (e.g., InterruptionManager)
                                 OnAudioDataReceived?.Invoke(preBufferedAudio);
+                                RecordingDataReceived?.Invoke(preBufferedAudio); // Fire static event for UI components
 
                                 if (enableVerboseLogging)
                                     Debug.Log($"[SpeechInputHandler] Sent {preBufferedAudio.Length} pre-buffered samples to encoder");
