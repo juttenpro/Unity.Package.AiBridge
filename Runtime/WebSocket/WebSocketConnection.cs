@@ -383,9 +383,9 @@ namespace Tsc.AIBridge.WebSocket
         {
             return code switch
             {
+                WebSocketCloseCode.Normal => true,     // Auto-reconnect on idle timeout (backend sends Normal)
                 WebSocketCloseCode.Abnormal => true,
                 WebSocketCloseCode.Away => true,
-                //WebSocketCloseCode.Normal => false,
                 //WebSocketCloseCode.ProtocolError => false,
                 //WebSocketCloseCode.UnsupportedData => false,
                 _ => false
@@ -601,6 +601,9 @@ namespace Tsc.AIBridge.WebSocket
                 }
                 finally
                 {
+                    // CRITICAL: Dispose WebSocket before nulling reference to prevent memory leaks
+                    // Without this, orphaned WebSockets remain in memory causing ObjectDisposedException on backend
+                    _webSocket?.Dispose();
                     _webSocket = null;
                 }
             }
