@@ -105,6 +105,12 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public event Action<string> OnTranscriptionReceived;
 
+        /// <summary>
+        /// Fired when STT fails (timeout, error, etc.)
+        /// Allows distinguishing between silent PTT (no audio) and STT processing failures
+        /// </summary>
+        public event Action<AIBridge.Messages.NoTranscriptMessage> OnSttFailed;
+
         #endregion
 
         #region Private Fields
@@ -676,6 +682,15 @@ namespace Tsc.AIBridge.Core
         public void RaiseTranscriptionReceived(string transcript)
         {
             OnTranscriptionReceived?.Invoke(transcript);
+        }
+
+        /// <summary>
+        /// Raise the OnSttFailed event
+        /// Called by NpcClientBase when STT fails (timeout, error, etc.)
+        /// </summary>
+        public void RaiseSttFailed(AIBridge.Messages.NoTranscriptMessage message)
+        {
+            OnSttFailed?.Invoke(message);
         }
 
         #endregion

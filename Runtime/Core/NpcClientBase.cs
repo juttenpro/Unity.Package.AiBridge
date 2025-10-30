@@ -148,6 +148,9 @@ namespace Tsc.AIBridge.Core
             // Subscribe to transcription events to forward to RequestOrchestrator
             _metadataHandler.OnTranscription += HandleTranscription;
 
+            // Subscribe to STT failure events to forward to RequestOrchestrator
+            _metadataHandler.OnNoTranscript += HandleSttFailed;
+
             // Subscribe to SessionStarted event and forward to public OnSessionStarted event
             _metadataHandler.OnSessionStarted += () =>
             {
@@ -280,6 +283,22 @@ namespace Tsc.AIBridge.Core
                 Debug.Log($"[{NpcName}] Transcription: {transcript}");
         }
 
+        /// <summary>
+        /// Handle STT failure (timeout, error, etc.) from WebSocket
+        /// </summary>
+        protected virtual void HandleSttFailed(AIBridge.Messages.NoTranscriptMessage message)
+        {
+            if (enableVerboseLogging)
+                Debug.Log($"[{NpcName}] HandleSttFailed - Reason: {message.Reason}, Duration: {message.AudioDuration}ms, Provider: {message.SttProvider}");
+
+            // Forward to RequestOrchestrator if it exists
+            var orchestrator = RequestOrchestrator.Instance;
+            if (orchestrator != null)
+            {
+                orchestrator.RaiseSttFailed(message);
+            }
+        }
+
         protected abstract void ValidateConfiguration();
 
         protected virtual void OnDestroy()
@@ -288,6 +307,7 @@ namespace Tsc.AIBridge.Core
             if (_metadataHandler != null)
             {
                 _metadataHandler.OnTranscription -= HandleTranscription;
+                _metadataHandler.OnNoTranscript -= HandleSttFailed;
                 // Note: OnSessionStarted and OnAIResponse use lambdas, automatically cleaned up when _metadataHandler is disposed
                 // Note: AudioStreamEnd handler removed - stream end now detected via AudioPlayer events
             }
