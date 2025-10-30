@@ -162,10 +162,10 @@ namespace Tsc.AIBridge.Core
                 OnSessionStarted?.Invoke();
             };
 
-            // Subscribe to AI response event and call OnAiResponseReceived method with intents
-            _metadataHandler.OnAIResponse += (response, intents) =>
+            // Subscribe to AI response event and call OnAiResponseReceived method with typed response data
+            _metadataHandler.OnAIResponse += (responseData) =>
             {
-                OnAiResponseReceived(response, intents);
+                OnAiResponseReceived(responseData);
             };
 
             // Note: AudioStreamEnd message removed - stream end is now detected via
@@ -312,9 +312,9 @@ namespace Tsc.AIBridge.Core
         public event Action OnSessionStarted;
 
         /// <summary>
-        /// Event fired when response is received with JObject containing "text" (string) and "intents" (string[] array) fields
+        /// Event fired when response is received with typed LlmResponseData containing Text, RawResponseText, and Intents
         /// </summary>
-        public event Action<Newtonsoft.Json.Linq.JObject> OnResponseReceived;
+        public event Action<Messages.LlmResponseData> OnResponseReceived;
 
         /// <summary>
         /// Event fired when audio starts playing
@@ -468,27 +468,27 @@ namespace Tsc.AIBridge.Core
         /// Handle AI response received from the backend.
         /// Stores the response and triggers relevant events.
         /// </summary>
-        /// <param name="response">The text response from the AI</param>
-        /// <param name="intents">Intent classifications from the LLM response (empty array if none)</param>
-        public virtual void OnAiResponseReceived(string response, string[] intents = null)
+        /// <param name="responseData">Typed LLM response data with Text, RawResponseText, and Intents</param>
+        public virtual void OnAiResponseReceived(Messages.LlmResponseData responseData)
         {
-            if (enableVerboseLogging)
-                Debug.Log($"[{GetType().Name}] AI response: {response}");
+            if (responseData == null)
+            {
+                Debug.LogWarning($"[{GetType().Name}] Received null response data");
+                return;
+            }
 
-            // Store last response
-            LastResponseText = response;
+            if (enableVerboseLogging)
+                Debug.Log($"[{GetType().Name}] AI response: {responseData.Text}");
+
+            // Store last response (cleaned text)
+            LastResponseText = responseData.Text;
 
             // Fire static event for test UI (LatencyLogUI)
-            OnAIResponseReceivedStatic?.Invoke(NpcName, response);
+            OnAIResponseReceivedStatic?.Invoke(NpcName, responseData.Text);
 
-            // Create JObject with text and intents
-            var responseObject = new Newtonsoft.Json.Linq.JObject();
-            responseObject["text"] = response;
-            responseObject["intents"] = new Newtonsoft.Json.Linq.JArray(intents ?? new string[0]);
-
-            // Fire events
-            OnResponseReceived?.Invoke(responseObject);
-            OnNpcResponse?.Invoke(response);
+            // Fire events with typed data
+            OnResponseReceived?.Invoke(responseData);
+            OnNpcResponse?.Invoke(responseData.Text);
         }
 
         /// <summary>

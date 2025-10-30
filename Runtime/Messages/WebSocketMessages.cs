@@ -549,6 +549,41 @@ namespace Tsc.AIBridge.Messages
         /// </summary>
         [JsonProperty("intents")]
         public string[] Intents;
+
+        /// <summary>
+        /// Raw LLM response text BEFORE marker extraction.
+        /// Contains all INTENT, GESTURE, EMOTION markers for LogViewer debugging.
+        /// Used for debugging and logging the complete LLM output with all metadata markers intact.
+        /// </summary>
+        [JsonProperty("rawResponseText")]
+        public string RawResponseText;
+    }
+
+    /// <summary>
+    /// Typed data class for LLM response from backend.
+    /// Replaces fragile JObject indexer access with strongly-typed properties.
+    /// Shared between AIBridge and RuleSystem for consistent LLM response handling.
+    /// </summary>
+    [Serializable]
+    public class LlmResponseData
+    {
+        /// <summary>
+        /// Cleaned text without metadata markers (for display and TTS)
+        /// </summary>
+        public string Text { get; set; }
+
+        /// <summary>
+        /// Raw response text with all [INTENT:], [GESTURE:], [EMOTION:] markers intact.
+        /// Used for LogViewer debugging to see complete LLM output.
+        /// </summary>
+        public string RawResponseText { get; set; }
+
+        /// <summary>
+        /// List of extracted intent values from response.
+        /// Used by RuleSystem for workflow decisions (e.g., goodbye→close case).
+        /// Empty array if no intents detected.
+        /// </summary>
+        public string[] Intents { get; set; } = Array.Empty<string>();
     }
 
     /// <summary>

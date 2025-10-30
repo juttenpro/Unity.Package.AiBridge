@@ -25,7 +25,7 @@ namespace Tsc.AIBridge.WebSocket
 
         // Events for different message types
         public event Action<string> OnTranscription;
-        public event Action<string, string[]> OnAIResponse; // response text, intents array
+        public event Action<Messages.LlmResponseData> OnAIResponse; // Typed LLM response with text, rawResponseText, and intents
         public event Action<string> OnError;
         // AudioStreamStart removed - audio starts automatically on first chunk
         public event Action<AudioStreamEndMessage> OnAudioStreamEnd;  // Now passes complete message with verification data
@@ -196,10 +196,15 @@ namespace Tsc.AIBridge.WebSocket
                         _latencyTracker.MarkLlmComplete(aiMsg.Text, aiMsg.Timing);
                     }
 
-                    // Extract intents array (or empty array if null)
-                    var intents = aiMsg.Intents ?? new string[0];
+                    // Create typed LlmResponseData object with all fields
+                    var responseData = new Messages.LlmResponseData
+                    {
+                        Text = aiMsg.Text,
+                        RawResponseText = aiMsg.RawResponseText,
+                        Intents = aiMsg.Intents ?? Array.Empty<string>()
+                    };
 
-                    OnAIResponse?.Invoke(aiMsg.Text, intents);
+                    OnAIResponse?.Invoke(responseData);
                     OnMetadataReceived?.Invoke(new ConversationTurnResponse { NpcResponseText = aiMsg.Text });
                     break;
                     
