@@ -225,9 +225,27 @@ namespace Tsc.AIBridge.Audio.Capture
 
         private void OnApplicationPause(bool pauseStatus)
         {
-            if (pauseStatus && IsCapturing)
+            if (pauseStatus)
             {
-                StopCapture();
+                // Headset removed / app paused - stop capture
+                if (IsCapturing)
+                {
+                    StopCapture();
+                    if (enableVerboseLogging)
+                        Debug.Log("[MicrophoneCapture] Stopped capture due to application pause (headset removed)");
+                }
+            }
+            else
+            {
+                // Headset put back on / app resumed - restart capture
+                // CRITICAL: Without this, microphone stays stopped after headset is removed and put back on
+                // This causes PTT to fail silently - button press works but no audio is sent
+                if (!IsCapturing && IsMicrophoneAvailable)
+                {
+                    if (enableVerboseLogging)
+                        Debug.Log("[MicrophoneCapture] Restarting capture after application resume (headset put back on)");
+                    StartCapture();
+                }
             }
         }
 
