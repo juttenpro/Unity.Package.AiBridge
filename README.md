@@ -53,7 +53,7 @@ Add to your `manifest.json`:
 {
   "dependencies": {
     "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm",
-    "com.simulationcrew.aibridge": "1.0.0"
+    "com.simulationcrew.aibridge": "https://github.com/juttenpro/Unity.Package.AiBridge.git"
   }
 }
 ```
@@ -62,10 +62,93 @@ Add to your `manifest.json`:
 
 In Unity Package Manager, add package from git URL:
 ```
-https://github.com/simulationcrew/aibridge.git
+https://github.com/juttenpro/Unity.Package.AiBridge.git
 ```
 
 **Note**: If NativeWebSocket is not installed, Unity will show a missing dependency error.
+
+## Audio Configuration
+
+### ⚠️ CRITICAL: Audio Sample Rate Setup
+
+**AI Bridge requires Unity's audio system to run at 48000 Hz** to match the TTS audio stream format (Opus 48kHz).
+
+If your Unity project uses a different sample rate (e.g., auto-selected 24kHz or 44.1kHz), **TTS playback will be at incorrect speed**.
+
+#### Symptoms of Incorrect Sample Rate
+- 🐌 **Slow, robotic voice** (if system < 48kHz)
+- 🏃 **Fast, chipmunk voice** (if system > 48kHz)
+- ⚡ **Playback speed = (48000 / systemSampleRate)x**
+
+Example: 24kHz system → 48000/24000 = 2x slower playback
+
+#### Solution 1: Project Settings (Recommended)
+
+Set the sample rate in Unity's audio settings:
+
+1. Open **Edit → Project Settings → Audio**
+2. Set **System Sample Rate** to **48000**
+3. Rebuild your project
+
+Or edit `ProjectSettings/AudioManager.asset` directly:
+```yaml
+AudioManager:
+  m_SampleRate: 48000  # Set to 48000 (not 0 for auto)
+```
+
+#### Solution 2: Runtime Configuration
+
+Configure sample rate at application startup:
+
+```csharp
+using UnityEngine;
+
+public class AudioInitializer : MonoBehaviour
+{
+    private void Awake()
+    {
+        const int REQUIRED_SAMPLE_RATE = 48000;
+
+        if (AudioSettings.outputSampleRate != REQUIRED_SAMPLE_RATE)
+        {
+            var config = AudioSettings.GetConfiguration();
+            config.sampleRate = REQUIRED_SAMPLE_RATE;
+            bool success = AudioSettings.Reset(config);
+
+            if (success)
+            {
+                Debug.Log($"Audio sample rate set to {AudioSettings.outputSampleRate}Hz");
+            }
+            else
+            {
+                Debug.LogError("Failed to set audio sample rate!");
+            }
+        }
+    }
+}
+```
+
+#### Automatic Detection
+
+AI Bridge automatically detects sample rate mismatches and logs a **warning** with the playback speed ratio:
+
+```
+[AIBridge] AudioSettings.outputSampleRate is 24000Hz but TTS audio requires 48000Hz.
+This will cause incorrect playback speed (audio will play 2.00x too fast/slow).
+SOLUTION: Set Project Settings > Audio > System Sample Rate to 48000Hz...
+```
+
+**Always check Unity Console** for this warning during development.
+
+#### Impact on Other Audio
+
+Setting Unity to 48kHz affects **all audio in your project**:
+- ✅ **48kHz is industry standard** (video, broadcasting, pro audio)
+- ✅ **Unity automatically resamples** other audio files (44.1kHz music, etc.)
+- ✅ **Minimal quality loss** from resampling (generally inaudible)
+- ✅ **All modern hardware supports 48kHz** (desktop, mobile, VR)
+
+**Recommendation**: Use 48kHz for your entire project for consistency.
 
 ## Core Components
 
@@ -130,7 +213,7 @@ public interface IConversationHistoryProvider
 
 ### Audio Capture
 ```csharp
-using SimulationCrew.AIBridge.Audio.Capture;
+using Tsc.AIBridge.Audio.Capture;
 
 public class AudioCaptureExample : MonoBehaviour
 {
@@ -161,7 +244,7 @@ public class AudioCaptureExample : MonoBehaviour
 
 ### WebSocket Messages
 ```csharp
-using SimulationCrew.AIBridge.Messages;
+using Tsc.AIBridge.Messages;
 
 // Create session start message
 var sessionStart = new SessionStartMessage
@@ -192,7 +275,7 @@ void OnMessageReceived(WebSocketMessage message)
 
 ### VAD Processing
 ```csharp
-using SimulationCrew.AIBridge.Audio.VAD;
+using Tsc.AIBridge.Audio.VAD;
 
 public class VADExample : MonoBehaviour
 {
@@ -257,9 +340,11 @@ The package is designed to be extended through:
 
 ## Compatibility
 
-- Unity 2022.3 or higher
+- Unity 6 (6000.x) or Unity 2022.3 LTS or higher
 - Supports all Unity platforms with microphone access
-- VR Ready (Quest, Pico, etc.)
+- VR Ready (Meta Quest, Pico, etc.)
+- Desktop (Windows, macOS, Linux)
+- Mobile (Android, iOS)
 
 ## License
 
@@ -267,6 +352,5 @@ MIT License - See LICENSE.md for details
 
 ## Support
 
-- Documentation: https://github.com/simulationcrew/aibridge/wiki
-- Issues: https://github.com/simulationcrew/aibridge/issues
-- Email: info@simulationcrew.com
+- Repository: https://github.com/juttenpro/Unity.Package.AiBridge
+- Issues: https://github.com/juttenpro/Unity.Package.AiBridge/issues

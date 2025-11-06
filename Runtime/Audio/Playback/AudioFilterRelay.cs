@@ -86,6 +86,21 @@ namespace Tsc.AIBridge.Audio.Playback
                 _audioSource.clip = streamingClip;
                 _audioSource.loop = true;
                 _audioSource.Play();
+
+                // Check if Unity's output sample rate matches our TTS audio clip sample rate
+                var systemSampleRate = AudioSettings.outputSampleRate;
+                if (systemSampleRate != sampleRate)
+                {
+                    Debug.LogWarning(
+                        $"[AIBridge] AudioSettings.outputSampleRate is {systemSampleRate}Hz but TTS audio requires {sampleRate}Hz.\n" +
+                        $"This will cause incorrect playback speed (audio will play {(float)sampleRate / systemSampleRate:F2}x too fast/slow).\n" +
+                        $"SOLUTION: Set Project Settings > Audio > System Sample Rate to {sampleRate}Hz, or configure at runtime:\n" +
+                        $"  var config = AudioSettings.GetConfiguration();\n" +
+                        $"  config.sampleRate = {sampleRate};\n" +
+                        $"  AudioSettings.Reset(config);\n" +
+                        $"See README.md for details."
+                    );
+                }
             }
 
             //Debug.Log($"[AudioFilterRelay] Initialized on {gameObject.name}");
