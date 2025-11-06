@@ -235,6 +235,40 @@ namespace Tsc.AIBridge.Core
             _isQuitting = true;
         }
 
+        private void OnApplicationPause(bool pauseStatus)
+        {
+            // Handle VR headset removal/replacement (Meta Quest, etc.)
+            if (pauseStatus)
+            {
+                // Headset removed - stop any active recording to prevent orphaned state
+                // CRITICAL: Without this, recording state persists during pause while
+                // the active request session may complete, causing "no active request" errors
+                if (_isRequestActive && speechInputHandler != null && speechInputHandler.IsRecording)
+                {
+                    if (enableVerboseLogging)
+                        Debug.Log("[RequestOrchestrator] Application paused during recording - stopping recording to prevent state desync");
+
+                    // Stop recording cleanly
+                    speechInputHandler.StopRecording();
+
+                    // Reset request state
+                    _isRequestActive = false;
+                    _isWaitingForAudioStart = false;
+
+                    // Clear reconnection buffer to prevent stale audio
+                    _reconnectionAudioBuffer.Clear();
+                }
+            }
+            else
+            {
+                // Headset put back on - nothing to do
+                // User will need to press PTT again to start new recording
+                // This is the safest approach - prevents resuming half-recorded audio
+                if (enableVerboseLogging)
+                    Debug.Log("[RequestOrchestrator] Application resumed - ready for new recording");
+            }
+        }
+
         #endregion
 
         #region Public API
