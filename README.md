@@ -296,6 +296,57 @@ public class VADExample : MonoBehaviour
 }
 ```
 
+### Pause Handling
+
+AI Bridge automatically handles Unity's `OnApplicationPause()`, but you can also integrate with custom pause systems (e.g., in-game pause menus, training systems):
+
+```csharp
+using Tsc.AIBridge.Core;
+using UnityEngine;
+
+public class CustomPauseManager : MonoBehaviour
+{
+    private RequestOrchestrator orchestrator;
+
+    void Start()
+    {
+        orchestrator = RequestOrchestrator.Instance;
+    }
+
+    public void PauseGame()
+    {
+        // Forward pause state to AIBridge
+        orchestrator.HandlePauseStateChange(isPaused: true, source: "GamePause");
+
+        // Pausing will:
+        // - Stop any active audio recording
+        // - Reset request state to prevent orphaned sessions
+        // - Clear audio buffers to prevent stale audio
+
+        Time.timeScale = 0f;
+    }
+
+    public void ResumeGame()
+    {
+        // Forward resume state to AIBridge
+        orchestrator.HandlePauseStateChange(isPaused: false, source: "GameResume");
+
+        // After resume:
+        // - User needs to press PTT again to start new recording
+        // - This prevents resuming half-recorded audio (safe approach)
+
+        Time.timeScale = 1f;
+    }
+}
+```
+
+**Why this matters:**
+- Prevents recording state desync during pause
+- Cleans up orphaned sessions when pause occurs mid-recording
+- Ensures safe state when resuming from pause
+
+**Note:** The `source` parameter is optional and used for logging to help debug pause-related issues.
+
 ## Architecture
 
 The package follows a clean, interface-based architecture:
