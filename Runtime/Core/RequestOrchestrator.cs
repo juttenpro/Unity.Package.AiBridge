@@ -237,16 +237,32 @@ namespace Tsc.AIBridge.Core
 
         private void OnApplicationPause(bool pauseStatus)
         {
-            // Handle VR headset removal/replacement (Meta Quest, etc.)
-            if (pauseStatus)
+            // Forward to public method (enables external components to trigger pause handling)
+            HandlePauseStateChange(pauseStatus, "ApplicationPause");
+        }
+
+        #endregion
+
+        #region Public API
+
+        /// <summary>
+        /// Handle pause state change (called by OnApplicationPause or external pause systems).
+        /// This is a public API to allow external pause systems (like PauseManager) to integrate
+        /// with RequestOrchestrator without creating a dependency.
+        /// </summary>
+        /// <param name="isPaused">True if pausing, false if resuming</param>
+        /// <param name="source">Source of the pause (for logging): "ApplicationPause", "TrainingPause", etc.</param>
+        public void HandlePauseStateChange(bool isPaused, string source = "Unknown")
+        {
+            if (isPaused)
             {
-                // Headset removed - stop any active recording to prevent orphaned state
+                // Pause - stop any active recording to prevent orphaned state
                 // CRITICAL: Without this, recording state persists during pause while
                 // the active request session may complete, causing "no active request" errors
                 if (_isRequestActive && speechInputHandler != null && speechInputHandler.IsRecording)
                 {
                     if (enableVerboseLogging)
-                        Debug.Log("[RequestOrchestrator] Application paused during recording - stopping recording to prevent state desync");
+                        Debug.Log($"[RequestOrchestrator] {source} paused during recording - stopping recording to prevent state desync");
 
                     // Stop recording cleanly
                     speechInputHandler.StopRecording();
@@ -261,17 +277,13 @@ namespace Tsc.AIBridge.Core
             }
             else
             {
-                // Headset put back on - nothing to do
+                // Resume - nothing to do
                 // User will need to press PTT again to start new recording
                 // This is the safest approach - prevents resuming half-recorded audio
                 if (enableVerboseLogging)
-                    Debug.Log("[RequestOrchestrator] Application resumed - ready for new recording");
+                    Debug.Log($"[RequestOrchestrator] {source} resumed - ready for new recording");
             }
         }
-
-        #endregion
-
-        #region Public API
 
         /// <summary>
         /// Set the NPC provider at runtime (for RuleSystem integration)
