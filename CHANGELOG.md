@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2025-11-10
+
+### Fixed
+- **Audio bleeding BEFORE new responses start**: Fixed Unity DSP retaining old audio samples
+  - Changed `AudioFilterRelay.StopPlayback()` to use `DestroyImmediate()` instead of `Destroy()`
+  - `Destroy()` is async and schedules destruction for end of frame - audio can leak during this window
+  - `DestroyImmediate()` removes AudioClip instantly, preventing Unity DSP from retaining old samples
+  - Added verbose logging for AudioClip destroy/create operations
+  - **Business Impact**: Eliminates residual audio from previous responses playing before new ones start
+
 ## [1.0.1] - 2025-11-10
 
 ### Fixed

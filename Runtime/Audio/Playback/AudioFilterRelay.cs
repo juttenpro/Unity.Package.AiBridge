@@ -193,15 +193,23 @@ namespace Tsc.AIBridge.Audio.Playback
                 var clipLength = sampleRate * 10; // 10 seconds
                 var channels = 1; // Mono
 
-                // Destroy old clip if it exists
+                // Destroy old clip if it exists - MUST use DestroyImmediate for instant cleanup
+                // Unity's Destroy() is async and schedules destroy for end of frame
+                // This can cause audio bleeding as DSP keeps old clip samples
                 if (_audioSource.clip != null)
                 {
-                    UnityEngine.Object.Destroy(_audioSource.clip);
+                    var oldClipName = _audioSource.clip.name;
+                    UnityEngine.Object.DestroyImmediate(_audioSource.clip);
+                    if (_isVerboseLogging)
+                        UnityEngine.Debug.Log($"[AudioFilterRelay] Destroyed AudioClip '{oldClipName}' immediately");
                 }
 
                 // Create fresh clip for next stream
                 _audioSource.clip = AudioClip.Create("StreamingAudio_Relay", clipLength, channels, sampleRate, true);
                 _audioSource.loop = true;
+
+                if (_isVerboseLogging)
+                    UnityEngine.Debug.Log($"[AudioFilterRelay] Created fresh AudioClip, AudioSource ready for new stream");
             }
         }
 
