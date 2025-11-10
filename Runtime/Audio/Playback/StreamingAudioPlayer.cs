@@ -424,8 +424,11 @@ namespace Tsc.AIBridge.Audio.Playback
                     StopPlaybackInternal(wasInterrupted: true);
                 }
 
-                // Reset force stop flag when starting new stream
+                // Reset force stop and pause flags when starting new stream
+                // CRITICAL: Reset _isPaused to prevent stale pause state from OnApplicationPause
+                // (e.g., VR headset power off/on cycle leaves _isPaused=true without proper resume)
                 _forceStop = false;
+                _isPaused = false;
 
                 _sampleRate = sampleRate;
                 _isStreamActive = true;
@@ -1003,13 +1006,17 @@ namespace Tsc.AIBridge.Audio.Playback
 
         private void OnApplicationPause(bool pauseStatus)
         {
-            // Handle application pause (mainly for mobile platforms)
+            // Handle application pause (mainly for mobile platforms and VR headset power off/on)
+            // CRITICAL: Always reset pause state on resume, even if no stream is active
+            // This prevents stale _isPaused=true from blocking future audio streams
             if (pauseStatus)
             {
                 PausePlayback();
             }
-            else if (_isStreamActive)
+            else
             {
+                // Always resume - ResumePlayback() is safe to call (checks _isPaused internally)
+                // This ensures _isPaused is reset even if current stream completed while paused
                 ResumePlayback();
             }
         }
