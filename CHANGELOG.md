@@ -6,7 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2025-11-10
+
 ### Fixed
+- **VR headset pause state bug**: Fixed audio lockup after VR headset power cycle (Meta Quest 3)
+  - `OnApplicationPause(false)` now always calls `ResumePlayback()`, not just when stream is active
+  - `StartStream()` now resets `_isPaused` flag for defense in depth
+  - Prevents stale pause state from blocking future audio streams
+  - **Business Impact**: Ensures training sessions continue working after VR headset breaks
+
+- **Audio bleeding between sessions**: Eliminated audio artifacts at end of responses (~2 in 5 responses)
+  - `AudioFilterRelay.StopPlayback()` now resets `AudioSource.time = 0` to clear Unity DSP pipeline (~100-200ms buffer)
+  - AudioClip is recreated for each new stream to ensure completely fresh state
+  - `StreamingAudioPlayer.StopPlaybackInternal()` now double-checks buffer emptiness with retry mechanism
+  - Added sample discard counting for debugging
+  - **Business Impact**: Critical for GDPR compliance and user privacy isolation - no user A audio in user B session
+
 - Removed magic numbers in AudioStreamProcessor (added BUFFER_LOG_INTERVAL, AVERAGE_OPUS_CHUNK_SIZE constants)
 - Eliminated GC pressure in audio hot paths (removed Debug.Log from high-frequency methods)
 - Fixed Inspector validation to properly disable component when dependencies are missing
