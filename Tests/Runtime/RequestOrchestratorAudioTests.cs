@@ -849,6 +849,106 @@ namespace Tsc.AIBridge.Tests.Runtime
 
         #endregion
 
+        #region Test 12: Race Condition - HandleRecordingStopped Called Before Queue Processing
+
+        /// <summary>
+        /// BUSINESS REQUIREMENT: EndOfSpeech/EndOfAudio messages must be sent even if PTT released before queue processes
+        ///
+        /// WHY: After WebSocket reconnect or during high load, queue processing may be delayed.
+        ///      If user releases PTT quickly, HandleRecordingStopped() is called before ProcessAudioRequest() runs.
+        ///      Without immediate session creation, HandleRecordingStopped() sees null _currentSession and drops messages.
+        ///
+        /// WHAT: Test that session is created IMMEDIATELY in StartAudioRequest(), not deferred to queue processor
+        /// HOW: Call StartConversationRequest(), immediately trigger HandleRecordingStopped() via reflection BEFORE yielding
+        ///
+        /// SUCCESS CRITERIA:
+        /// - _currentSession exists immediately after StartAudioRequest()
+        /// - HandleRecordingStopped() sends EndOfSpeech/EndOfAudio (no "no active request" warning)
+        /// - Backend receives transcription trigger
+        ///
+        /// BUSINESS IMPACT:
+        /// - Failure = NPC stops responding after VR headset pause/resume (Quest 3 use case)
+        /// - User removes headset → WebSocket reconnects → user speaks → no response
+        /// - Critical for 100+ simultaneous VR training sessions
+        /// - This bug was discovered in production on Oculus Quest 3 after pause/resume cycles
+        /// </summary>
+        [UnityTest]
+        public IEnumerator HandleRecordingStopped_CalledImmediately_SendsEndMessages()
+        {
+            // Wait for Unity to call Start() on all components
+            yield return null;
+
+            // Arrange: Create conversation request (simulates PTT press)
+            var request = new ConversationRequest
+            {
+                NpcId = "TestNPC",
+                Messages = new List<ChatMessage>
+                {
+                    new ChatMessage { Role = "system", Content = "Test" }
+                },
+                LlmProvider = "openai",
+                LlmModel = "gpt-4"
+            };
+
+            // Act: Start request (creates session IMMEDIATELY as of fix 676192f)
+            _orchestrator.StartConversationRequest(request);
+
+            // CRITICAL: Verify session exists BEFORE queue processes (immediate creation)
+            var currentSession = GetCurrentSession();
+            Assert.IsNotNull(currentSession,
+                "Session should be created IMMEDIATELY in StartAudioRequest(), not deferred to queue processor. " +
+                "This prevents race condition where HandleRecordingStopped() is called before session exists.");
+            Assert.IsTrue(GetRequestActiveState(), "Request should be active immediately");
+
+            // Simulate PTT release BEFORE queue processes (race condition!)
+            // Use reflection to call HandleRecordingStopped directly
+            var method = typeof(RequestOrchestrator).GetMethod("HandleRecordingStopped",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            // This should NOT log "Recording stopped but no active request" anymore
+            // With the fix, _currentSession exists so EndOfSpeech/EndOfAudio are sent
+            method?.Invoke(_orchestrator, null);
+
+            // Let queue process (gives HandleRecordingStopped async methods time to complete)
+            yield return null;
+
+            // Assert: Session still exists (was created immediately, not by queue processor)
+            currentSession = GetCurrentSession();
+            Assert.IsNotNull(currentSession, "Session should still exist after queue processing");
+
+            // CRITICAL ASSERTION: Verify EndOfSpeech and EndOfAudio were sent
+            // With the bug, these would be 0 because _currentSession was null
+            // With the fix, these should be 1 because session exists immediately
+            Assert.AreEqual(1, _mockWebSocket.SentEndOfSpeechRequests.Count,
+                "EndOfSpeech should be sent when session exists. " +
+                "If this fails, HandleRecordingStopped() couldn't find _currentSession - THE BUG!");
+            Assert.AreEqual(1, _mockWebSocket.SentEndOfAudioRequests.Count,
+                "EndOfAudio should be sent when session exists. " +
+                "If this fails, HandleRecordingStopped() couldn't find _currentSession - THE BUG!");
+
+            // Verify the requestId in EndOfSpeech/EndOfAudio matches the session
+            Assert.AreEqual(currentSession.RequestId, _mockWebSocket.SentEndOfSpeechRequests[0],
+                "EndOfSpeech requestId should match session");
+            Assert.AreEqual(currentSession.RequestId, _mockWebSocket.SentEndOfAudioRequests[0],
+                "EndOfAudio requestId should match session");
+
+            // Verify WebSocket received SessionStart message (queue processor ran)
+            Assert.AreEqual(1, _mockWebSocket.SentJsonMessages.Count,
+                "SessionStart should be sent by queue processor after session was created in StartAudioRequest()");
+        }
+
+        /// <summary>
+        /// Helper to get current session via reflection
+        /// </summary>
+        private ConversationSession GetCurrentSession()
+        {
+            var field = typeof(RequestOrchestrator).GetField("_currentSession",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return field?.GetValue(_orchestrator) as ConversationSession;
+        }
+
+        #endregion
+
         #region Mock Classes
 
         /// <summary>
@@ -958,6 +1058,8 @@ namespace Tsc.AIBridge.Tests.Runtime
         {
             public List<byte[]> SentBinaryMessages { get; } = new List<byte[]>();
             public List<string> SentJsonMessages { get; } = new List<string>();
+            public List<string> SentEndOfSpeechRequests { get; } = new List<string>();
+            public List<string> SentEndOfAudioRequests { get; } = new List<string>();
 
             private void Awake()
             {
@@ -981,6 +1083,20 @@ namespace Tsc.AIBridge.Tests.Runtime
             public override System.Threading.Tasks.Task SendSessionStartAsync(Messages.SessionStartMessage message, System.Threading.CancellationToken cancellationToken = default)
             {
                 SentJsonMessages.Add(Newtonsoft.Json.JsonConvert.SerializeObject(message));
+                return System.Threading.Tasks.Task.CompletedTask;
+            }
+
+            public override System.Threading.Tasks.Task SendEndOfSpeechAsync(string requestId, System.Threading.CancellationToken cancellationToken = default)
+            {
+                SentEndOfSpeechRequests.Add(requestId);
+                Debug.Log($"[MockWebSocketClient] SendEndOfSpeechAsync called for requestId: {requestId}");
+                return System.Threading.Tasks.Task.CompletedTask;
+            }
+
+            public override System.Threading.Tasks.Task SendEndOfAudioAsync(string requestId, System.Threading.CancellationToken cancellationToken = default)
+            {
+                SentEndOfAudioRequests.Add(requestId);
+                Debug.Log($"[MockWebSocketClient] SendEndOfAudioAsync called for requestId: {requestId}");
                 return System.Threading.Tasks.Task.CompletedTask;
             }
         }
