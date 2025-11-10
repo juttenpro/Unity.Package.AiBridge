@@ -169,7 +169,7 @@ namespace Tsc.AIBridge.Audio.Playback
         }
 
         /// <summary>
-        /// Stop playback
+        /// Stop playback and clear all audio buffers
         /// </summary>
         public void StopPlayback()
         {
@@ -181,6 +181,27 @@ namespace Tsc.AIBridge.Audio.Playback
                 {
                     _audioSource.Stop();
                 }
+
+                // CRITICAL: Reset AudioSource internal buffers to prevent audio bleeding
+                // Unity's DSP pipeline can retain samples in internal buffers (~100-200ms)
+                // Setting time=0 forces Unity to clear these buffers
+                _audioSource.time = 0f;
+
+                // Extra safety: Recreate the streaming clip to ensure completely fresh state
+                // This prevents any residual samples in the AudioClip itself
+                var sampleRate = 48000; // TTS output frequency
+                var clipLength = sampleRate * 10; // 10 seconds
+                var channels = 1; // Mono
+
+                // Destroy old clip if it exists
+                if (_audioSource.clip != null)
+                {
+                    UnityEngine.Object.Destroy(_audioSource.clip);
+                }
+
+                // Create fresh clip for next stream
+                _audioSource.clip = AudioClip.Create("StreamingAudio_Relay", clipLength, channels, sampleRate, true);
+                _audioSource.loop = true;
             }
         }
 

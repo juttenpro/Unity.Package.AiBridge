@@ -617,14 +617,36 @@ namespace Tsc.AIBridge.Audio.Playback
                 Debug.Log($"[{_cachedGameObjectName}] 🤐 NPC speech state reset (playback stopped)");
 
             // Stop relay if it exists (may be null in tests)
+            // This now also recreates AudioClip and resets AudioSource.time for complete buffer clear
             audioFilterRelay?.StopPlayback();
 
-
             // Clear buffer - CRITICAL for preventing audio bleeding between sessions
-            while (_audioBuffer.TryDequeue(out _)) { }
+            // Count samples being discarded for logging
+            int discardedSamples = 0;
+            while (_audioBuffer.TryDequeue(out _))
+            {
+                discardedSamples++;
+            }
+
+            // Extra safety: Double-check buffer is truly empty
+            // ConcurrentQueue can have race conditions, so verify
+            if (_audioBuffer.Count > 0)
+            {
+                Debug.LogWarning($"[{_cachedGameObjectName}] ⚠️ Buffer not empty after clear! Retrying... ({_audioBuffer.Count} samples remaining)");
+                while (_audioBuffer.TryDequeue(out _)) { }
+            }
 
             if(enableVerboseLogging)
-                Debug.Log($"[{_cachedGameObjectName}] Playback stopped - Played: {_totalSamplesPlayed}/{_totalSamplesReceived} samples, Underruns: {_underrunCount}");
+            {
+                if (discardedSamples > 0)
+                {
+                    Debug.Log($"[{_cachedGameObjectName}] Playback stopped - Played: {_totalSamplesPlayed}/{_totalSamplesReceived} samples, Discarded: {discardedSamples}, Underruns: {_underrunCount}");
+                }
+                else
+                {
+                    Debug.Log($"[{_cachedGameObjectName}] Playback stopped - Played: {_totalSamplesPlayed}/{_totalSamplesReceived} samples, Underruns: {_underrunCount}");
+                }
+            }
 
             // Fire appropriate event based on stop reason
             if (wasInterrupted)
