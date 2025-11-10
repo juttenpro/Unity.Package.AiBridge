@@ -394,6 +394,18 @@ namespace Tsc.AIBridge.Core
             // Audio is ALWAYS buffered by default until FlushBuffer() is called after SessionStarted
             // This handles all scenarios: normal requests, interruptions, RuleSystem delays, reconnects
 
+            // Generate request ID and create session IMMEDIATELY (before queueing)
+            // CRITICAL FIX: This prevents race condition where HandleRecordingStopped() is called
+            // before ProcessAudioRequest() has created the session. Without this, EndOfSpeech/EndOfAudio
+            // messages are never sent, causing backend to never process the audio.
+            // This issue is especially likely after WebSocket reconnects when queue processing may be delayed.
+            var requestId = Guid.NewGuid().ToString();
+            var npcName = _activeNpcClient?.NpcName ?? npcConfig.Name;
+            _currentSession = new ConversationSession(npcName, requestId);
+
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Created session immediately: {requestId} for {npcName}");
+
             // Mark request as active - audio chunks can now be accepted (they will be buffered)
             _isRequestActive = true;
 
@@ -413,11 +425,11 @@ namespace Tsc.AIBridge.Core
 
             // Note: Animation events should be triggered via the NPC client, not directly
 
-            // Queue the request
+            // Queue the request with the same RequestId
             var request = new AudioRequest
             {
                 NpcConfig = npcConfig,
-                RequestId = Guid.NewGuid().ToString()
+                RequestId = requestId  // Use same RequestId as session
             };
 
             _audioRequestQueue.Enqueue(request);
@@ -1014,14 +1026,22 @@ namespace Tsc.AIBridge.Core
                 // Buffering was already started in StartAudioRequest() to prevent early audio chunks
                 // from being sent before SessionStarted confirmation
 
+                // CRITICAL FIX: Session is already created in StartAudioRequest()
+                // Verify it exists and matches the request ID
+                if (_currentSession == null || _currentSession.RequestId != request.RequestId)
+                {
+                    Debug.LogError($"[RequestOrchestrator] Session mismatch! Expected {request.RequestId}, got {_currentSession?.RequestId ?? "null"}");
+                    yield break;
+                }
+
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Using existing session: {_currentSession.RequestId}");
+
                 // Create session parameters
                 var parameters = BuildSessionParameters(request.NpcConfig);
 
-                // Start WebSocket session
-                var npcName = _activeNpcClient?.NpcName ?? request.NpcConfig.Name;
-                _currentSession = new ConversationSession(npcName, request.RequestId);
-
                 // Register this request with the NPC router so messages are routed correctly
+                var npcName = _activeNpcClient?.NpcName ?? request.NpcConfig.Name;
                 NpcMessageRouter.Instance.SetActiveRequest(request.RequestId, npcName);
 
                 // CRITICAL: Register the NPC handler with WebSocketClient to receive responses
