@@ -198,18 +198,12 @@ namespace Tsc.AIBridge.Audio.Playback
                 // This can cause audio bleeding as DSP keeps old clip samples
                 if (_audioSource.clip != null)
                 {
-                    var oldClipName = _audioSource.clip.name;
                     UnityEngine.Object.DestroyImmediate(_audioSource.clip);
-                    if (_isVerboseLogging)
-                        UnityEngine.Debug.Log($"[AudioFilterRelay] Destroyed AudioClip '{oldClipName}' immediately");
                 }
 
                 // Create fresh clip for next stream
                 _audioSource.clip = AudioClip.Create("StreamingAudio_Relay", clipLength, channels, sampleRate, true);
                 _audioSource.loop = true;
-
-                if (_isVerboseLogging)
-                    UnityEngine.Debug.Log($"[AudioFilterRelay] Created fresh AudioClip, AudioSource ready for new stream");
             }
         }
 
