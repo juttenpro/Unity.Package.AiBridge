@@ -47,6 +47,9 @@ namespace Tsc.AIBridge.Audio.Codecs
         private bool _isVerboseLogging;
         private bool _isDisposed;
 
+        // Opus PreSkip handling - discard first N samples (encoder lookahead)
+        private int _samplesToSkip;
+
         /// <summary>
         /// Initializes the SIMPLIFIED decoder for continuous stream processing.
         /// </summary>
@@ -141,11 +144,14 @@ namespace Tsc.AIBridge.Audio.Codecs
                 _channels = _oggParser.Channels;
                 _sampleRate = _oggParser.SampleRate;
 
+                // Set PreSkip samples to discard (Opus RFC 7845 - encoder lookahead)
+                _samplesToSkip = _oggParser.PreSkip;
+
                 OnDecoderInitialized?.Invoke(_sampleRate, _channels);
                 _parserInitialized = true;
 
                 if (_isVerboseLogging)
-                    Debug.Log($"[OpusStreamDecoder] Decoder initialized: {_sampleRate}Hz, {_channels}ch");
+                    Debug.Log($"[OpusStreamDecoder] Decoder initialized: {_sampleRate}Hz, {_channels}ch, PreSkip: {_samplesToSkip} samples");
             }
 
             if (_opusDecoder == null)
@@ -175,15 +181,47 @@ namespace Tsc.AIBridge.Audio.Codecs
 
                     if (decodedSampleCount > 0)
                     {
-                        // Send decoded audio
-                        var outputSamples = new float[decodedSampleCount * _channels];
-                        Array.Copy(_decodedSamples, outputSamples, outputSamples.Length);
+                        // Handle Opus PreSkip - discard first N samples (encoder lookahead)
+                        if (_samplesToSkip > 0)
+                        {
+                            var samplesToDiscard = Math.Min(_samplesToSkip, decodedSampleCount);
+                            var samplesRemaining = decodedSampleCount - samplesToDiscard;
 
-                        OnAudioDecoded?.Invoke(outputSamples);
+                            if (_isVerboseLogging)
+                                Debug.Log($"[OpusStreamDecoder] Skipping PreSkip samples: {samplesToDiscard}/{_samplesToSkip}, remaining in packet: {samplesRemaining}");
 
-                        _totalPacketsDecoded++;
-                        _totalSamplesDecoded += decodedSampleCount;
-                        packetsThisBatch++;
+                            _samplesToSkip -= samplesToDiscard;
+
+                            // If entire packet is PreSkip, skip it entirely
+                            if (samplesRemaining <= 0)
+                            {
+                                packetsThisBatch++; // Count processed packet
+                                continue; // Skip to next packet
+                            }
+
+                            // Otherwise, send only the remaining samples (after PreSkip offset)
+                            var outputSamples = new float[samplesRemaining * _channels];
+                            var sourceOffset = samplesToDiscard * _channels;
+                            Array.Copy(_decodedSamples, sourceOffset, outputSamples, 0, outputSamples.Length);
+
+                            OnAudioDecoded?.Invoke(outputSamples);
+
+                            _totalPacketsDecoded++;
+                            _totalSamplesDecoded += samplesRemaining; // Only count non-skipped samples
+                            packetsThisBatch++;
+                        }
+                        else
+                        {
+                            // Normal path - no PreSkip samples to discard
+                            var outputSamples = new float[decodedSampleCount * _channels];
+                            Array.Copy(_decodedSamples, outputSamples, outputSamples.Length);
+
+                            OnAudioDecoded?.Invoke(outputSamples);
+
+                            _totalPacketsDecoded++;
+                            _totalSamplesDecoded += decodedSampleCount;
+                            packetsThisBatch++;
+                        }
                     }
                 }
                 catch (Exception ex) when (ex.Message.Contains("OPUS_INVALID_PACKET"))
@@ -279,6 +317,7 @@ namespace Tsc.AIBridge.Audio.Codecs
             _totalPacketsDecoded = 0;
             _totalSamplesDecoded = 0;
             _totalBytesReceived = 0;
+            _samplesToSkip = 0; // Reset PreSkip counter
 
             if (_isVerboseLogging)
                 Debug.Log("[OpusStreamDecoder] Reset - cleared all buffers without flushing");

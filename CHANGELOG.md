@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2025-11-11
+
+### Fixed
+- **Audio timing/speed issue on first sentence**: Implement Opus PreSkip sample discarding (RFC 7845)
+  - OpusStreamDecoder now correctly skips first PreSkip samples (typically 312 samples = 6.5ms @ 48kHz)
+  - These samples contain encoder lookahead and should not be played according to Opus specification
+  - Previous behavior: PreSkip samples were played, causing subtle timing offset → audio felt "slightly faster"
+  - Now: Properly discard PreSkip samples on decoder initialization for accurate playback timing
+  - Added verbose logging to track PreSkip sample discarding
+  - **Root Cause**: Opus encoders add priming samples for quality, decoder must skip them for correct timing
+  - **Business Impact**: NPC speech now starts at correct timing without perceived speed-up on first sentence
+
 ## [1.0.4] - 2025-11-11
 
 ### Fixed
