@@ -39,6 +39,9 @@ namespace Tsc.AIBridge.Audio.Codecs
         private readonly MemoryStream _streamBuffer = new();
         private bool _isVerboseLogging;
 
+        // Continued packet handling across page boundaries
+        private List<byte> _continuedPacket = new();
+
         // Opus stream info
         public int Channels => _channels;
         public int SampleRate => _sampleRate;
@@ -62,6 +65,7 @@ namespace Tsc.AIBridge.Audio.Codecs
             _headersParsed = false;
             //_isEndOfStream = false;
             _pendingPackets.Clear();
+            _continuedPacket.Clear(); // Clear any continued packet state
             _streamBuffer.SetLength(0);
             _streamBuffer.Position = 0;
             _lastPageSequence = uint.MaxValue; // Reset page sequence tracking
@@ -502,6 +506,16 @@ namespace Tsc.AIBridge.Audio.Codecs
             var dataOffset = 0;
             var currentPacket = new List<byte>();
 
+            // If there's a continued packet from previous page, start with that
+            if (_continuedPacket.Count > 0)
+            {
+                currentPacket.AddRange(_continuedPacket);
+                _continuedPacket.Clear();
+
+                if (_isVerboseLogging)
+                    Debug.Log($"[OggOpusParser] Continuing packet from previous page ({currentPacket.Count} bytes so far)");
+            }
+
             for (var i = 0; i < pageSegments; i++)
             {
                 int segmentSize = _headerBuffer[27 + i];
@@ -514,17 +528,24 @@ namespace Tsc.AIBridge.Audio.Codecs
                 }
 
                 // If segment size < 255, it's the end of a packet
-                if (segmentSize < 255 && currentPacket.Count > 0)
+                if (segmentSize < 255)
                 {
-                    _pendingPackets.Add(currentPacket.ToArray());
-                    currentPacket.Clear();
+                    if (currentPacket.Count > 0)
+                    {
+                        _pendingPackets.Add(currentPacket.ToArray());
+                        currentPacket.Clear();
+                    }
                 }
             }
 
-            // Handle continued packet
+            // Handle continued packet (spans to next page)
             if (currentPacket.Count > 0)
             {
-                _pendingPackets.Add(currentPacket.ToArray());
+                // Last segment was 255, packet continues in next page
+                _continuedPacket.AddRange(currentPacket);
+
+                if (_isVerboseLogging)
+                    Debug.Log($"[OggOpusParser] Packet continues to next page ({_continuedPacket.Count} bytes buffered)");
             }
 
             return true;

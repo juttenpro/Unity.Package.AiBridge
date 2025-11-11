@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2025-11-11
+
+### Fixed
+- **Audio crackling/distortion in NPC speech**: Fixed OGG Opus continued packet handling
+  - OggOpusParser now correctly assembles packets that span multiple OGG pages
+  - Previously, packets split across page boundaries were treated as separate incomplete packets
+  - This caused OPUS_INVALID_PACKET errors and audible crackling/distortion artifacts
+  - Added `_continuedPacket` buffer to track partial packets across page boundaries
+  - When segment size = 255 (packet continues), data is buffered until next page
+  - **Root Cause**: Backend streams audio in 16KB chunks, arbitrarily splitting OGG pages mid-page
+  - **Business Impact**: Eliminates audio quality issues that disrupted user experience during NPC conversations
+
 ## [1.0.3] - 2025-11-10
 
 ### Fixed
