@@ -151,9 +151,22 @@ namespace Tsc.AIBridge.Audio.Capture
         {
             // Select default microphone if available
             var devices = Microphone.devices;
+
+            // Log all available microphones
             if (devices != null && devices.Length > 0)
             {
+                Debug.Log($"[MicrophoneCapture] Found {devices.Length} microphone device(s):");
+                for (int i = 0; i < devices.Length; i++)
+                {
+                    Debug.Log($"  [{i}] {devices[i]}");
+                }
+
                 SelectedDevice = devices[0];
+                Debug.Log($"[MicrophoneCapture] Default device selected: {SelectedDevice}");
+            }
+            else
+            {
+                Debug.LogWarning("[MicrophoneCapture] No microphone devices found!");
             }
 
             // Set up audio source for echo prevention
@@ -293,6 +306,7 @@ namespace Tsc.AIBridge.Audio.Capture
 
             // Start recording with 10 second circular buffer (like RecorderBase)
             // ALWAYS use SAMPLE_RATE (16kHz) - Unity will resample if needed
+            Debug.Log($"[MicrophoneCapture] Starting microphone recording - Device: '{SelectedDevice}', SampleRate: {SAMPLE_RATE}Hz");
             recordingClip = Microphone.Start(SelectedDevice, true, RECORDING_LENGTH, SAMPLE_RATE);
 
             if (recordingClip == null)
@@ -300,6 +314,8 @@ namespace Tsc.AIBridge.Audio.Capture
                 RaiseError("Failed to start microphone recording");
                 return;
             }
+
+            Debug.Log($"[MicrophoneCapture] Recording started successfully - Clip channels: {recordingClip.channels}, Frequency: {recordingClip.frequency}Hz");
 
             // Get actual channels from recording clip
             Channels = recordingClip.channels;
