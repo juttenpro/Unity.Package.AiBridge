@@ -144,14 +144,19 @@ namespace Tsc.AIBridge.Audio.Codecs
                 _channels = _oggParser.Channels;
                 _sampleRate = _oggParser.SampleRate;
 
-                // Set PreSkip samples to discard (Opus RFC 7845 - encoder lookahead)
-                _samplesToSkip = _oggParser.PreSkip;
+                // WORKAROUND: ElevenLabs TTS streams have PreSkip=0 in Ogg header, but encoder lookahead IS present
+                // RFC 7845 specifies typical PreSkip = 312 samples (6.5ms @ 48kHz) for Opus encoder lookahead
+                // Without skipping these samples, first ~6ms contains artifacts (encoder warm-up)
+                // This causes faster tempo + higher pitch at start of stream, gradually normalizing
+                // SOLUTION: Force PreSkip to standard 312 samples regardless of header value
+                var headerPreSkip = _oggParser.PreSkip;
+                _samplesToSkip = headerPreSkip > 0 ? headerPreSkip : 312; // Use 312 if header says 0
 
                 OnDecoderInitialized?.Invoke(_sampleRate, _channels);
                 _parserInitialized = true;
 
                 if (_isVerboseLogging)
-                    Debug.Log($"[OpusStreamDecoder] Decoder initialized: {_sampleRate}Hz, {_channels}ch, PreSkip: {_samplesToSkip} samples");
+                    Debug.Log($"[OpusStreamDecoder] Decoder initialized: {_sampleRate}Hz, {_channels}ch, PreSkip: {_samplesToSkip} samples (header={headerPreSkip})");
             }
 
             if (_opusDecoder == null)

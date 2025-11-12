@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2025-11-12
+
+### Fixed
+- **First NPC response has faster tempo/higher pitch**: Force PreSkip=312 when ElevenLabs header reports PreSkip=0
+  - ElevenLabs TTS streams incorrectly report PreSkip=0 in Ogg Opus header, but encoder lookahead IS present
+  - RFC 7845 specifies typical PreSkip = 312 samples (6.5ms @ 48kHz) for Opus encoder lookahead compensation
+  - Without skipping these samples, first ~6ms contains encoder warm-up artifacts
+  - **Symptoms**: First response sounds slightly faster + higher pitch, gradually normalizing during playback
+  - **Why only first response?**: Most noticeable on short responses, decoder "warms up" during playback
+  - **Root Cause**: Server sends PreSkip=0 but audio stream contains encoder lookahead samples
+  - **Solution**: Hardcode PreSkip=312 when header PreSkip=0, respecting header value if >0
+  - Added logging to show both header PreSkip and actual PreSkip used
+  - **Business Impact**: Consistent audio quality across all NPC responses, no tempo/pitch artifacts
+
 ## [1.0.5] - 2025-11-11
 
 ### Fixed
