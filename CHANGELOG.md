@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.11] - 2025-01-19
+
+### Fixed
+- **Editor pause detection interferes with TrainingPause**: Prevent Update() Editor pause from overriding external pause
+  - Added `_isPausedByExternalSource` flag to track external pause sources (PauseManager, TrainingPause)
+  - Editor pause detection now skips when paused by external source
+  - NpcAudioPlayer sets external pause flag in PausePlayback/ResumePlayback overrides
+  - **Business Impact**: TrainingPause finally works correctly - Editor pause detection no longer resumes audio
+
+### Added
+- **Protected SetExternalPauseFlag() method**: Allows derived classes to mark pause as external
+  - Prevents Editor pause detection from interfering with external pause systems
+
 ## [1.0.10] - 2025-01-19
 
 ### Fixed

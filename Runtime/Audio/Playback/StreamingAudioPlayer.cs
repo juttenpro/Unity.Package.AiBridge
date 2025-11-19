@@ -61,6 +61,7 @@ namespace Tsc.AIBridge.Audio.Playback
         private bool _streamComplete;
         private bool _shouldStop;
         private bool _isPaused;
+        private bool _isPausedByExternalSource; // Track if paused by external system (PauseManager, TrainingPause) vs Editor pause
         private bool _isReceivingResponse; // NEW: Track if we're still receiving response from backend
         private bool _forceStop; // CRITICAL: Force audio to stop immediately for interruptions
         private bool _isPrimingBuffer; // PRIMING BUFFER: Use larger buffer for first chunks to prevent "catching up"
@@ -735,6 +736,17 @@ namespace Tsc.AIBridge.Audio.Playback
         }
 
         /// <summary>
+        /// Set external pause flag (for derived classes like NpcAudioPlayer).
+        /// When true, Editor pause detection will not interfere with external pause state.
+        /// </summary>
+        protected void SetExternalPauseFlag(bool isPausedByExternal)
+        {
+            _isPausedByExternalSource = isPausedByExternal;
+            if (enableVerboseLogging)
+                Debug.Log($"[{_cachedGameObjectName}] External pause flag set to: {isPausedByExternal}");
+        }
+
+        /// <summary>
         /// Start audio playback
         /// </summary>
         private void StartPlayback()
@@ -955,22 +967,26 @@ namespace Tsc.AIBridge.Audio.Playback
             // CRITICAL: Editor pause detection
             // Unity's OnAudioFilterRead continues running even when Editor is paused!
             // Without this check, audio buffer would continue to fill during Editor pause.
-            // NpcAudioPlayer handles PauseManager (training scenario pause) via events.
+            // IMPORTANT: Do NOT interfere with external pause sources (PauseManager, TrainingPause)
 #if UNITY_EDITOR
-            // Check Editor pause state (most important check for development)
-            bool shouldBePaused = UnityEditor.EditorApplication.isPaused;
-
-            lock (_stateLock)
+            // Only manage Editor pause if not paused by external source (e.g., PauseManager, TrainingPause)
+            // External sources have priority over Editor pause detection
+            if (!_isPausedByExternalSource)
             {
-                if (shouldBePaused != _isPaused)
+                bool shouldBePaused = UnityEditor.EditorApplication.isPaused;
+
+                lock (_stateLock)
                 {
-                    if (shouldBePaused)
+                    if (shouldBePaused != _isPaused)
                     {
-                        PausePlayback();
-                    }
-                    else
-                    {
-                        ResumePlayback();
+                        if (shouldBePaused)
+                        {
+                            PausePlayback();
+                        }
+                        else
+                        {
+                            ResumePlayback();
+                        }
                     }
                 }
             }
