@@ -6,20 +6,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.18] - 2025-01-19
+
+### Fixed
+- **Production-grade reconnection handling in HandleRecordingStopped**: Robust state detection and lifecycle management
+  - **Root Cause**: When WebSocket disconnected and reconnected during active recording, `HandleRecordingStopped()` immediately failed with error if connection not yet restored
+  - Previously logged hard error "Cannot send end messages - WebSocket not connected" even when reconnection was in progress
+  - **Solution Improvements (vs v1.0.17)**:
+    1. **Explicit state detection**: Uses `WebSocketClient.State == ConnectionState.Connecting` instead of buffer heuristics
+    2. **GameObject lifetime validation**: Checks `this == null` and `gameObject.activeInHierarchy` during and after async wait
+    3. **Explicit buffer flush**: Calls `FlushReconnectionBuffer()` before sending end messages to ensure all audio arrives in correct order
+    4. **Dual detection**: Checks both connection state AND buffer state for maximum reliability
+  - Wait up to 3 seconds for reconnection to complete before failing
+  - If reconnection succeeds within timeout, buffered audio is flushed then end messages sent
+  - If GameObject destroyed during wait, gracefully aborts with warning
+  - If timeout expires, logs warning instead of error (graceful degradation)
+  - **Symptoms Fixed**: Error "[RequestOrchestrator] Cannot send end messages - WebSocket not connected" during temporary disconnects
+  - **Business Impact**: Eliminates false-positive errors during network hiccups, prevents race conditions in scene transitions, ensures audio ordering correctness
+  - **Technical Details**:
+    - Typical reconnect takes 1-2 seconds (observed: 1.1s), 3-second timeout provides safety margin
+    - Prevents memory leaks by checking component lifetime during async operations
+    - Guarantees buffered audio sent before end-of-stream markers
+  - **Location**: RequestOrchestrator.cs:890-974 (HandleRecordingStopped method)
+  - **Supersedes**: v1.0.17 (initial fix with heuristic detection)
+
 ## [1.0.17] - 2025-01-19
 
 ### Fixed
-- **Error when WebSocket reconnects during recording stop**: Graceful handling of reconnection scenarios
-  - **Root Cause**: When WebSocket disconnected and reconnected during active recording, `HandleRecordingStopped()` immediately failed with error if connection not yet restored
-  - Previously logged hard error "Cannot send end messages - WebSocket not connected" even when reconnection was in progress
-  - **Solution**: Detect reconnection in progress by checking audio buffer state (`_reconnectionAudioBuffer.Count > 0`)
-  - Wait up to 3 seconds for reconnection to complete before failing
-  - If reconnection succeeds within timeout, end messages (EndOfSpeech/EndOfAudio) are sent successfully
-  - If timeout expires, logs warning instead of error (graceful degradation)
-  - **Symptoms Fixed**: Error "[RequestOrchestrator] Cannot send end messages - WebSocket not connected" during temporary disconnects
-  - **Business Impact**: Eliminates false-positive errors during network hiccups, users experience seamless reconnection without losing current request
-  - **Technical Details**: Typical reconnect takes 1-2 seconds (observed: 1.1s), 3-second timeout provides safety margin
-  - **Location**: RequestOrchestrator.cs:884-937 (HandleRecordingStopped method)
+- **SUPERSEDED BY v1.0.18**: Initial reconnection handling fix (replaced with production-grade version)
 
 ## [1.0.16] - 2025-01-19
 

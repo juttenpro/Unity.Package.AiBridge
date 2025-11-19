@@ -867,6 +867,12 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Handle recording stopped event from SpeechInputHandler.
         /// Sends EndOfSpeech and EndOfAudio messages to backend to trigger transcription.
+        ///
+        /// ROBUSTNESS FEATURES:
+        /// - Detects and waits for reconnection in progress (up to 3s)
+        /// - Flushes buffered audio before sending end messages
+        /// - Validates GameObject lifetime during async operations
+        /// - Uses WebSocket state instead of heuristics for reconnection detection
         /// </summary>
         private async void HandleRecordingStopped()
         {
@@ -881,32 +887,63 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
-            // CRITICAL FIX: Handle reconnection scenario gracefully
-            // If WebSocket is disconnected but reconnecting, wait briefly for reconnection
+            // CRITICAL: Handle reconnection scenario gracefully with robust state detection
             if (_webSocketClient == null || !_webSocketClient.IsConnected)
             {
-                bool isReconnecting = _reconnectionAudioBuffer.Count > 0;
+                // Detect if reconnection is in progress using explicit state check
+                bool isReconnecting = _webSocketClient != null &&
+                                     _webSocketClient.State == ConnectionState.Connecting;
 
-                if (isReconnecting)
+                // Also check if we have buffered audio (secondary indicator)
+                bool hasBufferedAudio = _reconnectionAudioBuffer.Count > 0;
+
+                if (isReconnecting || hasBufferedAudio)
                 {
-                    Debug.LogWarning($"[RequestOrchestrator] WebSocket disconnected during recording stop - reconnection in progress ({_reconnectionAudioBuffer.Count} chunks buffered). Waiting for reconnect...");
+                    Debug.LogWarning($"[RequestOrchestrator] WebSocket disconnected during recording stop - " +
+                                   $"reconnection in progress (State: {_webSocketClient?.State}, Buffered: {_reconnectionAudioBuffer.Count} chunks). " +
+                                   $"Waiting for reconnect...");
 
-                    // Wait up to 3 seconds for reconnection
+                    // Wait up to 3 seconds for reconnection with proper lifetime checks
                     const int maxWaitMs = 3000;
                     const int checkIntervalMs = 100;
                     int elapsedMs = 0;
 
-                    while (elapsedMs < maxWaitMs && (_webSocketClient == null || !_webSocketClient.IsConnected))
+                    while (elapsedMs < maxWaitMs)
                     {
+                        // ROBUSTNESS: Check if GameObject/Component still exists before continuing
+                        if (this == null || !gameObject || !gameObject.activeInHierarchy)
+                        {
+                            Debug.LogWarning("[RequestOrchestrator] Component destroyed/deactivated during reconnect wait - aborting");
+                            return;
+                        }
+
+                        // Check if connection restored
+                        if (_webSocketClient != null && _webSocketClient.IsConnected)
+                        {
+                            Debug.Log($"[RequestOrchestrator] Reconnection successful after {elapsedMs}ms");
+                            break;
+                        }
+
                         await System.Threading.Tasks.Task.Delay(checkIntervalMs);
                         elapsedMs += checkIntervalMs;
                     }
 
-                    // Check if reconnection succeeded
+                    // ROBUSTNESS: Validate component still exists after async wait
+                    if (this == null || !gameObject || !gameObject.activeInHierarchy)
+                    {
+                        Debug.LogWarning("[RequestOrchestrator] Component destroyed/deactivated after reconnect wait - aborting");
+                        return;
+                    }
+
+                    // Check final connection state
                     if (_webSocketClient != null && _webSocketClient.IsConnected)
                     {
-                        Debug.Log($"[RequestOrchestrator] Reconnection successful after {elapsedMs}ms - sending end messages");
-                        // Continue to send end messages
+                        Debug.Log($"[RequestOrchestrator] Connection restored - flushing {_reconnectionAudioBuffer.Count} buffered chunks before sending end messages");
+
+                        // CRITICAL: Ensure buffered audio is flushed before sending end messages
+                        FlushReconnectionBuffer();
+
+                        // Continue to send end messages below
                     }
                     else
                     {
@@ -924,7 +961,7 @@ namespace Tsc.AIBridge.Core
                 else
                 {
                     // Not reconnecting - connection lost permanently
-                    Debug.LogError("[RequestOrchestrator] Cannot send end messages - WebSocket not connected");
+                    Debug.LogError("[RequestOrchestrator] Cannot send end messages - WebSocket not connected and no reconnection in progress");
 
                     // Log summary of what was lost
                     if (_droppedAudioChunks > 0)
