@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.13] - 2025-01-19
+
+### Fixed
+- **Threading exception in AudioFilterRelay**: Fixed "get_resource can only be called from main thread" error
+  - Cache AudioSource.clip.name in Update() (main thread)
+  - Use cached value in OnAudioFilterRead() (audio thread)
+  - Prevents Unity threading exceptions when checking clip type
+  - **Business Impact**: Pre-recorded audio passthrough mode now works without crashes
+
 ## [1.0.12] - 2025-01-19
 
 ### Fixed

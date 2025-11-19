@@ -31,6 +31,10 @@ namespace Tsc.AIBridge.Audio.Playback
         private bool _isPaused;
         private bool _isPlaybackActive = true;
 
+        // Cached clip name for thread-safe access in OnAudioFilterRead
+        // Updated on main thread (Update), read on audio thread (OnAudioFilterRead)
+        private string _cachedClipName;
+
 
         private void Awake()
         {
@@ -209,6 +213,24 @@ namespace Tsc.AIBridge.Audio.Playback
         }
 
         /// <summary>
+        /// Update cached clip name on main thread for thread-safe access in OnAudioFilterRead.
+        /// OnAudioFilterRead runs on audio thread and cannot access Unity properties like AudioSource.clip.
+        /// </summary>
+        private void Update()
+        {
+            // Cache clip name on main thread for audio thread access
+            // This prevents threading exceptions when checking clip type in OnAudioFilterRead
+            if (_audioSource != null && _audioSource.clip != null)
+            {
+                _cachedClipName = _audioSource.clip.name;
+            }
+            else
+            {
+                _cachedClipName = null;
+            }
+        }
+
+        /// <summary>
         /// Unity callback for audio processing.
         /// This is called by Unity's audio thread when the AudioSource needs audio data.
         /// Supports two modes:
@@ -228,9 +250,9 @@ namespace Tsc.AIBridge.Audio.Playback
             // AND streaming is not active
             // This allows VoiceLinePlayer to play pre-recorded audio (MP3/WAV) through the same
             // AudioSource while maintaining OVRLipSync compatibility
-            bool hasRealClip = _audioSource != null &&
-                               _audioSource.clip != null &&
-                               !_audioSource.clip.name.StartsWith("StreamingAudio");
+            // NOTE: Use cached clip name to avoid threading exceptions (OnAudioFilterRead runs on audio thread)
+            bool hasRealClip = !string.IsNullOrEmpty(_cachedClipName) &&
+                               !_cachedClipName.StartsWith("StreamingAudio");
 
             if (hasRealClip && !isStreamingActive)
             {
