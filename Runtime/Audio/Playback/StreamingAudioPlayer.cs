@@ -680,11 +680,16 @@ namespace Tsc.AIBridge.Audio.Playback
         /// <summary>
         /// Pause audio playback (keeps buffer intact)
         /// </summary>
-        public void PausePlayback()
+        public virtual void PausePlayback()
         {
             lock (_stateLock)
             {
-                if (_isPaused) return;
+                if (_isPaused)
+                {
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{_cachedGameObjectName}] PausePlayback called but already paused - ignoring");
+                    return;
+                }
 
                 _isPaused = true;
 
@@ -693,7 +698,14 @@ namespace Tsc.AIBridge.Audio.Playback
                 {
                     audioFilterRelay.AudioSource.Pause();
                     if(enableVerboseLogging)
-                        Debug.Log($"[{_cachedGameObjectName}] Audio playback paused");
+                    {
+                        // CRITICAL DEBUG: Always log pause with stack trace to track the flow
+                        Debug.Log($"[{_cachedGameObjectName}] Audio playback paused - Stack trace:\n{System.Environment.StackTrace}");
+                    }
+                }
+                else if (enableVerboseLogging)
+                {
+                    Debug.Log($"[{_cachedGameObjectName}] PausePlayback called but AudioSource not playing (relay:{audioFilterRelay != null}, source:{audioFilterRelay?.AudioSource != null}, playing:{audioFilterRelay?.AudioSource?.isPlaying})");
                 }
             }
         }
@@ -701,7 +713,7 @@ namespace Tsc.AIBridge.Audio.Playback
         /// <summary>
         /// Resume audio playback
         /// </summary>
-        public void ResumePlayback()
+        public virtual void ResumePlayback()
         {
             lock (_stateLock)
             {
@@ -714,7 +726,10 @@ namespace Tsc.AIBridge.Audio.Playback
                 {
                     audioFilterRelay?.AudioSource?.UnPause();
                     if(enableVerboseLogging)
-                        Debug.Log($"[{_cachedGameObjectName}] Audio playback resumed");
+                    {
+                        // CRITICAL DEBUG: Always log resume with stack trace to find the caller
+                        Debug.Log($"[{_cachedGameObjectName}] Audio playback resumed - Stack trace:\n{System.Environment.StackTrace}");
+                    }
                 }
             }
         }

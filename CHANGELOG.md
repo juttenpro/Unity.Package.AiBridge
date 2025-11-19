@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.10] - 2025-01-19
+
+### Fixed
+- **Pause/Resume not working due to method hiding**: Made PausePlayback/ResumePlayback virtual for proper polymorphism
+  - StreamingAudioPlayer methods now `public virtual` instead of `public`
+  - Allows derived classes (NpcAudioPlayer) to properly override behavior
+  - Fixes issue where RequestOrchestrator called base methods instead of derived overrides
+  - **Business Impact**: NPC audio pause now works correctly - NPCs stop talking when paused
+
+### Added
+- **Debug logging for pause/resume**: Stack traces in PausePlayback/ResumePlayback for debugging
+  - Helps identify which component is calling pause/resume methods
+  - Logs when PausePlayback called but already paused
+  - Logs when PausePlayback called but AudioSource not playing
+
 ## [1.0.9] - 2025-01-19
 
 ### Fixed
