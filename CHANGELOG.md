@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.8] - 2025-01-19
+
+### Fixed
+- **NPC audio continues during pause**: NPCs now properly pause/resume audio playback when game is paused
+  - `RequestOrchestrator.HandlePauseStateChange()` now finds all NPC clients and pauses/resumes their audio
+  - Prevents NPCs from talking during training pause menu or other pause states
+  - Works with TrainingPauseBridge integration and any pause system calling HandlePauseStateChange()
+  - **Business Impact**: Clean pause behavior - NPCs stop talking immediately when user pauses, resume seamlessly on unpause
+
 ## [1.0.7] - 2025-01-19
 
 ### Fixed

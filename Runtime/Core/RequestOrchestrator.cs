@@ -274,12 +274,38 @@ namespace Tsc.AIBridge.Core
                     // Clear reconnection buffer to prevent stale audio
                     _reconnectionAudioBuffer.Clear();
                 }
+
+                // CRITICAL: Pause ALL NPC audio playback to prevent NPCs talking during pause
+                // Find all NPC clients in scene and pause their audio
+                var npcClients = FindObjectsByType<NpcClientBase>(FindObjectsSortMode.None);
+                foreach (var npc in npcClients)
+                {
+                    if (npc.AudioPlayer != null)
+                    {
+                        npc.AudioPlayer.PausePlayback();
+                        if (enableVerboseLogging)
+                            Debug.Log($"[RequestOrchestrator] {source} - Paused audio playback for NPC: {npc.NpcName}");
+                    }
+                }
             }
             else
             {
-                // Resume - nothing to do
+                // Resume - resume audio playback and reset recording state
                 // User will need to press PTT again to start new recording
                 // This is the safest approach - prevents resuming half-recorded audio
+
+                // CRITICAL: Resume ALL NPC audio playback
+                var npcClients = FindObjectsByType<NpcClientBase>(FindObjectsSortMode.None);
+                foreach (var npc in npcClients)
+                {
+                    if (npc.AudioPlayer != null)
+                    {
+                        npc.AudioPlayer.ResumePlayback();
+                        if (enableVerboseLogging)
+                            Debug.Log($"[RequestOrchestrator] {source} - Resumed audio playback for NPC: {npc.NpcName}");
+                    }
+                }
+
                 if (enableVerboseLogging)
                     Debug.Log($"[RequestOrchestrator] {source} resumed - ready for new recording");
             }
