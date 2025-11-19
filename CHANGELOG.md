@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.16] - 2025-01-19
+
+### Fixed
+- **NPC audio stops when switching Unity editor windows**: Disabled OnApplicationFocus pause in editor
+  - **Root Cause**: OnApplicationFocus paused audio when clicking other editor windows (Console, Inspector, Log Viewer)
+  - **Solution**: Disabled OnApplicationFocus handling in Unity Editor via `#if !UNITY_EDITOR`
+  - Audio now continues playing when switching between editor windows during testing
+  - Focus-based pause still works correctly in builds (standalone/mobile)
+  - **Symptoms Fixed**: NPC stops talking when clicking log viewer/inspector during testing
+  - **Business Impact**: Developers can now freely check logs/console during testing without interrupting audio playback
+  - PauseManager pause/resume functionality remains fully intact and working correctly
+
 ## [1.0.15] - 2025-01-19
 
 ### Fixed

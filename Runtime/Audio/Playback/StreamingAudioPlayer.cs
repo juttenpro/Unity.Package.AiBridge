@@ -1076,9 +1076,11 @@ namespace Tsc.AIBridge.Audio.Playback
 
         private void OnApplicationFocus(bool hasFocus)
         {
-            // Handle application focus loss (optional - can be disabled if not desired)
-            #if UNITY_EDITOR || UNITY_STANDALONE
-            // In editor and standalone builds, pause audio when window loses focus
+            // Handle application focus loss
+            // DISABLED in Unity Editor to allow developers to check logs/console during testing
+            // Audio continues playing when switching editor windows
+            #if !UNITY_EDITOR
+            // In builds: pause audio when window loses focus (standalone/mobile)
             if (!hasFocus && _isStreamActive)
             {
                 // Only pause if not already paused by external systems (e.g., PauseManager)
@@ -1089,19 +1091,10 @@ namespace Tsc.AIBridge.Audio.Playback
             }
             else if (hasFocus && _isStreamActive)
             {
-                // IMPORTANT: Do NOT resume if paused by external system (e.g., PauseManager, TrainingPause)
-                // ResumePlayback() has guard `if (!_isPaused) return` but we check here for clarity
-                // This prevents focus change from interfering with game pause state
-                if (!Time.timeScale.Equals(0f) && !_isPaused)
+                // Resume when window regains focus
+                if (_isPaused && !_isPausedByExternalSource)
                 {
-                    #if UNITY_EDITOR
-                    if (Application.isPlaying)
-                    {
-                        ResumePlayback();
-                    }
-                    #else
                     ResumePlayback();
-                    #endif
                 }
             }
             #endif
