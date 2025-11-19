@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.9] - 2025-01-19
+
+### Fixed
+- **OnApplicationFocus interferes with TrainingPause**: Prevent focus change from resuming paused audio
+  - `OnApplicationFocus` now checks `_isPaused` flag before resuming playback
+  - Prevents window focus change from overriding external pause systems (PauseManager, TrainingPause)
+  - Only pauses on focus loss if not already paused by external system
+  - **Business Impact**: TrainingPause state is now properly maintained even when window focus changes
+
 ## [1.0.8] - 2025-01-19
 
 ### Fixed
