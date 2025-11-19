@@ -382,7 +382,7 @@ namespace Tsc.AIBridge.WebSocket
         /// <summary>
         /// Send EndOfSpeech message
         /// </summary>
-        public async Task SendEndOfSpeechAsync(string requestId)
+        public virtual async Task SendEndOfSpeechAsync(string requestId, CancellationToken cancellationToken = default)
         {
             // Ensure connection before sending - auto-reconnect if needed
             if (enableVerboseLogging && (_webSocket == null || !_webSocket.IsConnected))
@@ -406,7 +406,7 @@ namespace Tsc.AIBridge.WebSocket
         /// <summary>
         /// Send EndOfAudio message
         /// </summary>
-        public async Task SendEndOfAudioAsync(string requestId)
+        public virtual async Task SendEndOfAudioAsync(string requestId, CancellationToken cancellationToken = default)
         {
             // Ensure connection before sending - auto-reconnect if needed
             if (enableVerboseLogging && (_webSocket == null || !_webSocket.IsConnected))

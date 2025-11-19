@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.7] - 2025-01-19
+
+### Fixed
+- **Test compilation errors**: Made `SendEndOfSpeechAsync` and `SendEndOfAudioAsync` virtual for testability
+  - Changed signature from `public async Task` to `public virtual async Task`
+  - Added optional `CancellationToken` parameter (default value) for consistency with other Send methods
+  - Enables proper mocking in unit tests without breaking existing callers
+  - **Business Impact**: Tests can now properly verify EndOfSpeech/EndOfAudio behavior, improving code reliability
+- **Unity warnings in AudioFilterRelay**: Moved `AudioSource.time = 0f` to after AudioClip creation
+  - Prevents Unity console warning when resetting AudioSource time before clip is assigned
+  - Only affects timing of buffer clear operation, no functional impact on audio quality
+  - **Business Impact**: Cleaner console output, no spurious warnings during audio playback reset
+
 ## [1.0.6] - 2025-11-12
 
 ### Fixed

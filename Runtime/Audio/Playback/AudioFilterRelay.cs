@@ -182,11 +182,6 @@ namespace Tsc.AIBridge.Audio.Playback
                     _audioSource.Stop();
                 }
 
-                // CRITICAL: Reset AudioSource internal buffers to prevent audio bleeding
-                // Unity's DSP pipeline can retain samples in internal buffers (~100-200ms)
-                // Setting time=0 forces Unity to clear these buffers
-                _audioSource.time = 0f;
-
                 // Extra safety: Recreate the streaming clip to ensure completely fresh state
                 // This prevents any residual samples in the AudioClip itself
                 var sampleRate = 48000; // TTS output frequency
@@ -204,6 +199,12 @@ namespace Tsc.AIBridge.Audio.Playback
                 // Create fresh clip for next stream
                 _audioSource.clip = AudioClip.Create("StreamingAudio_Relay", clipLength, channels, sampleRate, true);
                 _audioSource.loop = true;
+
+                // CRITICAL: Reset AudioSource internal buffers to prevent audio bleeding
+                // Unity's DSP pipeline can retain samples in internal buffers (~100-200ms)
+                // Setting time=0 forces Unity to clear these buffers
+                // IMPORTANT: Must be called AFTER clip is created, otherwise Unity throws warning
+                _audioSource.time = 0f;
             }
         }
 
