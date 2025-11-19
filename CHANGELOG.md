@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.14] - 2025-01-19
+
+### Fixed
+- **Audio responses truncated prematurely**: Increased OGG header scan limit from 1024 to 16384 bytes
+  - OggOpusParser now scans up to 16KB (previously 1KB) when encountering non-OGG data in stream
+  - Prevents premature stream termination when non-OGG data gaps exceed 1KB
+  - Added improved error handling to distinguish between temporary gaps and true stream end
+  - **Symptoms**: Audio responses cut off mid-sentence (e.g., "Hallo, welkom bij ziekenhuis" stops after 2s instead of expected 4.8s)
+  - **Root Cause**: Streaming audio sometimes contains non-OGG data between packets. If next valid OGG header is >1KB away, parser gave up and stopped processing remaining audio
+  - **Business Impact**: Users now hear complete NPC responses without unexpected cutoffs, improving conversation quality and user experience
+
 ## [1.0.13] - 2025-01-19
 
 ### Fixed

@@ -381,7 +381,9 @@ namespace Tsc.AIBridge.Audio.Codecs
                 }
 
                 // Try to find the next valid OGG header by scanning ahead
-                var scanLimit = Math.Min(1024, _inputStream.Length - _inputStream.Position);
+                // Increased from 1024 to 16384 bytes to handle larger gaps in streaming audio
+                // This prevents premature stream termination when non-OGG data spans multiple packets
+                var scanLimit = Math.Min(16384, _inputStream.Length - _inputStream.Position);
                 for (var i = 0; i < scanLimit - 3; i++)
                 {
                     if (_inputStream.ReadByte() == 'O' &&
@@ -403,6 +405,17 @@ namespace Tsc.AIBridge.Audio.Codecs
                 }
 
                 // No valid OGG header found in scan range
+                // In streaming scenarios, this might be temporary - more data could arrive later
+                // Only fail if we've truly reached the end of the available stream data
+                if (_inputStream.Position >= _inputStream.Length)
+                {
+                    // We've scanned all available data and found no OGG header
+                    // This is likely the end of the stream or corrupt data
+                    Debug.LogWarning($"[OggOpusParser] No OGG header found after scanning {scanLimit} bytes. Stream may be corrupt or ended.");
+                    return false;
+                }
+
+                // More data might arrive in streaming - return false but don't log as error
                 return false;
             }
 
