@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.12] - 2025-01-19
+
+### Fixed
+- **Pre-recorded audio blocked by AudioFilterRelay**: Added passthrough mode for MP3/WAV playback
+  - AudioFilterRelay now detects real AudioClips vs streaming dummy clip
+  - Passthrough mode: Allows pre-recorded audio through unchanged for OVRLipSync compatibility
+  - Streaming mode: Uses StreamingAudioPlayer when streaming is active (has priority)
+  - Fixes issue where scripted reactions (VoiceLinePlayer) had no audio/only reverb
+  - **Business Impact**: Scripted NPC reactions now work correctly with both audio playback and lip-sync
+
 ## [1.0.11] - 2025-01-19
 
 ### Fixed

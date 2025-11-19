@@ -211,10 +211,37 @@ namespace Tsc.AIBridge.Audio.Playback
         /// <summary>
         /// Unity callback for audio processing.
         /// This is called by Unity's audio thread when the AudioSource needs audio data.
-        /// We forward this call to the StreamingAudioPlayer.
+        /// Supports two modes:
+        /// 1. Passthrough mode: When a real AudioClip is assigned (e.g., pre-recorded MP3),
+        ///    passes the audio through unchanged for OVRLipSync and normal playback.
+        /// 2. Streaming mode: When using the streaming dummy clip, forwards to StreamingAudioPlayer.
         /// </summary>
         private void OnAudioFilterRead(float[] data, int channels)
         {
+            // Check if streaming is actively playing
+            // Streaming has priority over passthrough mode
+            bool isStreamingActive = _isPlaybackActive &&
+                                     _streamingPlayer != null &&
+                                     _streamingPlayer.IsPlaybackActive;
+
+            // PASSTHROUGH MODE: Check if AudioSource has a real clip (not the streaming dummy)
+            // AND streaming is not active
+            // This allows VoiceLinePlayer to play pre-recorded audio (MP3/WAV) through the same
+            // AudioSource while maintaining OVRLipSync compatibility
+            bool hasRealClip = _audioSource != null &&
+                               _audioSource.clip != null &&
+                               !_audioSource.clip.name.StartsWith("StreamingAudio");
+
+            if (hasRealClip && !isStreamingActive)
+            {
+                // Passthrough: Let Unity's AudioSource play the clip normally
+                // The data array already contains the clip samples from Unity's audio engine
+                // We just need to forward it to listeners (OVRLipSync, VAD) without modification
+                OnAudioProcessed?.Invoke(data, channels);
+                return;
+            }
+
+            // STREAMING MODE: Original streaming audio logic
             if (!_isInitialized || _streamingPlayer == null || _isPaused || !_isPlaybackActive)
             {
                 // Fill with silence if not ready or paused
