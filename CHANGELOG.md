@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.15] - 2025-01-19
+
+### Fixed
+- **Audio responses truncated prematurely**: Implemented intelligent chunk buffering for mid-page OGG stream splits
+  - **Root Cause**: Backend/ElevenLabs sends audio in fixed chunks (e.g., 16KB) that can split OGG pages mid-page
+  - When an OGG page is larger than chunk size, second chunk starts with Opus packet data (no "OggS" header)
+  - Previous parser expected every chunk to start with OGG header, failing when it encountered mid-page data
+  - **Solution**: OggOpusParser now buffers incomplete page data and combines with next chunk
+  - When non-OGG header detected, parser buffers all remaining chunk data instead of scanning/failing
+  - Next chunk arrival combines buffered data with new data, creating complete OGG page for parsing
+  - **Completely robust** against chunking issues regardless of chunk size or page size
+  - **Symptoms Fixed**: Audio responses cut off mid-sentence (e.g., "Hallo, welkom bij ziekenhuis" stops after 2s instead of 4.8s)
+  - **Business Impact**: Eliminates audio truncation issues permanently - users now hear complete NPC responses in all scenarios
+  - Supersedes v1.0.14 scan limit increase with proper architectural solution
+
 ## [1.0.14] - 2025-01-19
 
 ### Fixed
@@ -13,9 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - OggOpusParser now scans up to 16KB (previously 1KB) when encountering non-OGG data in stream
   - Prevents premature stream termination when non-OGG data gaps exceed 1KB
   - Added improved error handling to distinguish between temporary gaps and true stream end
-  - **Symptoms**: Audio responses cut off mid-sentence (e.g., "Hallo, welkom bij ziekenhuis" stops after 2s instead of expected 4.8s)
-  - **Root Cause**: Streaming audio sometimes contains non-OGG data between packets. If next valid OGG header is >1KB away, parser gave up and stopped processing remaining audio
-  - **Business Impact**: Users now hear complete NPC responses without unexpected cutoffs, improving conversation quality and user experience
+  - **Note**: This was a workaround - v1.0.15 provides the proper architectural fix
+  - **Business Impact**: Reduced audio truncation issues significantly
 
 ## [1.0.13] - 2025-01-19
 

@@ -42,6 +42,10 @@ namespace Tsc.AIBridge.Audio.Codecs
         // Continued packet handling across page boundaries
         private List<byte> _continuedPacket = new();
 
+        // Chunk buffering for handling mid-page splits from streaming
+        // ElevenLabs/backend may send audio in fixed chunks (e.g., 16KB) that split OGG pages
+        private readonly List<byte> _incompletePageBuffer = new();
+
         // Opus stream info
         public int Channels => _channels;
         public int SampleRate => _sampleRate;
@@ -66,6 +70,7 @@ namespace Tsc.AIBridge.Audio.Codecs
             //_isEndOfStream = false;
             _pendingPackets.Clear();
             _continuedPacket.Clear(); // Clear any continued packet state
+            _incompletePageBuffer.Clear(); // Clear chunk buffer
             _streamBuffer.SetLength(0);
             _streamBuffer.Position = 0;
             _lastPageSequence = uint.MaxValue; // Reset page sequence tracking
@@ -358,10 +363,33 @@ namespace Tsc.AIBridge.Audio.Codecs
         }
 
         /// <summary>
-        /// Read and parse a single Ogg page with streaming support
+        /// Read and parse a single Ogg page with robust streaming support and chunk buffering.
+        /// Handles mid-page splits caused by fixed-size chunking (e.g., 16KB chunks from backend).
         /// </summary>
         private bool ReadOggPage()
         {
+            // If we have buffered incomplete page data, prepend it to current stream position
+            if (_incompletePageBuffer.Count > 0)
+            {
+                if (_isVerboseLogging)
+                    Debug.Log($"[OggOpusParser] Resuming with {_incompletePageBuffer.Count} bytes of buffered incomplete page data");
+
+                // Create temporary stream with buffered data + remaining stream data
+                var remainingBytes = new byte[_inputStream.Length - _inputStream.Position];
+                _inputStream.Read(remainingBytes, 0, remainingBytes.Length);
+
+                var combinedData = new byte[_incompletePageBuffer.Count + remainingBytes.Length];
+                _incompletePageBuffer.CopyTo(combinedData, 0);
+                Array.Copy(remainingBytes, 0, combinedData, _incompletePageBuffer.Count, remainingBytes.Length);
+
+                // Replace input stream with combined data
+                _inputStream = new MemoryStream(combinedData);
+                _incompletePageBuffer.Clear();
+
+                if (_isVerboseLogging)
+                    Debug.Log($"[OggOpusParser] Combined buffer created: {combinedData.Length} total bytes");
+            }
+
             // Read page header
             if (!ReadStreamBytes(_headerBuffer, 0, 27))
             {
@@ -372,50 +400,26 @@ namespace Tsc.AIBridge.Audio.Codecs
             if (_headerBuffer[0] != 'O' || _headerBuffer[1] != 'g' ||
                 _headerBuffer[2] != 'g' || _headerBuffer[3] != 'S')
             {
-                // Different ElevenLabs models may produce different stream formats
-                // This is not necessarily an error - could be data from a different model
-                // Only log in debug builds to reduce console spam
-                if (Debug.isDebugBuild && _isVerboseLogging)
+                // This is likely mid-page data from a chunked stream
+                // Buffer this incomplete data and wait for next chunk that contains the page start
+                if (_isVerboseLogging)
                 {
-                    Debug.LogWarning($"[OggOpusParser] Non-OGG data at position {_inputStream.Position - 27}: {_headerBuffer[0]:X2} {_headerBuffer[1]:X2} {_headerBuffer[2]:X2} {_headerBuffer[3]:X2}");
+                    Debug.Log($"[OggOpusParser] Non-OGG header detected at position {_inputStream.Position - 27}: {_headerBuffer[0]:X2} {_headerBuffer[1]:X2} {_headerBuffer[2]:X2} {_headerBuffer[3]:X2}");
+                    Debug.Log($"[OggOpusParser] Likely mid-page data from chunked stream. Buffering for next chunk...");
                 }
 
-                // Try to find the next valid OGG header by scanning ahead
-                // Increased from 1024 to 16384 bytes to handle larger gaps in streaming audio
-                // This prevents premature stream termination when non-OGG data spans multiple packets
-                var scanLimit = Math.Min(16384, _inputStream.Length - _inputStream.Position);
-                for (var i = 0; i < scanLimit - 3; i++)
-                {
-                    if (_inputStream.ReadByte() == 'O' &&
-                        _inputStream.ReadByte() == 'g' &&
-                        _inputStream.ReadByte() == 'g' &&
-                        _inputStream.ReadByte() == 'S')
-                    {
-                        // Found a potential OGG header, rewind to start of it
-                        _inputStream.Position -= 4;
-                        if (_isVerboseLogging)
-                        {
-                            Debug.Log($"[OggOpusParser] Found next OGG header at position {_inputStream.Position} after skipping {i} bytes");
-                        }
-                        // Try parsing again from this position (recursive call)
-                        return ReadOggPage();
-                    }
-                    // Rewind 3 bytes to check overlapping patterns
-                    _inputStream.Position -= 3;
-                }
+                // Buffer all remaining data in this chunk
+                var remainingInChunk = new byte[_inputStream.Length - (_inputStream.Position - 27)];
+                _inputStream.Position -= 27; // Rewind to include header bytes we just read
+                var bytesRead = _inputStream.Read(remainingInChunk, 0, remainingInChunk.Length);
 
-                // No valid OGG header found in scan range
-                // In streaming scenarios, this might be temporary - more data could arrive later
-                // Only fail if we've truly reached the end of the available stream data
-                if (_inputStream.Position >= _inputStream.Length)
-                {
-                    // We've scanned all available data and found no OGG header
-                    // This is likely the end of the stream or corrupt data
-                    Debug.LogWarning($"[OggOpusParser] No OGG header found after scanning {scanLimit} bytes. Stream may be corrupt or ended.");
-                    return false;
-                }
+                _incompletePageBuffer.AddRange(new ArraySegment<byte>(remainingInChunk, 0, bytesRead));
 
-                // More data might arrive in streaming - return false but don't log as error
+                if (_isVerboseLogging)
+                    Debug.Log($"[OggOpusParser] Buffered {bytesRead} bytes of incomplete page data (total buffered: {_incompletePageBuffer.Count})");
+
+                // Return false to signal no complete page available yet
+                // Next ProcessData() call will combine buffered data with new chunk
                 return false;
             }
 
