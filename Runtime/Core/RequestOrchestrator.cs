@@ -891,8 +891,10 @@ namespace Tsc.AIBridge.Core
             if (_webSocketClient == null || !_webSocketClient.IsConnected)
             {
                 // Detect if reconnection is in progress using explicit state check
+                // Note: Use State property directly to avoid namespace conflict between Core.ConnectionState and WebSocket.ConnectionState
                 bool isReconnecting = _webSocketClient != null &&
-                                     _webSocketClient.State == ConnectionState.Connecting;
+                                     !_webSocketClient.IsConnected &&
+                                     _webSocketClient.State.ToString() == "Connecting";
 
                 // Also check if we have buffered audio (secondary indicator)
                 bool hasBufferedAudio = _reconnectionAudioBuffer.Count > 0;
