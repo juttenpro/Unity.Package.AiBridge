@@ -881,17 +881,59 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
+            // CRITICAL FIX: Handle reconnection scenario gracefully
+            // If WebSocket is disconnected but reconnecting, wait briefly for reconnection
             if (_webSocketClient == null || !_webSocketClient.IsConnected)
             {
-                Debug.LogError("[RequestOrchestrator] Cannot send end messages - WebSocket not connected");
+                bool isReconnecting = _reconnectionAudioBuffer.Count > 0;
 
-                // Log summary of what was lost
-                if (_droppedAudioChunks > 0)
+                if (isReconnecting)
                 {
-                    Debug.LogError($"[RequestOrchestrator] Recording session lost: {_droppedAudioChunks} audio chunks could not be sent due to disconnection");
-                }
+                    Debug.LogWarning($"[RequestOrchestrator] WebSocket disconnected during recording stop - reconnection in progress ({_reconnectionAudioBuffer.Count} chunks buffered). Waiting for reconnect...");
 
-                return;
+                    // Wait up to 3 seconds for reconnection
+                    const int maxWaitMs = 3000;
+                    const int checkIntervalMs = 100;
+                    int elapsedMs = 0;
+
+                    while (elapsedMs < maxWaitMs && (_webSocketClient == null || !_webSocketClient.IsConnected))
+                    {
+                        await System.Threading.Tasks.Task.Delay(checkIntervalMs);
+                        elapsedMs += checkIntervalMs;
+                    }
+
+                    // Check if reconnection succeeded
+                    if (_webSocketClient != null && _webSocketClient.IsConnected)
+                    {
+                        Debug.Log($"[RequestOrchestrator] Reconnection successful after {elapsedMs}ms - sending end messages");
+                        // Continue to send end messages
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[RequestOrchestrator] Reconnection timeout after {elapsedMs}ms - cannot send end messages. Request may be incomplete.");
+
+                        // Log summary of what was buffered
+                        if (_reconnectionAudioBuffer.Count > 0)
+                        {
+                            Debug.LogWarning($"[RequestOrchestrator] {_reconnectionAudioBuffer.Count} audio chunks were buffered but connection did not recover in time");
+                        }
+
+                        return;
+                    }
+                }
+                else
+                {
+                    // Not reconnecting - connection lost permanently
+                    Debug.LogError("[RequestOrchestrator] Cannot send end messages - WebSocket not connected");
+
+                    // Log summary of what was lost
+                    if (_droppedAudioChunks > 0)
+                    {
+                        Debug.LogError($"[RequestOrchestrator] Recording session lost: {_droppedAudioChunks} audio chunks could not be sent due to disconnection");
+                    }
+
+                    return;
+                }
             }
 
             // Start latency measurement - from PTT release to audio playback start
