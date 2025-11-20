@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.21] - 2025-11-20
+
+### Fixed
+- **Improved reliability of audio synchronization fixes from v1.0.20**
+  - **Root Cause**: `MarkAudioStreamReceived()` was called from NpcClient.OnBinaryMessage where RuleSystemManager.Instance was often null
+    - This caused the premature session completion fix to fail silently
+    - Logs showed: "Could not mark audio stream - RequestOrchestrator not found"
+  - **Solution**: Moved MarkAudioStreamReceived() call to AIBridgeRulesHandler.OnNpcReactionStarted() (Extended assembly)
+    - RequestOrchestrator is now directly available via serialized field reference
+    - Called when audio playback actually starts (more reliable timing)
+    - No dependency on RuleSystemManager singleton initialization timing
+  - **Improved Logging**: Added extensive verbose logging throughout audio pipeline
+    - StreamingAudioPlayer now logs cleanup flag operations with success/failure indicators
+    - Better error messages when AudioLoadLockManager reflection fails
+    - Timestamped logs for debugging race conditions
+  - **Business Impact**:
+    - Eliminates the last remaining race condition causing audio cutoff
+    - Provides clear diagnostic logs for future audio synchronization issues
+    - Ensures robust multi-output pattern execution in all scenarios
+  - **Locations**:
+    - NpcClient.cs:1053-1055 (removed unreliable call, added comment)
+    - StreamingAudioPlayer.cs:620-671 (improved logging and error handling)
+    - AIBridgeRulesHandler.cs:1277-1289 (new reliable call location - in Extended assembly)
+
 ## [1.0.20] - 2025-01-20
 
 ### Fixed

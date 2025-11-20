@@ -619,6 +619,7 @@ namespace Tsc.AIBridge.Audio.Playback
 
             // CRITICAL: Set cleanup flag to prevent VoiceLinePlayer from loading during DestroyImmediate
             // This prevents Unity AssetDatabase corruption and .meta file corruption
+            bool cleanupFlagWasSet = false;
             try
             {
                 // Access via reflection since we can't add direct reference to Training assembly
@@ -629,27 +630,42 @@ namespace Tsc.AIBridge.Audio.Playback
                     if (flagProperty != null)
                     {
                         flagProperty.SetValue(null, true);
+                        cleanupFlagWasSet = true;
                         if (enableVerboseLogging)
-                            Debug.Log($"[{_cachedGameObjectName}] Set IsStreamingAudioCleanupInProgress = true");
+                            Debug.Log($"[{_cachedGameObjectName}] [{Time.time:F3}] ✓ Set IsStreamingAudioCleanupInProgress = true");
                     }
+                    else if (enableVerboseLogging)
+                    {
+                        Debug.LogWarning($"[{_cachedGameObjectName}] [{Time.time:F3}] ❌ AudioLoadLockManager found but IsStreamingAudioCleanupInProgress property not found");
+                    }
+                }
+                else if (enableVerboseLogging)
+                {
+                    Debug.LogWarning($"[{_cachedGameObjectName}] [{Time.time:F3}] ❌ AudioLoadLockManager type not found via reflection");
                 }
 
                 // Stop relay if it exists (may be null in tests)
                 // This now also recreates AudioClip and resets AudioSource.time for complete buffer clear
                 audioFilterRelay?.StopPlayback();
+
+                if (enableVerboseLogging)
+                    Debug.Log($"[{_cachedGameObjectName}] [{Time.time:F3}] Audio relay stopped (cleanup flag was set: {cleanupFlagWasSet})");
             }
             finally
             {
-                // Clear cleanup flag
-                var audioLockType = System.Type.GetType("Tsc.Training.Audio.AudioLoadLockManager, Training");
-                if (audioLockType != null)
+                // Clear cleanup flag (only if we set it successfully)
+                if (cleanupFlagWasSet)
                 {
-                    var flagProperty = audioLockType.GetProperty("IsStreamingAudioCleanupInProgress");
-                    if (flagProperty != null)
+                    var audioLockType = System.Type.GetType("Tsc.Training.Audio.AudioLoadLockManager, Training");
+                    if (audioLockType != null)
                     {
-                        flagProperty.SetValue(null, false);
-                        if (enableVerboseLogging)
-                            Debug.Log($"[{_cachedGameObjectName}] Set IsStreamingAudioCleanupInProgress = false");
+                        var flagProperty = audioLockType.GetProperty("IsStreamingAudioCleanupInProgress");
+                        if (flagProperty != null)
+                        {
+                            flagProperty.SetValue(null, false);
+                            if (enableVerboseLogging)
+                                Debug.Log($"[{_cachedGameObjectName}] [{Time.time:F3}] ✓ Set IsStreamingAudioCleanupInProgress = false");
+                        }
                     }
                 }
             }
