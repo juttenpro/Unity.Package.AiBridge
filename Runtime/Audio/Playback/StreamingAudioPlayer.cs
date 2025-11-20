@@ -617,9 +617,42 @@ namespace Tsc.AIBridge.Audio.Playback
             if (enableVerboseLogging)
                 Debug.Log($"[{_cachedGameObjectName}] 🤐 NPC speech state reset (playback stopped)");
 
-            // Stop relay if it exists (may be null in tests)
-            // This now also recreates AudioClip and resets AudioSource.time for complete buffer clear
-            audioFilterRelay?.StopPlayback();
+            // CRITICAL: Set cleanup flag to prevent VoiceLinePlayer from loading during DestroyImmediate
+            // This prevents Unity AssetDatabase corruption and .meta file corruption
+            try
+            {
+                // Access via reflection since we can't add direct reference to Training assembly
+                var audioLockType = System.Type.GetType("Tsc.Training.Audio.AudioLoadLockManager, Training");
+                if (audioLockType != null)
+                {
+                    var flagProperty = audioLockType.GetProperty("IsStreamingAudioCleanupInProgress");
+                    if (flagProperty != null)
+                    {
+                        flagProperty.SetValue(null, true);
+                        if (enableVerboseLogging)
+                            Debug.Log($"[{_cachedGameObjectName}] Set IsStreamingAudioCleanupInProgress = true");
+                    }
+                }
+
+                // Stop relay if it exists (may be null in tests)
+                // This now also recreates AudioClip and resets AudioSource.time for complete buffer clear
+                audioFilterRelay?.StopPlayback();
+            }
+            finally
+            {
+                // Clear cleanup flag
+                var audioLockType = System.Type.GetType("Tsc.Training.Audio.AudioLoadLockManager, Training");
+                if (audioLockType != null)
+                {
+                    var flagProperty = audioLockType.GetProperty("IsStreamingAudioCleanupInProgress");
+                    if (flagProperty != null)
+                    {
+                        flagProperty.SetValue(null, false);
+                        if (enableVerboseLogging)
+                            Debug.Log($"[{_cachedGameObjectName}] Set IsStreamingAudioCleanupInProgress = false");
+                    }
+                }
+            }
 
             // Clear buffer - CRITICAL for preventing audio bleeding between sessions
             // Count samples being discarded for logging

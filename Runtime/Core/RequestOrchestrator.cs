@@ -738,6 +738,21 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
+        /// Mark that audio stream has been received for the current session.
+        /// Should be called when the first binary audio chunk is received.
+        /// This prevents premature session completion when conversationComplete arrives.
+        /// </summary>
+        public void MarkAudioStreamReceived()
+        {
+            if (_currentSession != null && _currentSession.StreamsReceived == 0)
+            {
+                _currentSession.StreamsReceived = 1;
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Audio stream marked as received for session {_currentSession.RequestId}");
+            }
+        }
+
+        /// <summary>
         /// Get the current session RequestId (null if no active session)
         /// </summary>
         public string GetCurrentSessionId()

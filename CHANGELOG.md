@@ -6,6 +6,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.20] - 2025-01-20
+
+### Fixed
+- **Race condition causing Unity AssetDatabase corruption and premature session completion**
+  - **Root Cause #1 - Early Session Completion**: `conversationComplete` message triggered session cleanup before audio playback finished
+    - `StreamsReceived` counter was never incremented when binary audio chunks arrived
+    - System incorrectly detected "no audio received" and skipped waiting for audio playback completion
+    - `OnPlaybackComplete` callback never fired, preventing "Finished" port from triggering
+  - **Root Cause #2 - Concurrent Audio Operations**: Scripted audio loading started while streaming audio was still cleaning up
+    - `DestroyImmediate()` on streaming AudioClip happened simultaneously with `Addressables.LoadAssetAsync()` for scripted audio
+    - Unity's AssetDatabase corrupted during concurrent operations, breaking .meta files
+  - **Symptoms**:
+    - NPC audio stops mid-sentence during AI → scripted reaction transition
+    - NullReferenceException in AddressableAssetSettingsLocator.cs:328
+    - Scripted reaction .meta files become corrupt after AI conversations
+    - "Data Received" and "Finished" output ports not firing correctly
+  - **Solution**:
+    - **Fix #1**: Added `MarkAudioStreamReceived()` method to RequestOrchestrator, called when first binary audio chunk arrives
+    - **Fix #2**: Added `IsStreamingAudioCleanupInProgress` flag in AudioLoadLockManager (Training framework)
+    - **Fix #3**: VoiceLinePlayer now waits for streaming cleanup before loading scripted audio
+    - **Fix #4**: StreamingAudioPlayer sets cleanup flag during DestroyImmediate operations
+  - **Business Impact**:
+    - Eliminates audio corruption and incomplete playback during scenario transitions
+    - Prevents Unity .meta file corruption requiring manual file deletion
+    - Ensures correct rule flow execution with multi-output pattern (Started, Data Received, Finished)
+    - Protects data integrity in production training scenarios
+  - **Locations**:
+    - RequestOrchestrator.cs:745-753 (MarkAudioStreamReceived)
+    - NpcClient.cs:1054-1068 (OnBinaryMessage - mark stream received)
+    - StreamingAudioPlayer.cs:620-655 (StopPlaybackInternal - cleanup flag)
+    - VoiceLinePlayer.cs:279-287 (PlayReactionLine - wait for cleanup)
+    - AudioLoadLockManager.cs (new synchronization manager)
+
 ## [1.0.19] - 2025-01-20
 
 ### Fixed
