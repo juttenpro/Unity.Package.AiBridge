@@ -197,7 +197,9 @@ namespace Tsc.AIBridge.Audio.Playback
                 // This can cause audio bleeding as DSP keeps old clip samples
                 if (_audioSource.clip != null)
                 {
-                    UnityEngine.Object.DestroyImmediate(_audioSource.clip);
+                    // allowDestroyingAssets: true is required for runtime-created AudioClips
+                    // Without this parameter, Unity throws error: "Destroying assets is not permitted"
+                    UnityEngine.Object.DestroyImmediate(_audioSource.clip, true);
                 }
 
                 // Create fresh clip for next stream

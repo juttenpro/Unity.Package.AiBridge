@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.19] - 2025-01-20
+
+### Fixed
+- **AudioClip destruction error during NPC cleanup**: Fixed "Destroying assets is not permitted" error
+  - **Root Cause**: `DestroyImmediate()` called without `allowDestroyingAssets` parameter on runtime AudioClip
+  - **Symptoms**: Error when switching from AI-generated response to scripted response during scenario transitions
+  - **Solution**: Added `allowDestroyingAssets: true` parameter to DestroyImmediate call
+  - **Business Impact**: Eliminates error spam during scenario transitions, prevents potential audio system instability
+  - **Location**: AudioFilterRelay.cs:202 (StopPlayback method)
+  - **Error Message**: "Destroying assets is not permitted to avoid data loss. If you really want to remove an asset use DestroyImmediate (theObject, true);"
+
 ## [1.0.18] - 2025-01-19
 
 ### Fixed
