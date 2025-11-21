@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.22] - 2025-11-21
+
+### Changed
+- **Playback completion timeout reduced from 1.0s to 0.15s (default)**
+  - Made `playbackCompleteTimeout` configurable via Inspector (was hardcoded constant)
+  - **Rationale**: 1 second was too conservative. Audio streams faster than playback, so buffer only empties at end of audio. Underruns recover in milliseconds, not seconds.
+  - **Impact**: ~850ms faster transition from AI audio to scripted reactions
+  - **Location**: StreamingAudioPlayer.cs - new SerializeField with Range(0.05f, 2.0f)
+
 ## [1.0.21] - 2025-11-20
 
 ### Fixed

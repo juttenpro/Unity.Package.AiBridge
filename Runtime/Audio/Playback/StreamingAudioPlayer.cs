@@ -37,6 +37,12 @@ namespace Tsc.AIBridge.Audio.Playback
         // Volume control should be done via AudioSource.volume, not with gain multipliers!
         // Buffering is now handled by centralized AdaptiveBufferManager
 
+        [Header("Playback Detection")]
+        [SerializeField]
+        [Tooltip("Time in seconds to wait after buffer is empty before considering playback complete. Lower = faster response, but may cause premature completion on slow networks.")]
+        [Range(0.05f, 2.0f)]
+        private float playbackCompleteTimeout = 0.15f;
+
         [Header("Debug Settings")]
         [SerializeField]
         [Tooltip("Enable verbose logging for debugging audio streaming and buffering")]
@@ -72,7 +78,6 @@ namespace Tsc.AIBridge.Audio.Playback
 
         // Auto-detect playback completion without backend messages
         private float _lastDataReceivedTime;
-        private const float PLAYBACK_COMPLETE_TIMEOUT = 1.0f; // 1 second without new data = playback complete
 
         // Cached values
         private string _cachedGameObjectName;
@@ -1042,12 +1047,12 @@ namespace Tsc.AIBridge.Audio.Playback
 #endif
 
             // Auto-detect playback completion without waiting for backend AudioStreamEnd message
-            // If buffer is empty and no new data for PLAYBACK_COMPLETE_TIMEOUT, playback is complete
+            // If buffer is empty and no new data for playbackCompleteTimeout, playback is complete
             if (_isPlaybackStarted && !_shouldStop && _audioBuffer.Count == 0)
             {
                 float timeSinceLastData = Time.realtimeSinceStartup - _lastDataReceivedTime;
 
-                if (timeSinceLastData > PLAYBACK_COMPLETE_TIMEOUT)
+                if (timeSinceLastData > playbackCompleteTimeout)
                 {
                     if (enableVerboseLogging)
                     {
