@@ -24,6 +24,9 @@ namespace Tsc.AIBridge.Audio.Playback
         /// </summary>
         public AudioSource AudioSource => _audioSource;
 
+        // Name of the streaming dummy clip - used to identify clips we created vs real AudioClips
+        private const string StreamingClipName = "StreamingAudio_Relay";
+
         // The streaming player that will provide audio data
         private StreamingAudioPlayer _streamingPlayer;
         private AudioSource _audioSource;
@@ -86,7 +89,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 var clipLength = sampleRate * 10; // 10 seconds, will loop if needed
                 var channels = 1; // Mono for VAD processing and VR
 
-                var streamingClip = AudioClip.Create("StreamingAudio_Relay", clipLength, channels, sampleRate, true);
+                var streamingClip = AudioClip.Create(StreamingClipName, clipLength, channels, sampleRate, true);
                 _audioSource.clip = streamingClip;
                 _audioSource.loop = true;
                 _audioSource.Play();
@@ -197,13 +200,25 @@ namespace Tsc.AIBridge.Audio.Playback
                 // This can cause audio bleeding as DSP keeps old clip samples
                 if (_audioSource.clip != null)
                 {
-                    // allowDestroyingAssets: true is required for runtime-created AudioClips
-                    // Without this parameter, Unity throws error: "Destroying assets is not permitted"
-                    UnityEngine.Object.DestroyImmediate(_audioSource.clip, true);
+                    // CRITICAL: Only destroy OUR streaming clips, not real AudioClips from Addressables!
+                    // Destroying Addressable assets with allowDestroyingAssets:true corrupts Unity's asset database
+                    // Real clips (from Addressables) should just be dereferenced, not destroyed
+                    if (_audioSource.clip.name == StreamingClipName)
+                    {
+                        // This is our streaming dummy clip - safe to destroy
+                        // allowDestroyingAssets: true is required for runtime-created AudioClips
+                        UnityEngine.Object.DestroyImmediate(_audioSource.clip, true);
+                    }
+                    else
+                    {
+                        // This is a real AudioClip (e.g., from Addressables) - just dereference, don't destroy
+                        // The clip will be properly released by Addressables when no longer needed
+                        _audioSource.clip = null;
+                    }
                 }
 
                 // Create fresh clip for next stream
-                _audioSource.clip = AudioClip.Create("StreamingAudio_Relay", clipLength, channels, sampleRate, true);
+                _audioSource.clip = AudioClip.Create(StreamingClipName, clipLength, channels, sampleRate, true);
                 _audioSource.loop = true;
 
                 // CRITICAL: Reset AudioSource internal buffers to prevent audio bleeding

@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.23] - 2025-11-21
+
+### Fixed
+- **Critical: Prevent asset database corruption when streaming starts during scripted audio**
+  - **Root Cause**: `AudioFilterRelay.StopPlayback()` used `DestroyImmediate(clip, allowDestroyingAssets: true)`
+    which destroyed Addressable AudioClips (like N6.mp3) when streaming audio started during scripted playback
+  - **Symptom**: After a successful test, the next test failed with NullReferenceException in
+    `AddressableAssetSettingsLocator.AddLocations()`. Only fixable by deleting and regenerating .meta file.
+  - **Solution**: Only destroy clips named "StreamingAudio_Relay" (our dummy streaming clips).
+    Real AudioClips from Addressables are now dereferenced (`clip = null`) instead of destroyed.
+  - **Location**: AudioFilterRelay.cs - `StopPlayback()` method
+  - **Impact**: Eliminates asset database corruption when AI streaming interrupts scripted audio
+
+### Changed
+- Extracted clip name to `StreamingClipName` constant for maintainability
+
 ## [1.0.22] - 2025-11-21
 
 ### Changed
