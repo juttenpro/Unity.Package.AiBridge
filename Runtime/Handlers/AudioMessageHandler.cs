@@ -8,6 +8,19 @@ namespace Tsc.AIBridge.Handlers
     /// Handles binary audio messages received from the WebSocket.
     /// Responsible for detecting OGG streams and processing audio data.
     /// Extracted from StreamingApiClient for better separation of concerns.
+    ///
+    /// QUEUE INTEGRATION:
+    /// This handler supports integration with NpcAudioPlayer's queue system via events:
+    /// - OnStreamingAudioStarting: Fired when first OGG header detected. Returns false to buffer.
+    /// - OnStreamingAudioReleased: Fired when buffered audio starts playing.
+    ///
+    /// When buffering is requested (OnStreamingAudioStarting returns false):
+    /// 1. Raw Opus chunks are stored in AudioStreamProcessor._queueBufferedOpusQueue
+    /// 2. No decoding occurs - raw bytes are preserved for later
+    /// 3. When ReleaseBufferedAudio() is called, chunks are decoded and played
+    /// 4. ClearBufferedAudio() discards buffered chunks without playing
+    ///
+    /// This allows AI streaming audio to wait in queue behind scripted audio when needed.
     /// </summary>
     public class AudioMessageHandler
     {
@@ -20,11 +33,25 @@ namespace Tsc.AIBridge.Handlers
         private string _currentRequestId = null;
         private string _interruptedRequestId = null; // Track which RequestId was interrupted
         private bool _waitingForNewSession = false; // Block all audio until SessionStarted after interruption
+        private bool _isBufferingForQueue = false; // True when waiting in queue, data is buffered
         
         /// <summary>
         /// Event fired when an OGG stream is detected
         /// </summary>
         public event Action<int> OnOggStreamDetected;
+
+        /// <summary>
+        /// Event fired when streaming audio is about to start (first OGG header detected).
+        /// Listeners can return false to indicate the stream should be buffered instead of played immediately.
+        /// If no listeners or all return true, playback starts immediately.
+        /// </summary>
+        public event Func<bool> OnStreamingAudioStarting;
+
+        /// <summary>
+        /// Event fired when buffered audio should start playing.
+        /// This is called when the queue releases the streaming request.
+        /// </summary>
+        public event Action OnStreamingAudioReleased;
         
         public AudioMessageHandler(
             string personaName,
@@ -79,19 +106,40 @@ namespace Tsc.AIBridge.Handlers
             if (IsOggHeader(data))
             {
                 _receivedStreamCount++;
-                
+
                 if (_enableVerboseLogging)
                     Debug.Log($"[{_personaName}] Detected OGG header #{_receivedStreamCount}");
-                
+
                 // Only start NEW audio stream on FIRST OGG chunk
                 if (_receivedStreamCount == 1)
                 {
-                    if (_enableVerboseLogging)
-                        Debug.Log($"[{_personaName}] First OGG header - starting audio playback");
-                    
-                    // Auto-start audio stream on first OGG chunk
-                    // ElevenLabs Opus is always 48kHz according to their documentation
-                    _audioProcessor.StartAudioStream(isOpus: true, sampleRate: 48000);
+                    // Check if we should start immediately or buffer for queue
+                    bool canStartImmediately = true;
+                    if (OnStreamingAudioStarting != null)
+                    {
+                        // If any listener returns false, we should buffer
+                        canStartImmediately = OnStreamingAudioStarting.Invoke();
+                    }
+
+                    if (canStartImmediately)
+                    {
+                        if (_enableVerboseLogging)
+                            Debug.Log($"[{_personaName}] First OGG header - starting audio playback immediately");
+
+                        // Auto-start audio stream on first OGG chunk
+                        // ElevenLabs Opus is always 48kHz according to their documentation
+                        _audioProcessor.StartAudioStream(isOpus: true, sampleRate: 48000);
+                        _isBufferingForQueue = false;
+                    }
+                    else
+                    {
+                        if (_enableVerboseLogging)
+                            Debug.Log($"[{_personaName}] First OGG header - buffering for queue (waiting for other audio to finish)");
+
+                        // Start buffering mode - data will be queued instead of played
+                        _isBufferingForQueue = true;
+                        _audioProcessor.StartBufferingForQueue();
+                    }
                 }
                 else if (_enableVerboseLogging)
                 {
@@ -99,10 +147,11 @@ namespace Tsc.AIBridge.Handlers
                     // This is normal and doesn't indicate new sentences
                     Debug.Log($"[{_personaName}] Additional OGG header #{_receivedStreamCount} - part of ongoing stream");
                 }
-                
+
                 OnOggStreamDetected?.Invoke(_receivedStreamCount);
             }
-            
+
+            // Queue data - AudioStreamProcessor handles whether to buffer or process immediately
             _audioProcessor.ProcessReceivedAudio(data);
         }
         
@@ -119,6 +168,56 @@ namespace Tsc.AIBridge.Handlers
                    data[3] == 0x53;   // 'S'
         }
         
+        /// <summary>
+        /// Release buffered audio and start playback.
+        /// Called when the queue allows this streaming request to play.
+        /// </summary>
+        public void ReleaseBufferedAudio()
+        {
+            if (!_isBufferingForQueue)
+            {
+                if (_enableVerboseLogging)
+                    Debug.Log($"[{_personaName}] ReleaseBufferedAudio called but not in buffering mode");
+                return;
+            }
+
+            if (_enableVerboseLogging)
+                Debug.Log($"[{_personaName}] Releasing buffered audio - starting playback");
+
+            _isBufferingForQueue = false;
+
+            // Tell AudioStreamProcessor to flush buffered data and start playback
+            _audioProcessor.ReleaseBufferedAudio();
+
+            OnStreamingAudioReleased?.Invoke();
+        }
+
+        /// <summary>
+        /// Check if currently buffering audio for queue
+        /// </summary>
+        public bool IsBufferingForQueue => _isBufferingForQueue;
+
+        /// <summary>
+        /// Clear buffered audio without playing it.
+        /// Called when Replace mode is used and buffered streaming audio should be discarded.
+        /// </summary>
+        public void ClearBufferedAudio()
+        {
+            if (!_isBufferingForQueue)
+            {
+                return;
+            }
+
+            if (_enableVerboseLogging)
+                Debug.Log($"[{_personaName}] Clearing buffered audio (discarded due to Replace mode)");
+
+            _isBufferingForQueue = false;
+            _receivedStreamCount = 0;
+
+            // Tell AudioStreamProcessor to discard buffered data
+            _audioProcessor.ClearBufferedAudio();
+        }
+
         /// <summary>
         /// Mark that an interruption has occurred in this session
         /// </summary>

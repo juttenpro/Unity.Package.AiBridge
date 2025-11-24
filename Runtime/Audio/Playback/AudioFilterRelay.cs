@@ -38,6 +38,14 @@ namespace Tsc.AIBridge.Audio.Playback
         // Updated on main thread (Update), read on audio thread (OnAudioFilterRead)
         private string _cachedClipName;
 
+        // Reusable buffer for storing spatial weights during OnAudioFilterRead
+        // Pre-allocated to avoid GC pressure on audio thread
+        private float[] _spatialWeightsBuffer;
+
+        // Tiny value used in dummy clip for spatial weight calculation
+        // Must be small enough to be inaudible if leaked, but large enough to avoid floating point issues
+        private const float SpatialDummyValue = 1e-6f;
+
 
         private void Awake()
         {
@@ -78,18 +86,35 @@ namespace Tsc.AIBridge.Audio.Playback
 
             _isInitialized = true;
 
-            // Configure AudioSource for streaming
+            // Configure AudioSource for streaming with spatial audio support
             if (_audioSource)
             {
                 _audioSource.Stop();
 
-                // Create a dummy clip - Unity requires this for OnAudioFilterRead to work
-                // We'll be generating the actual audio in OnAudioFilterRead
+                // SPATIAL AUDIO TRICK: Create a dummy clip filled with 1.0 values
+                // When Unity plays this clip with spatialBlend > 0, it calculates spatial weights
+                // (distance attenuation, stereo panning, HRTF, reverb) and applies them to the samples.
+                // Since our samples are 1.0, the resulting 'data' array in OnAudioFilterRead
+                // contains the pure spatial weights. We multiply our streaming audio by these weights
+                // to get proper 3D spatial audio for procedurally generated sound.
+                // See: https://stackoverflow.com/questions/38843408/realtime-3d-audio-streaming-and-playback
                 var sampleRate = 48000; // Default to Opus rate
-                var clipLength = sampleRate * 10; // 10 seconds, will loop if needed
                 var channels = 1; // Mono for VAD processing and VR
 
-                var streamingClip = AudioClip.Create(StreamingClipName, clipLength, channels, sampleRate, true);
+                // Create short looping clip with tiny non-zero samples for spatial weight calculation
+                var clipLength = sampleRate; // 1 second is enough for looping
+                var streamingClip = AudioClip.Create(StreamingClipName, clipLength, channels, sampleRate, false);
+
+                // Fill with tiny values so Unity's spatial calculations produce usable weights
+                // Using a tiny value (1e-6) ensures any leakage during transitions is inaudible
+                // We normalize the weights in OnAudioFilterRead by dividing by this value
+                var dummyBuffer = new float[clipLength];
+                for (int i = 0; i < clipLength; i++)
+                {
+                    dummyBuffer[i] = SpatialDummyValue;
+                }
+                streamingClip.SetData(dummyBuffer, 0);
+
                 _audioSource.clip = streamingClip;
                 _audioSource.loop = true;
                 _audioSource.Play();
@@ -192,7 +217,6 @@ namespace Tsc.AIBridge.Audio.Playback
                 // Extra safety: Recreate the streaming clip to ensure completely fresh state
                 // This prevents any residual samples in the AudioClip itself
                 var sampleRate = 48000; // TTS output frequency
-                var clipLength = sampleRate * 10; // 10 seconds
                 var channels = 1; // Mono
 
                 // Destroy old clip if it exists - MUST use DestroyImmediate for instant cleanup
@@ -217,8 +241,17 @@ namespace Tsc.AIBridge.Audio.Playback
                     }
                 }
 
-                // Create fresh clip for next stream
-                _audioSource.clip = AudioClip.Create(StreamingClipName, clipLength, channels, sampleRate, true);
+                // Create fresh clip for next stream - filled with tiny values for spatial audio weights
+                var clipLength = sampleRate; // 1 second is enough for looping
+                var newClip = AudioClip.Create(StreamingClipName, clipLength, channels, sampleRate, false);
+                var dummyBuffer = new float[clipLength];
+                for (int i = 0; i < clipLength; i++)
+                {
+                    dummyBuffer[i] = SpatialDummyValue;
+                }
+                newClip.SetData(dummyBuffer, 0);
+
+                _audioSource.clip = newClip;
                 _audioSource.loop = true;
 
                 // CRITICAL: Reset AudioSource internal buffers to prevent audio bleeding
@@ -226,6 +259,10 @@ namespace Tsc.AIBridge.Audio.Playback
                 // Setting time=0 forces Unity to clear these buffers
                 // IMPORTANT: Must be called AFTER clip is created, otherwise Unity throws warning
                 _audioSource.time = 0f;
+
+                // Unmute now that buffers are cleared - AudioSource is ready for next audio
+                // We only muted temporarily to prevent audio bleeding during the transition
+                _audioSource.mute = false;
             }
         }
 
@@ -280,7 +317,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 return;
             }
 
-            // STREAMING MODE: Original streaming audio logic
+            // STREAMING MODE: Procedural audio with spatial audio support
             if (!_isInitialized || _streamingPlayer == null || _isPaused || !_isPlaybackActive)
             {
                 // Fill with silence if not ready or paused
@@ -291,8 +328,34 @@ namespace Tsc.AIBridge.Audio.Playback
                 return;
             }
 
-            // Let the streaming player fill the audio buffer
+            // SPATIAL AUDIO: The 'data' array currently contains spatial weights from Unity
+            // (because we're playing a clip filled with SpatialDummyValue, and Unity applied spatial processing)
+            // The weights are scaled by SpatialDummyValue, so we normalize by dividing
+            // We need to: 1) Store & normalize weights, 2) Fill with our samples, 3) Multiply by weights
+
+            // Ensure buffer is large enough (lazy allocation, only grows)
+            if (_spatialWeightsBuffer == null || _spatialWeightsBuffer.Length < data.Length)
+            {
+                _spatialWeightsBuffer = new float[data.Length];
+            }
+
+            // Store and normalize spatial weights before we overwrite them
+            // Unity calculated: output = SpatialDummyValue * spatialWeight
+            // So: spatialWeight = output / SpatialDummyValue
+            var invDummyValue = 1f / SpatialDummyValue;
+            for (int i = 0; i < data.Length; i++)
+            {
+                _spatialWeightsBuffer[i] = data[i] * invDummyValue;
+            }
+
+            // Fill buffer with streaming audio samples (this overwrites data)
             _streamingPlayer.FillAudioBuffer(data, channels);
+
+            // Apply spatial weights to get proper 3D positioning
+            for (int i = 0; i < data.Length; i++)
+            {
+                data[i] *= _spatialWeightsBuffer[i];
+            }
 
             // Fire event for any listeners (e.g., VAD processors)
             OnAudioProcessed?.Invoke(data, channels);

@@ -35,7 +35,15 @@ namespace Tsc.AIBridge.Audio.Processing
     /// KEY COMPONENTS:
     /// - OpusAudioEncoder: PCM to Opus encoding (for upload)
     /// - OpusStreamDecoder: Queue-based Opus to PCM decoding (for playback)
-    /// 
+    ///
+    /// QUEUE BUFFERING:
+    /// Supports buffering raw Opus chunks for NpcAudioPlayer's queue system:
+    /// - StartBufferingForQueue(): Begin buffering incoming chunks (don't decode yet)
+    /// - ReleaseBufferedAudio(): Flush buffer, start decoding and playback
+    /// - ClearBufferedAudio(): Discard buffer without playing
+    /// - IsBufferingForQueue: Check if currently buffering
+    /// This allows AI streaming audio to wait behind scripted audio in Queue mode.
+    ///
     /// DEPENDENCIES:
     /// - StreamingAudioPlayer: For audio playback
     /// - Concentus: Opus codec library
@@ -77,6 +85,12 @@ namespace Tsc.AIBridge.Audio.Processing
         private readonly System.Collections.Concurrent.ConcurrentQueue<byte[]> _pausedOpusQueue = new();
         private bool _isDecodingPaused;
         private readonly object _pauseLock = new();
+
+        // Queue buffering for NpcAudioPlayer queue system
+        // Buffers raw Opus data when waiting in queue (e.g., scripted audio playing first)
+        private readonly System.Collections.Concurrent.ConcurrentQueue<byte[]> _queueBufferedOpusQueue = new();
+        private bool _isBufferingForQueue;
+        private readonly object _queueBufferLock = new();
 
         // Constants for periodic logging and size estimation
         private const int BUFFER_LOG_INTERVAL = 50; // Log every Nth buffer operation (~1 second at 50 chunks/sec)
@@ -399,6 +413,24 @@ namespace Tsc.AIBridge.Audio.Processing
                 return;
             }
 
+            // Check if buffering for queue (waiting for other audio to finish)
+            // Queue Opus data until NpcAudioPlayer releases the stream
+            if (_isBufferingForQueue)
+            {
+                // Clone the data to prevent buffer reuse issues
+                var clonedData = new byte[audioData.Length];
+                System.Buffer.BlockCopy(audioData, 0, clonedData, 0, audioData.Length);
+                _queueBufferedOpusQueue.Enqueue(clonedData);
+
+                // Periodic logging to track queue size
+                if (_isVerboseLogging && _queueBufferedOpusQueue.Count % BUFFER_LOG_INTERVAL == 0)
+                {
+                    var queueSizeKB = _queueBufferedOpusQueue.Count * AVERAGE_OPUS_CHUNK_SIZE / 1024;
+                    Debug.Log($"[AudioStreamProcessor] Queued Opus for playback queue: {_queueBufferedOpusQueue.Count} chunks (~{queueSizeKB}KB)");
+                }
+                return;
+            }
+
             // Check if decoding is paused (PauseManager integration)
             // Queue Opus data instead of decoding - 24x more memory efficient than PCM buffering
             if (_isDecodingPaused)
@@ -658,6 +690,95 @@ namespace Tsc.AIBridge.Audio.Processing
                 if (_isVerboseLogging && queuedCount > 0)
                 {
                     Debug.Log($"[AudioStreamProcessor] Decoding resumed - processed {queuedCount} queued chunks");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Start buffering incoming audio for queue system.
+        /// Called when NpcAudioPlayer determines this stream should wait for other audio to finish.
+        /// </summary>
+        public void StartBufferingForQueue()
+        {
+            lock (_queueBufferLock)
+            {
+                if (_isBufferingForQueue)
+                {
+                    if (_isVerboseLogging)
+                        Debug.LogWarning("[AudioStreamProcessor] Already buffering for queue");
+                    return;
+                }
+
+                _isBufferingForQueue = true;
+
+                // Clear any stale data from previous buffering session
+                while (_queueBufferedOpusQueue.TryDequeue(out _)) { }
+
+                if (_isVerboseLogging)
+                    Debug.Log("[AudioStreamProcessor] Started buffering for queue - audio will be held until released");
+            }
+        }
+
+        /// <summary>
+        /// Release buffered audio and start playback.
+        /// Called when NpcAudioPlayer's queue allows this stream to play.
+        /// </summary>
+        public void ReleaseBufferedAudio()
+        {
+            lock (_queueBufferLock)
+            {
+                if (!_isBufferingForQueue)
+                {
+                    if (_isVerboseLogging)
+                        Debug.LogWarning("[AudioStreamProcessor] Not buffering for queue - nothing to release");
+                    return;
+                }
+
+                var queuedCount = _queueBufferedOpusQueue.Count;
+                if (_isVerboseLogging)
+                {
+                    var estimatedKB = queuedCount * AVERAGE_OPUS_CHUNK_SIZE / 1024;
+                    Debug.Log($"[AudioStreamProcessor] Releasing buffered audio - {queuedCount} chunks (~{estimatedKB}KB)");
+                }
+
+                // Start the audio stream first (was deferred during buffering)
+                StartAudioStream(isOpus: true, sampleRate: 48000);
+
+                _isBufferingForQueue = false;
+
+                // Process all buffered Opus data through the decoder
+                while (_queueBufferedOpusQueue.TryDequeue(out var opusData))
+                {
+                    ProcessReceivedAudio(opusData);
+                }
+
+                if (_isVerboseLogging && queuedCount > 0)
+                {
+                    Debug.Log($"[AudioStreamProcessor] Buffered audio released - processed {queuedCount} chunks");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check if currently buffering audio for queue
+        /// </summary>
+        public bool IsBufferingForQueue => _isBufferingForQueue;
+
+        /// <summary>
+        /// Clear any buffered audio without playing it.
+        /// Called when the streaming request is cancelled/replaced.
+        /// </summary>
+        public void ClearBufferedAudio()
+        {
+            lock (_queueBufferLock)
+            {
+                var count = _queueBufferedOpusQueue.Count;
+                while (_queueBufferedOpusQueue.TryDequeue(out _)) { }
+                _isBufferingForQueue = false;
+
+                if (_isVerboseLogging && count > 0)
+                {
+                    Debug.Log($"[AudioStreamProcessor] Cleared {count} buffered audio chunks (stream cancelled/replaced)");
                 }
             }
         }

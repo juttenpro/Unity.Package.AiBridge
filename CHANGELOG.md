@@ -6,6 +6,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-11-24
+
+### Added
+- **Queue integration for streaming audio playback**
+  - **Feature**: AI streaming audio can now wait in queue behind scripted audio when using Queue mode
+  - **New Events**:
+    - `OnStreamingAudioStarting`: Fired when first OGG header detected. Returns false to buffer stream.
+    - `OnStreamingAudioReleased`: Fired when buffered audio starts playing.
+  - **New Methods**:
+    - `AudioMessageHandler.ReleaseBufferedAudio()`: Release buffered stream and start playback
+    - `AudioMessageHandler.ClearBufferedAudio()`: Discard buffered stream without playing
+    - `AudioMessageHandler.IsBufferingForQueue`: Check if currently buffering for queue
+    - `AudioStreamProcessor.StartBufferingForQueue()`: Begin buffering incoming chunks
+    - `AudioStreamProcessor.ReleaseBufferedAudio()`: Flush buffer and start decoding
+    - `AudioStreamProcessor.ClearBufferedAudio()`: Discard buffer without playing
+  - **How It Works**:
+    1. Raw Opus chunks stored in `_queueBufferedOpusQueue` without decoding
+    2. When released, chunks are decoded and played as if they just arrived
+    3. 24x more memory efficient than PCM buffering (same as PauseManager)
+  - **Use Case**: NpcAudioPlayer can now enforce Queue/Replace modes for both scripted AND streaming audio
+  - **Backward Compatibility**: Existing code continues to work - buffering only activates when listeners return false
+  - **Business Impact**:
+    - Enables proper audio queue management for mixed scripted/AI content
+    - Prevents AI audio from interrupting important scripted dialogue
+    - Maintains low latency by using raw Opus buffering
+  - **Locations**:
+    - AudioMessageHandler.cs (events, buffering state, integration docs)
+    - AudioStreamProcessor.cs (queue buffering implementation)
+    - AudioFilterRelay.cs (playback coordination)
+
 ## [1.0.23] - 2025-11-21
 
 ### Fixed
