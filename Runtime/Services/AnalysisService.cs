@@ -61,6 +61,7 @@ namespace Tsc.AIBridge.Services
         /// <param name="temperature">Temperature for response generation</param>
         /// <param name="maxTokens">Maximum tokens for response</param>
         /// <param name="responseFormat">Response format - use "json_object" for clean JSON without markdown (OpenAI/Azure OpenAI only)</param>
+        /// <param name="location">Google Cloud region for Vertex AI (e.g., "europe-west4") - optional, fallback to backend env var</param>
         /// <returns>Task that completes with AnalysisResponse when analysis is done</returns>
         /// <exception cref="InvalidOperationException">Thrown when WebSocket is not connected</exception>
         /// <exception cref="ArgumentException">Thrown when messages array is null or empty</exception>
@@ -71,7 +72,8 @@ namespace Tsc.AIBridge.Services
             string llmModel,
             float temperature,
             int maxTokens,
-            string responseFormat)
+            string responseFormat,
+            string location = null)
         {
             // Check WebSocket connection
             if (!WebSocketAdapter.IsConnected)
@@ -112,6 +114,7 @@ namespace Tsc.AIBridge.Services
                     temperature = temperature,
                     maxTokens = maxTokens,
                     responseFormat = responseFormat, // NEW: "json_object" for clean JSON without markdown
+                    location = location, // NEW: Google Cloud region for Vertex AI (optional)
                     // Language and VoiceId are optional - backend provides defaults
                     language = null,
                     voiceId = null,

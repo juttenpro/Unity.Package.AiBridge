@@ -91,6 +91,14 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("responseFormat")]
         public string responseFormat;
 
+        /// <summary>
+        /// Google Cloud region for Vertex AI requests (e.g., "europe-west4", "us-central1").
+        /// Only used for Vertex AI provider.
+        /// Null = use GOOGLE_LOCATION environment variable as fallback.
+        /// </summary>
+        [JsonProperty("location")]
+        public string location;
+
         // REMOVED: audioFormat, sampleRate, opusBitrate
         // These are misleading - API always uses opus_48000_64 hardcoded
         // ElevenLabs supports different bitrates but API doesn't expose this

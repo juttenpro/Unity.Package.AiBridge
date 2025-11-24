@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2025-01-24
+
+### Added
+- **Vertex AI location parameter support**
+  - **Feature**: Configurable Google Cloud region for Vertex AI requests
+  - **New Parameters**:
+    - `AnalysisService.RequestAnalysisAsync()`: Added optional `location` parameter
+    - `ConversationContext.location`: New field for Google Cloud region (e.g., "europe-west4", "us-central1")
+  - **How It Works**:
+    - Unity specifies location per AI template configuration
+    - Backend uses specified location or falls back to GOOGLE_LOCATION environment variable
+    - Supports multi-region deployments for data residency compliance
+  - **Use Case**:
+    - Comply with GDPR data residency requirements (EU data stays in EU)
+    - Optimize latency by selecting geographically closest region
+    - Support A/B testing with different Vertex AI regions
+  - **Backward Compatibility**: Location parameter is optional (default: null), existing code continues to work
+  - **Business Impact**:
+    - Legal compliance: Meet data residency requirements
+    - Performance: Reduced latency with regional endpoints
+    - Flexibility: Per-template region configuration
+
+### Changed
+- `AnalysisService.RequestAnalysisAsync` signature now includes optional `location` parameter
+
 ## [1.1.0] - 2025-11-24
 
 ### Added
