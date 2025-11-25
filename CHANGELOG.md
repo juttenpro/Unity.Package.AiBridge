@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2025-01-25
+
+### Added
+- **ElevenLabs Speed parameter support**
+  - **Feature**: Control speech speed for TTS voices (0.7 - 1.2, default 1.0)
+  - **New Property**: `ConversationRequest.TtsSpeed` - Speech speed multiplier
+  - **How It Works**:
+    - Unity specifies speed per TTS configuration
+    - Values < 1.0 slow down speech, > 1.0 speed up speech
+    - Parameter passed through entire pipeline: Unity → AIBridge → Backend → ElevenLabs API
+  - **Use Case**:
+    - Adjust speech pace for better comprehension
+    - Match voice speed to scenario requirements
+    - Improve accessibility for different user needs
+  - **Backward Compatibility**: Speed defaults to 1.0 (normal speed), existing code continues to work
+  - **Business Impact**:
+    - Improved user experience with adjustable speech pace
+    - Better accessibility compliance
+    - More natural-sounding conversations
+
 ## [1.1.1] - 2025-01-24
 
 ### Added

@@ -37,6 +37,7 @@ namespace Tsc.AIBridge.Core
         public float TtsSimilarityBoost { get; set; } = 0.75f;
         public bool TtsSpeakerBoost { get; set; } = true;
         public float TtsStyle { get; set; } = 0f;
+        public float TtsSpeed { get; set; } = 1.0f;
         public bool AllowInterruption { get; set; } = true;
         public float InterruptionPersistenceTime { get; set; } = 1.5f;
     }
