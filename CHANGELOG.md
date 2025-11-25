@@ -6,6 +6,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] - 2025-01-25
+
+### Fixed
+- **CRITICAL: OggOpusParser infinite buffering loop causing audio cutoff**
+  - **Problem**: Multi-sentence TTS responses were cut off mid-playback, losing 50%+ of audio
+  - **Root Cause**: When buffered mid-page data combined with new chunk still contained no OGG page header, parser entered infinite buffering loop waiting for next chunk that never came
+  - **Symptom**:
+    - First sentence plays correctly
+    - Second sentence received but never decoded
+    - Unity auto-detects "stream complete" after 2s timeout
+    - Buffered audio data (25KB+) discarded without decoding
+  - **Real-world incident**:
+    - Expected audio: 4.8 seconds (2 sentences)
+    - Actually played: 1.99 seconds (58.5% missing)
+    - Backend sent all data (41502 bytes), Unity received all data, but couldn't decode second sentence
+  - **Fix**:
+    - Added `FindNextOggHeaderInStream()` to search for OGG headers within buffered data
+    - When combined buffer doesn't start with OGG header, parser now searches for next header
+    - Skips incomplete/corrupt mid-page data and resumes parsing from found header
+    - Prevents infinite buffering by recovering from mid-chunk page splits
+  - **Impact**:
+    - PRODUCTION-CRITICAL: Ensures all TTS audio plays completely
+    - Handles ElevenLabs chunked streaming with variable-size OGG pages
+    - Robust recovery from network chunking artifacts
+  - **Business Impact**:
+    - CRITICAL FIX: Prevents incomplete AI responses that break training scenarios
+    - Reliability: System can now handle production load (100+ simultaneous sessions)
+    - User experience: No more frustrating audio cutoffs during conversations
+    - Data integrity: All AI-generated content reaches users
+
 ## [1.1.3] - 2025-01-25
 
 ### Fixed

@@ -263,6 +263,62 @@ namespace Tsc.AIBridge.Audio.Codecs
         }
 
         /// <summary>
+        /// Search for the next OGG header ("OggS") in the input stream starting from the given position.
+        /// Returns the position of the OGG header, or -1 if not found.
+        /// </summary>
+        private int FindNextOggHeaderInStream(long startPosition)
+        {
+            if (!_inputStream.CanSeek)
+                return -1;
+
+            var originalPosition = _inputStream.Position;
+
+            try
+            {
+                _inputStream.Position = startPosition;
+
+                // Search for "OggS" pattern
+                const int searchBufferSize = 4096;
+                var searchBuffer = new byte[searchBufferSize];
+                var overlap = 3; // Need to check 3 bytes overlap for "OggS" pattern
+
+                while (_inputStream.Position < _inputStream.Length)
+                {
+                    var bytesToRead = (int)Math.Min(searchBufferSize, _inputStream.Length - _inputStream.Position);
+                    var bytesRead = _inputStream.Read(searchBuffer, 0, bytesToRead);
+
+                    if (bytesRead < 4)
+                        break; // Not enough data for OGG header
+
+                    // Search for "OggS" pattern in the buffer
+                    for (var i = 0; i < bytesRead - 3; i++)
+                    {
+                        if (searchBuffer[i] == 'O' && searchBuffer[i + 1] == 'g' &&
+                            searchBuffer[i + 2] == 'g' && searchBuffer[i + 3] == 'S')
+                        {
+                            // Found OGG header!
+                            var foundPosition = _inputStream.Position - bytesRead + i;
+                            return (int)foundPosition;
+                        }
+                    }
+
+                    // Move back by overlap to ensure we don't miss a pattern at buffer boundary
+                    if (_inputStream.Position < _inputStream.Length)
+                    {
+                        _inputStream.Position -= overlap;
+                    }
+                }
+
+                return -1; // Not found
+            }
+            finally
+            {
+                // Restore original position
+                _inputStream.Position = originalPosition;
+            }
+        }
+
+        /// <summary>
         /// Read bytes from stream with partial read support
         /// </summary>
         /// <returns>Number of bytes actually read</returns>
@@ -401,26 +457,52 @@ namespace Tsc.AIBridge.Audio.Codecs
                 _headerBuffer[2] != 'g' || _headerBuffer[3] != 'S')
             {
                 // This is likely mid-page data from a chunked stream
-                // Buffer this incomplete data and wait for next chunk that contains the page start
-                if (_isVerboseLogging)
+                // CRITICAL FIX: Search for next OGG header within current stream to avoid infinite buffering
+                // This handles the case where buffered mid-page data + new chunk still doesn't form a complete page
+
+                var currentPosition = _inputStream.Position - 27;
+                var searchStartPosition = currentPosition;
+                var nextOggHeaderPosition = FindNextOggHeaderInStream(searchStartPosition);
+
+                if (nextOggHeaderPosition >= 0)
                 {
-                    Debug.Log($"[OggOpusParser] Non-OGG header detected at position {_inputStream.Position - 27}: {_headerBuffer[0]:X2} {_headerBuffer[1]:X2} {_headerBuffer[2]:X2} {_headerBuffer[3]:X2}");
-                    Debug.Log($"[OggOpusParser] Likely mid-page data from chunked stream. Buffering for next chunk...");
+                    // Found an OGG header further in the stream!
+                    // Skip the incomplete/corrupt data before it
+                    var skippedBytes = nextOggHeaderPosition - currentPosition;
+
+                    Debug.LogWarning($"[OggOpusParser] Skipped {skippedBytes} bytes of incomplete page data at position {currentPosition}");
+                    if (_isVerboseLogging)
+                        Debug.Log($"[OggOpusParser] Found OGG header at position {nextOggHeaderPosition}, resuming parsing from there");
+
+                    // Move stream to the found OGG header and retry
+                    _inputStream.Position = nextOggHeaderPosition;
+
+                    // Recursive call to parse from the found OGG header
+                    return ReadOggPage();
                 }
+                else
+                {
+                    // No OGG header found in current stream - buffer and wait for next chunk
+                    if (_isVerboseLogging)
+                    {
+                        Debug.Log($"[OggOpusParser] Non-OGG header detected at position {currentPosition}: {_headerBuffer[0]:X2} {_headerBuffer[1]:X2} {_headerBuffer[2]:X2} {_headerBuffer[3]:X2}");
+                        Debug.Log($"[OggOpusParser] No OGG header found in stream. Buffering for next chunk...");
+                    }
 
-                // Buffer all remaining data in this chunk
-                var remainingInChunk = new byte[_inputStream.Length - (_inputStream.Position - 27)];
-                _inputStream.Position -= 27; // Rewind to include header bytes we just read
-                var bytesRead = _inputStream.Read(remainingInChunk, 0, remainingInChunk.Length);
+                    // Buffer all remaining data in this chunk
+                    var remainingInChunk = new byte[_inputStream.Length - currentPosition];
+                    _inputStream.Position = currentPosition;
+                    var bytesRead = _inputStream.Read(remainingInChunk, 0, remainingInChunk.Length);
 
-                _incompletePageBuffer.AddRange(new ArraySegment<byte>(remainingInChunk, 0, bytesRead));
+                    _incompletePageBuffer.AddRange(new ArraySegment<byte>(remainingInChunk, 0, bytesRead));
 
-                if (_isVerboseLogging)
-                    Debug.Log($"[OggOpusParser] Buffered {bytesRead} bytes of incomplete page data (total buffered: {_incompletePageBuffer.Count})");
+                    if (_isVerboseLogging)
+                        Debug.Log($"[OggOpusParser] Buffered {bytesRead} bytes of incomplete page data (total buffered: {_incompletePageBuffer.Count})");
 
-                // Return false to signal no complete page available yet
-                // Next ProcessData() call will combine buffered data with new chunk
-                return false;
+                    // Return false to signal no complete page available yet
+                    // Next ProcessData() call will combine buffered data with new chunk
+                    return false;
+                }
             }
 
             // Parse header fields
