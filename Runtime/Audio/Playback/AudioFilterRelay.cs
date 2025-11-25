@@ -119,6 +119,11 @@ namespace Tsc.AIBridge.Audio.Playback
                 _audioSource.loop = true;
                 _audioSource.Play();
 
+                // CRITICAL: Ensure AudioSource is unmuted on initialization
+                // If AudioSource was muted from a previous session or startup state,
+                // streaming audio would be inaudible even though samples are being processed
+                _audioSource.mute = false;
+
                 // Check if Unity's output sample rate matches our TTS audio clip sample rate
                 var systemSampleRate = AudioSettings.outputSampleRate;
                 if (systemSampleRate != sampleRate)

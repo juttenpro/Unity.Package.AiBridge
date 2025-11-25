@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.3] - 2025-01-25
+
+### Fixed
+- **AudioFilterRelay initialization mute state**
+  - **Problem**: Streaming audio was inaudible when started without prior scripted audio playback
+  - **Root Cause**: `AudioFilterRelay.Initialize()` did not explicitly unmute the AudioSource
+  - **Symptom**: Samples were being processed (visible in logs) but no audio output
+  - **Fix**: Added `_audioSource.mute = false;` in `Initialize()` method
+  - **Impact**: Ensures streaming audio is always audible, regardless of AudioSource initial state
+  - **When This Occurs**:
+    - First streaming audio in a session
+    - After scene transitions
+    - After AudioSource was muted by previous operations
+  - **Business Impact**:
+    - CRITICAL: Prevents silent AI responses that appear to work but produce no audio
+    - Improves reliability of first-time conversation experiences
+    - Eliminates confusion when users see "talking" animation but hear nothing
+
 ## [1.1.2] - 2025-01-25
 
 ### Added
