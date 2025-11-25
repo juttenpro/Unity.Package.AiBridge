@@ -79,12 +79,23 @@ namespace Tsc.AIBridge.Audio.Playback
         /// </summary>
         private void Initialize()
         {
+            Debug.Log($"[AudioFilterRelay] Initialize() called on {gameObject.name} - _isInitialized={_isInitialized}, _audioSource={((_audioSource != null) ? "NOT NULL" : "NULL")}");
+
             if (_isInitialized)
             {
+                Debug.Log($"[AudioFilterRelay] Already initialized on {gameObject.name}, skipping");
                 return;
             }
 
             _isInitialized = true;
+
+            // CRITICAL: Initialize() may be called before Awake() due to Unity's script execution order
+            // If _audioSource is null, try to get it now
+            if (_audioSource == null)
+            {
+                _audioSource = GetComponent<AudioSource>();
+                Debug.Log($"[AudioFilterRelay] _audioSource was null, retrieved via GetComponent: {(_audioSource != null ? "SUCCESS" : "FAILED")}");
+            }
 
             // Configure AudioSource for streaming with spatial audio support
             if (_audioSource)
@@ -119,11 +130,6 @@ namespace Tsc.AIBridge.Audio.Playback
                 _audioSource.loop = true;
                 _audioSource.Play();
 
-                // CRITICAL: Ensure AudioSource is unmuted on initialization
-                // If AudioSource was muted from a previous session or startup state,
-                // streaming audio would be inaudible even though samples are being processed
-                _audioSource.mute = false;
-
                 // Check if Unity's output sample rate matches our TTS audio clip sample rate
                 var systemSampleRate = AudioSettings.outputSampleRate;
                 if (systemSampleRate != sampleRate)
@@ -138,9 +144,13 @@ namespace Tsc.AIBridge.Audio.Playback
                         $"See README.md for details."
                     );
                 }
-            }
 
-            //Debug.Log($"[AudioFilterRelay] Initialized on {gameObject.name}");
+                Debug.Log($"[AudioFilterRelay] Initialized on {gameObject.name} - clip={(_audioSource.clip != null ? _audioSource.clip.name : "null")}, loop={_audioSource.loop}, isPlaying={_audioSource.isPlaying}");
+            }
+            else
+            {
+                Debug.LogError($"[AudioFilterRelay] Initialize() called but _audioSource is NULL on {gameObject.name}! Dummy clip was NOT created!");
+            }
         }
 
         /// <summary>
@@ -195,13 +205,58 @@ namespace Tsc.AIBridge.Audio.Playback
         public void StartPlayback()
         {
             _isPlaybackActive = true;
+
+            // DEFENSIVE PROGRAMMING: Ensure AudioSource exists
+            if (_audioSource == null)
+            {
+                _audioSource = GetComponent<AudioSource>();
+                Debug.LogWarning($"[AudioFilterRelay] StartPlayback: _audioSource was null, retrieved via GetComponent: {(_audioSource != null ? "SUCCESS" : "FAILED")}");
+            }
+
             if (_audioSource)
             {
+                // DEFENSIVE PROGRAMMING: If dummy clip is missing, recreate it
+                // This handles edge cases where:
+                // - Initialize() was called before AudioSource was available
+                // - Clip was destroyed/nulled by external code
+                // - NPC was spawned at runtime after scene start
+                if (_audioSource.clip == null)
+                {
+                    Debug.LogWarning($"[AudioFilterRelay] StartPlayback: clip is null, recreating dummy clip for spatial audio");
+
+                    var sampleRate = 48000;
+                    var channels = 1;
+                    var clipLength = sampleRate;
+                    var streamingClip = AudioClip.Create(StreamingClipName, clipLength, channels, sampleRate, false);
+
+                    var dummyBuffer = new float[clipLength];
+                    for (int i = 0; i < clipLength; i++)
+                    {
+                        dummyBuffer[i] = SpatialDummyValue;
+                    }
+                    streamingClip.SetData(dummyBuffer, 0);
+
+                    _audioSource.clip = streamingClip;
+                    _audioSource.loop = true;
+
+                    Debug.Log($"[AudioFilterRelay] Recreated dummy clip: {streamingClip.name}");
+                }
+
+                // DEBUG: Log AudioSource state BEFORE unmute
+                Debug.Log($"[AudioFilterRelay] StartPlayback on {gameObject.name} - BEFORE: mute={_audioSource.mute}, volume={_audioSource.volume}, enabled={_audioSource.enabled}, isPlaying={_audioSource.isPlaying}, clip={(_audioSource.clip != null ? _audioSource.clip.name : "null")}");
+
                 _audioSource.mute = false; // Unmute when starting
                 if (!_audioSource.isPlaying)
                 {
                     _audioSource.Play();
                 }
+
+                // DEBUG: Log AudioSource state AFTER unmute
+                Debug.Log($"[AudioFilterRelay] StartPlayback on {gameObject.name} - AFTER: mute={_audioSource.mute}, volume={_audioSource.volume}, enabled={_audioSource.enabled}, isPlaying={_audioSource.isPlaying}, clip={(_audioSource.clip != null ? _audioSource.clip.name : "null")}");
+            }
+            else
+            {
+                Debug.LogError($"[AudioFilterRelay] StartPlayback called but AudioSource is NULL on {gameObject.name}!");
             }
         }
 
@@ -258,6 +313,8 @@ namespace Tsc.AIBridge.Audio.Playback
 
                 _audioSource.clip = newClip;
                 _audioSource.loop = true;
+
+                Debug.Log($"[AudioFilterRelay] StopPlayback recreated dummy clip on {gameObject.name} - clip={(_audioSource.clip != null ? _audioSource.clip.name : "null")}");
 
                 // CRITICAL: Reset AudioSource internal buffers to prevent audio bleeding
                 // Unity's DSP pipeline can retain samples in internal buffers (~100-200ms)
