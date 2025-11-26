@@ -82,6 +82,48 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("sttProvider")]
         public string sttProvider;
 
+        #region ElevenLabs Voice Settings
+
+        /// <summary>
+        /// ElevenLabs voice stability (0.0 to 1.0) - controls consistency.
+        /// Lower values allow more expressive/variable speech.
+        /// </summary>
+        [Range(0f, 1f)]
+        [JsonProperty("voiceStability")]
+        public float? voiceStability;
+
+        /// <summary>
+        /// ElevenLabs voice similarity boost (0.0 to 1.0) - controls voice matching.
+        /// Higher values make the voice more similar to the original.
+        /// </summary>
+        [Range(0f, 1f)]
+        [JsonProperty("voiceSimilarityBoost")]
+        public float? voiceSimilarityBoost;
+
+        /// <summary>
+        /// ElevenLabs voice style exaggeration (0.0 to 1.0) - for newer models.
+        /// Controls the expressiveness and style of the speech.
+        /// </summary>
+        [Range(0f, 1f)]
+        [JsonProperty("voiceStyle")]
+        public float? voiceStyle;
+
+        /// <summary>
+        /// ElevenLabs speaker boost - enhances clarity and presence.
+        /// </summary>
+        [JsonProperty("voiceUseSpeakerBoost")]
+        public bool? voiceUseSpeakerBoost;
+
+        /// <summary>
+        /// ElevenLabs voice speed (0.7 to 1.2) - controls speech rate.
+        /// Default 1.0 is normal speed, lower is slower, higher is faster.
+        /// </summary>
+        [Range(0.7f, 1.2f)]
+        [JsonProperty("voiceSpeed")]
+        public float? voiceSpeed;
+
+        #endregion
+
         /// <summary>
         /// Response format for LLM output (OpenAI-compatible providers only).
         /// Use "json_object" to request clean JSON without markdown code blocks.

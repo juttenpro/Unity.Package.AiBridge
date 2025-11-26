@@ -1361,7 +1361,12 @@ namespace Tsc.AIBridge.Core
                         maxTokens = request.NpcConfig?.MaxTokens ?? 0,
                         ttsModel = request.NpcConfig?.TtsModel,
                         sttProvider = request.NpcConfig?.SttProvider,
-                        // Audio settings removed - API always uses opus_48000_64
+                        // ElevenLabs voice settings (from ConversationRequest, set by RuleSystem)
+                        voiceStability = _currentConversationRequest?.TtsStability,
+                        voiceSimilarityBoost = _currentConversationRequest?.TtsSimilarityBoost,
+                        voiceStyle = _currentConversationRequest?.TtsStyle,
+                        voiceUseSpeakerBoost = _currentConversationRequest?.TtsSpeakerBoost,
+                        voiceSpeed = _currentConversationRequest?.TtsSpeed,
                     }
                 };
 
