@@ -194,6 +194,13 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("voiceUseSpeakerBoost")]
         public bool VoiceUseSpeakerBoost { get; set; } = true;
 
+        /// <summary>
+        /// ElevenLabs voice speed (0.7 to 1.2) - controls speech rate
+        /// Default 1.0 is normal speed, lower is slower, higher is faster
+        /// </summary>
+        [JsonProperty("voiceSpeed")]
+        public float VoiceSpeed { get; set; } = 1.0f;
+
         public SessionStartMessage()
         {
             Type = WebSocketMessageTypes.SessionStart;

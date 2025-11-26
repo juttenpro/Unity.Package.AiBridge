@@ -1194,6 +1194,12 @@ namespace Tsc.AIBridge.Core
                     TtsModel = parameters.Model,
                     TtsOutputFormat = parameters.AudioFormat,
                     TtsStreamingMode = parameters.TtsStreamingMode,
+                    // ElevenLabs voice settings (from ConversationRequest, set by RuleSystem)
+                    VoiceStability = request.TtsStability,
+                    VoiceSimilarityBoost = request.TtsSimilarityBoost,
+                    VoiceStyle = request.TtsStyle,
+                    VoiceUseSpeakerBoost = request.TtsSpeakerBoost,
+                    VoiceSpeed = request.TtsSpeed,
                     // LLM settings
                     LlmProvider = parameters.LlmProvider,
                     LlmModel = parameters.LlmModel,

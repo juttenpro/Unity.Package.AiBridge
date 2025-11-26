@@ -83,6 +83,29 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public bool EnableMetrics { get; set; }
 
-        
+        /// <summary>
+        /// ElevenLabs voice stability (0.0 to 1.0) - controls consistency
+        /// </summary>
+        public float VoiceStability { get; set; } = 0.5f;
+
+        /// <summary>
+        /// ElevenLabs voice similarity boost (0.0 to 1.0) - controls voice matching
+        /// </summary>
+        public float VoiceSimilarityBoost { get; set; } = 0.75f;
+
+        /// <summary>
+        /// ElevenLabs voice style exaggeration (0.0 to 1.0)
+        /// </summary>
+        public float VoiceStyle { get; set; } = 0.0f;
+
+        /// <summary>
+        /// ElevenLabs speaker boost - enhances clarity and presence
+        /// </summary>
+        public bool VoiceUseSpeakerBoost { get; set; } = true;
+
+        /// <summary>
+        /// ElevenLabs voice speed (0.7 to 1.2) - controls speech rate
+        /// </summary>
+        public float VoiceSpeed { get; set; } = 1.0f;
     }
 }

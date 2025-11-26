@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.5] - 2025-11-26
+
+### Fixed
+- **CRITICAL: ElevenLabs voice settings not sent to backend**
+  - **Problem**: Voice settings (stability, similarity boost, style, speaker boost, speed) were not transmitted to the backend
+  - **Root Cause**: `RequestOrchestrator.SessionStartMessage` creation did not include voice settings from `ConversationRequest`
+  - **Symptom**: Changing ElevenLabs speed parameter (e.g., 0.7) in Unity had no effect on TTS output
+  - **Impact**: All voice customization from Unity API templates was ignored
+  - **Fix**:
+    - Added `VoiceSpeed` property to `SessionStartMessage` (WebSocketMessages.cs)
+    - Added voice setting properties to `ConnectionParameters.cs` for consistency
+    - Updated `RequestOrchestrator.cs` to pass all voice settings from `ConversationRequest` to `SessionStartMessage`:
+      - `VoiceStability` = request.TtsStability
+      - `VoiceSimilarityBoost` = request.TtsSimilarityBoost
+      - `VoiceStyle` = request.TtsStyle
+      - `VoiceUseSpeakerBoost` = request.TtsSpeakerBoost
+      - `VoiceSpeed` = request.TtsSpeed
+  - **Business Impact**:
+    - Voice customization now works as intended
+    - Speed control enables accessibility adjustments (slower for comprehension)
+    - All ElevenLabs voice parameters can be tuned per NPC/scenario
+
 ## [1.1.4] - 2025-01-25
 
 ### Fixed
