@@ -122,6 +122,7 @@ namespace Tsc.AIBridge.Core
         private ConversationSession _currentSession;
         private INpcConfiguration _activeNpcConfig;
         private NpcClientBase _activeNpcClient; // Cache to avoid FindObjectsByType
+        private ConversationRequest _currentConversationRequest; // Store for voice settings access
         private bool _isProcessingRequest; // Queue management - prevents concurrent request STARTS
         private bool _isRequestActive; // Request lifecycle - true from StartAudioRequest until EndAudioRequest/Cancel
         private Coroutine _processQueueCoroutine;
@@ -350,6 +351,9 @@ namespace Tsc.AIBridge.Core
                     }
                 }
             }
+
+            // Store the request for later access to voice settings
+            _currentConversationRequest = request;
 
             // Create a temporary configuration wrapper for the request
             var config = new ConversationRequestAdapter(request);
@@ -1195,11 +1199,11 @@ namespace Tsc.AIBridge.Core
                     TtsOutputFormat = parameters.AudioFormat,
                     TtsStreamingMode = parameters.TtsStreamingMode,
                     // ElevenLabs voice settings (from ConversationRequest, set by RuleSystem)
-                    VoiceStability = request.TtsStability,
-                    VoiceSimilarityBoost = request.TtsSimilarityBoost,
-                    VoiceStyle = request.TtsStyle,
-                    VoiceUseSpeakerBoost = request.TtsSpeakerBoost,
-                    VoiceSpeed = request.TtsSpeed,
+                    VoiceStability = _currentConversationRequest?.TtsStability ?? 0.5f,
+                    VoiceSimilarityBoost = _currentConversationRequest?.TtsSimilarityBoost ?? 0.75f,
+                    VoiceStyle = _currentConversationRequest?.TtsStyle ?? 0f,
+                    VoiceUseSpeakerBoost = _currentConversationRequest?.TtsSpeakerBoost ?? true,
+                    VoiceSpeed = _currentConversationRequest?.TtsSpeed ?? 1.0f,
                     // LLM settings
                     LlmProvider = parameters.LlmProvider,
                     LlmModel = parameters.LlmModel,
