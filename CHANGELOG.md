@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.10] - 2025-11-27
+
+### Changed
+- **Removed unused field `_isWaitingForAudioStart` from RequestOrchestrator**
+  - Field was assigned but never read, causing CS0414 compiler warning
+  - No functional change
+
 ## [1.1.9] - 2025-11-27
 
 ### Fixed

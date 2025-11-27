@@ -134,9 +134,6 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public event Action<NpcClientBase, INpcConfiguration> OnActiveNpcChanged;
 
-        // For tracking whether we're waiting for audio to finish
-        private bool _isWaitingForAudioStart;
-
         // Connection state tracking (prevent warning spam)
         private bool _wasConnectedLastFrame = true;
         private float _lastConnectionWarningTime;
@@ -270,7 +267,6 @@ namespace Tsc.AIBridge.Core
 
                     // Reset request state
                     _isRequestActive = false;
-                    _isWaitingForAudioStart = false;
 
                     // Clear reconnection buffer to prevent stale audio
                     _reconnectionAudioBuffer.Clear();
