@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.8] - 2025-11-27
+
+### Fixed
+- **Distance attenuation not working for streaming audio**
+  - **Problem**: Streaming AI audio sounded "closer" than scripted audio - stereo panning worked but distance rolloff did not
+  - **Root Cause**: `SpatialDummyValue` (1e-6) was too small for Unity's audio pipeline
+    - Very small float values may be clipped/denormalized by audio DSP
+    - Distance attenuation calculations require sufficient precision
+    - Stereo panning (simpler calculation) still worked
+  - **Symptom**:
+    - AI voice at correct left/right position
+    - But volume doesn't decrease with distance like scripted audio
+    - Feels like audio is "in your head" or very close
+  - **Fix**:
+    - Increased `SpatialDummyValue` from 1e-6 to 1e-4
+    - 1e-4 = -80dB = still completely inaudible if leaked
+    - Large enough for proper spatial weight calculations including distance rolloff
+  - **Business Impact**:
+    - Distance-based volume attenuation now works for streaming audio
+    - AI voice sounds spatially consistent with scripted audio
+    - Proper immersion in 3D/VR environments
+
 ## [1.1.7] - 2025-11-27
 
 ### Fixed

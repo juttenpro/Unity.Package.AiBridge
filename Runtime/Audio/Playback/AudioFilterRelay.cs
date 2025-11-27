@@ -44,7 +44,10 @@ namespace Tsc.AIBridge.Audio.Playback
 
         // Tiny value used in dummy clip for spatial weight calculation
         // Must be small enough to be inaudible if leaked, but large enough to avoid floating point issues
-        private const float SpatialDummyValue = 1e-6f;
+        // NOTE: 1e-6 was too small - Unity's audio pipeline may clip/denormalize very small values
+        // causing distance attenuation to not work correctly. 1e-4 (-80dB) is still inaudible
+        // but large enough for proper spatial weight calculation including distance rolloff.
+        private const float SpatialDummyValue = 1e-4f;
 
 
         private void Awake()
