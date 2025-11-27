@@ -130,6 +130,10 @@ namespace Tsc.AIBridge.Audio.Playback
                 _audioSource.loop = true;
                 _audioSource.Play();
 
+                // CRITICAL: Update cached clip name immediately for audio thread
+                // Don't wait for Update() - OnAudioFilterRead needs this NOW for spatial audio
+                _cachedClipName = streamingClip.name;
+
                 // Check if Unity's output sample rate matches our TTS audio clip sample rate
                 var systemSampleRate = AudioSettings.outputSampleRate;
                 if (systemSampleRate != sampleRate)
@@ -239,6 +243,9 @@ namespace Tsc.AIBridge.Audio.Playback
                     _audioSource.clip = streamingClip;
                     _audioSource.loop = true;
 
+                    // CRITICAL: Update cached clip name immediately for audio thread
+                    _cachedClipName = streamingClip.name;
+
                     Debug.Log($"[AudioFilterRelay] Recreated dummy clip: {streamingClip.name}");
                 }
 
@@ -313,6 +320,11 @@ namespace Tsc.AIBridge.Audio.Playback
 
                 _audioSource.clip = newClip;
                 _audioSource.loop = true;
+
+                // CRITICAL: Update cached clip name immediately for audio thread
+                // This is the most important place - streaming audio will start right after StopPlayback
+                // and OnAudioFilterRead needs to see the streaming dummy clip name for spatial audio to work
+                _cachedClipName = newClip.name;
 
                 Debug.Log($"[AudioFilterRelay] StopPlayback recreated dummy clip on {gameObject.name} - clip={(_audioSource.clip != null ? _audioSource.clip.name : "null")}");
 

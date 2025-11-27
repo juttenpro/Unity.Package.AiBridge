@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.7] - 2025-11-27
+
+### Fixed
+- **Spatial audio not working for streaming audio after scripted audio**
+  - **Problem**: Streaming AI audio sounded louder and "more direct" than scripted audio - lacking spatial positioning
+  - **Root Cause**: Race condition between clip creation and `_cachedClipName` update
+    - `StopPlayback()` creates new streaming dummy clip
+    - `_cachedClipName` is only updated in `Update()` (next frame)
+    - `OnAudioFilterRead()` runs immediately on audio thread with OLD clip name
+    - `hasStreamingDummyClip` = false → fallback path (weights = 1.0) used for ENTIRE session
+  - **Symptom**:
+    - AI streaming audio louder than scripted audio
+    - No distance attenuation or stereo panning on streaming audio
+    - Audio sounds "in your head" instead of from NPC position
+  - **Fix**:
+    - Update `_cachedClipName` immediately when clip is created in:
+      - `Initialize()` - initial streaming clip
+      - `StartPlayback()` - when recreating clip
+      - `StopPlayback()` - most critical, streaming starts right after this
+    - String assignment is atomic, safe for cross-thread read
+  - **Business Impact**:
+    - Restores proper 3D spatial audio for streaming audio
+    - AI voice now sounds consistent with scripted audio positioning
+    - Immersion maintained during conversations
+
 ## [1.1.6] - 2025-11-27
 
 ### Fixed
