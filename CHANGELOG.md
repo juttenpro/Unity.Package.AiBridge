@@ -6,6 +6,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.11] - 2025-11-27
+
+### Fixed
+- **CRITICAL: AnalysisService concurrent request timeout**
+  - **Problem**: When multiple analysis requests were sent simultaneously, only the last request completed successfully. Earlier requests timed out after 30 seconds with "RequestId mismatch" warnings.
+  - **Root Cause**: AnalysisService used single `_pendingTask` and `_pendingRequestId` fields, designed for only one request at a time. When multiple requests were sent (e.g., from RuleSystem within milliseconds), the second request overwrote these fields. The response for the first request was then rejected due to RequestId mismatch.
+  - **Symptoms**:
+    - `[AnalysisService] Analysis response received but RequestId mismatch. Expected: X, Got: Y`
+    - `[AnalysisService] Analysis request timed out after 30 seconds`
+    - Analysis results appearing for wrong requests
+  - **Fix**: Replaced single fields with `ConcurrentDictionary<string, TaskCompletionSource>` to track multiple concurrent requests. Each request now has its own TaskCompletionSource identified by RequestId.
+  - **Business Impact**:
+    - Eliminates analysis timeouts in scenarios with multiple concurrent evaluations
+    - Enables proper parallel RuleSystem analysis requests
+    - Prevents incorrect analysis data from being attributed to wrong conversations
+  - **Location**: AnalysisService.cs
+
+- **WebSocketClient race condition causing NullReferenceException**
+  - **Problem**: `NullReferenceException` in various `Send*Async` methods (SendResumeStreamAsync, SendPauseStreamAsync, etc.) when WebSocket connection was lost between connection check and send operation.
+  - **Root Cause**: After `EnsureConnectionAsync()` returned `true`, the `_webSocket` field could become null before the subsequent `_webSocket.SendJsonAsync()` call due to concurrent disconnect operations.
+  - **Symptoms**:
+    - `NullReferenceException: Object reference not set to an instance of an object` at `WebSocketClient.SendResumeStreamAsync()`
+    - Sporadic failures during network instability
+    - Errors when resuming paused audio streams
+  - **Fix**: All Send methods now capture a local reference to `_webSocket` after `EnsureConnectionAsync()` and verify it's still connected before sending. This prevents race conditions by using the captured reference.
+  - **Methods Fixed**:
+    - `SendSessionStartAsync`
+    - `SendBinaryAsync`
+    - `SendEndOfSpeechAsync`
+    - `SendEndOfAudioAsync`
+    - `SendSessionCancelAsync`
+    - `SendInterruptionOccurredAsync`
+    - `SendTextInputAsync`
+    - `SendDirectTTSAsync`
+    - `SendAnalysisRequestAsync`
+    - `SendPauseStreamAsync`
+    - `SendResumeStreamAsync`
+  - **Business Impact**:
+    - Eliminates NullReferenceExceptions during network instability
+    - Improves reliability of audio pause/resume during editor pause
+    - Prevents crashes when connection is lost during active streaming
+  - **Location**: WebSocketClient.cs
+
 ## [1.1.10] - 2025-11-27
 
 ### Changed

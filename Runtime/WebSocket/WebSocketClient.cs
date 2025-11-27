@@ -352,10 +352,18 @@ namespace Tsc.AIBridge.WebSocket
             // Pre-register the NPC for this RequestId (no handler yet, but reserve the slot)
             // The actual handler will be set when RegisterNpc is called
 
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for SessionStart");
+                throw new InvalidOperationException("Connection lost after establishing WebSocket connection");
+            }
+
             // Send the message (check for cancellation)
             cancellationToken.ThrowIfCancellationRequested();
 
-            await _webSocket.SendJsonAsync(message);
+            await webSocket.SendJsonAsync(message);
 
             if (enableVerboseLogging)
                 Debug.Log($"[UnifiedWebSocket] Sent SessionStart for RequestId: {message.RequestId}");
@@ -376,7 +384,15 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
-            await _webSocket.SendBinaryAsync(audioData);
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for SendBinary");
+                return;
+            }
+
+            await webSocket.SendBinaryAsync(audioData);
         }
 
         /// <summary>
@@ -394,13 +410,21 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for EndOfSpeech");
+                return;
+            }
+
             var message = new EndOfSpeechMessage
             {
                 Type = "EndOfSpeech",
                 RequestId = requestId
             };
 
-            await _webSocket.SendJsonAsync(message);
+            await webSocket.SendJsonAsync(message);
         }
 
         /// <summary>
@@ -418,13 +442,21 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for EndOfAudio");
+                return;
+            }
+
             var message = new EndOfAudioMessage
             {
                 Type = "EndOfAudio",
                 RequestId = requestId
             };
 
-            await _webSocket.SendJsonAsync(message);
+            await webSocket.SendJsonAsync(message);
         }
 
         /// <summary>
@@ -432,13 +464,15 @@ namespace Tsc.AIBridge.WebSocket
         /// </summary>
         public async Task SendSessionCancelAsync(SessionCancelMessage message)
         {
-            if (_webSocket == null || !_webSocket.IsConnected)
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
             {
                 Debug.LogError("[UnifiedWebSocket] Cannot send SessionCancel - not connected!");
                 return;
             }
 
-            await _webSocket.SendJsonAsync(message);
+            await webSocket.SendJsonAsync(message);
             if (enableVerboseLogging)
                 Debug.Log($"[UnifiedWebSocket] Sent SessionCancel for RequestId: {message.RequestId}");
         }
@@ -455,7 +489,15 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
-            await _webSocket.SendJsonAsync(message);
+            // Capture local reference to prevent race condition (connection could be lost between check and send)
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for InterruptionOccurred");
+                return;
+            }
+
+            await webSocket.SendJsonAsync(message);
 
             // CRITICAL FIX: NativeWebSocket SendText() race condition
             // SendText() can return before the message is actually transmitted over the network.
@@ -480,7 +522,15 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
-            await _webSocket.SendJsonAsync(message);
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for TextInput");
+                return;
+            }
+
+            await webSocket.SendJsonAsync(message);
             if (enableVerboseLogging)
                 Debug.Log($"[UnifiedWebSocket] Sent TextInput for RequestId: {message.RequestId}, Text: '{message.Text}'");
         }
@@ -497,7 +547,15 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
-            await _webSocket.SendJsonAsync(message);
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for DirectTTS");
+                return;
+            }
+
+            await webSocket.SendJsonAsync(message);
             if (enableVerboseLogging)
                 Debug.Log($"[UnifiedWebSocket] Sent DirectTTS for RequestId: {message.RequestId}, Text: '{message.Text}', Voice: {message.Voice ?? "default"}");
         }
@@ -514,7 +572,15 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
-            await _webSocket.SendJsonAsync(message);
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for AnalysisRequest");
+                return;
+            }
+
+            await webSocket.SendJsonAsync(message);
             if (enableVerboseLogging)
                 Debug.Log($"[UnifiedWebSocket] Sent AnalysisRequest for RequestId: {message.RequestId}, Model: {message.Context?.llmModel ?? "default"}");
         }
@@ -531,7 +597,15 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
-            await _webSocket.SendJsonAsync(message);
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for PauseStream");
+                return;
+            }
+
+            await webSocket.SendJsonAsync(message);
             if (enableVerboseLogging)
                 Debug.Log($"[UnifiedWebSocket] Sent PauseStream for RequestId: {message.RequestId}, Reason: {message.Reason ?? "none"}");
         }
@@ -548,7 +622,15 @@ namespace Tsc.AIBridge.WebSocket
                 return;
             }
 
-            await _webSocket.SendJsonAsync(message);
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+            {
+                Debug.LogError("[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for ResumeStream");
+                return;
+            }
+
+            await webSocket.SendJsonAsync(message);
             if (enableVerboseLogging)
                 Debug.Log($"[UnifiedWebSocket] Sent ResumeStream for RequestId: {message.RequestId}");
         }

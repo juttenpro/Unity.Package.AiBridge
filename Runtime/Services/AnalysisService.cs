@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -23,12 +24,17 @@ namespace Tsc.AIBridge.Services
     ///
     /// ARCHITECTURE: Pure C# singleton using async/await - no MonoBehaviour overhead.
     /// Uses TaskCompletionSource for event-driven async patterns.
+    /// Supports multiple concurrent analysis requests via ConcurrentDictionary.
     /// </summary>
     public class AnalysisService : INpcMessageHandler
     {
         private static AnalysisService _instance;
-        private TaskCompletionSource<AnalysisResponse> _pendingTask;
-        private string _pendingRequestId;
+
+        /// <summary>
+        /// Thread-safe dictionary to track multiple concurrent analysis requests.
+        /// Key: RequestId, Value: TaskCompletionSource for that request.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, TaskCompletionSource<AnalysisResponse>> _pendingRequests = new();
 
         // Dependency injection for testability - public for test assembly access
         public IWebSocketClientAdapter WebSocketAdapter { get; set; }
@@ -54,6 +60,7 @@ namespace Tsc.AIBridge.Services
 
         /// <summary>
         /// Request analysis via WebSocket - simplest approach.
+        /// Supports multiple concurrent requests.
         /// </summary>
         /// <param name="messages">Chat history messages (system message should be first message with role="system" if needed)</param>
         /// <param name="llmProvider">LLM provider to use (e.g., "openai", "vertexai")</param>
@@ -88,19 +95,8 @@ namespace Tsc.AIBridge.Services
                 throw new ArgumentException("At least one message is required for analysis");
             }
 
-            // Create request
+            // Create request with unique ID
             var requestId = Guid.NewGuid().ToString();
-            //Debug.Log($"[AnalysisService] Creating analysis request with ID: {requestId}");
-
-            // LOG: Show all messages being sent to API for debugging
-            //Debug.Log($"[AnalysisService] === ANALYSIS REQUEST MESSAGES ({messages.Count} total) ===");
-            //for (int i = 0; i < messages.Count; i++)
-            //{
-            //    var msg = messages[i];
-            //    var preview = msg.Content.Length > 150 ? msg.Content.Substring(0, 150) + "..." : msg.Content;
-            //    Debug.Log($"[AnalysisService] Message {i}: Role='{msg.Role}', Content='{preview}'");
-            //}
-            //Debug.Log($"[AnalysisService] === END MESSAGES ===");
 
             var request = new AnalysisRequestMessage
             {
@@ -113,8 +109,8 @@ namespace Tsc.AIBridge.Services
                     llmModel = llmModel,
                     temperature = temperature,
                     maxTokens = maxTokens,
-                    responseFormat = responseFormat, // NEW: "json_object" for clean JSON without markdown
-                    location = location, // NEW: Google Cloud region for Vertex AI (optional)
+                    responseFormat = responseFormat,
+                    location = location,
                     // Language and VoiceId are optional - backend provides defaults
                     language = null,
                     voiceId = null,
@@ -126,75 +122,73 @@ namespace Tsc.AIBridge.Services
                 }
             };
 
-            // Create TaskCompletionSource for async result
-            _pendingTask = new TaskCompletionSource<AnalysisResponse>();
-            _pendingRequestId = requestId;
+            // Create TaskCompletionSource for this specific request
+            var tcs = new TaskCompletionSource<AnalysisResponse>();
+
+            // Add to pending requests dictionary
+            if (!_pendingRequests.TryAdd(requestId, tcs))
+            {
+                // Should never happen with GUIDs, but handle gracefully
+                throw new InvalidOperationException($"Duplicate RequestId generated: {requestId}");
+            }
 
             // Register as handler for this RequestId
-            //Debug.Log($"[AnalysisService] Registering as handler for RequestId: {requestId}");
             WebSocketAdapter.RegisterNpc(requestId, this);
 
             try
             {
                 // Send request via WebSocket
-                //Debug.Log($"[AnalysisService] Sending analysis request to backend - LLM: {llmProvider}/{llmModel}, Temp: {temperature}, MaxTokens: {maxTokens}");
                 await WebSocketAdapter.SendAnalysisRequestAsync(request);
-                //Debug.Log($"[AnalysisService] Analysis request sent, waiting for response...");
 
                 // Wait for response with 30 second timeout
                 var timeoutTask = Task.Delay(30000);
-                var completedTask = await Task.WhenAny(_pendingTask.Task, timeoutTask);
+                var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
 
                 if (completedTask == timeoutTask)
                 {
-                    Debug.LogError($"[AnalysisService] Analysis request timed out after 30 seconds");
+                    Debug.LogError($"[AnalysisService] Analysis request timed out after 30 seconds (RequestId: {requestId})");
                     throw new TimeoutException($"Analysis request timed out after 30 seconds");
                 }
 
                 // Return the successful result
-                return await _pendingTask.Task;
+                return await tcs.Task;
             }
             finally
             {
-                // Always unregister handler
+                // Always cleanup: unregister handler and remove from pending
                 WebSocketAdapter.UnregisterNpc(requestId);
-
-                // Clear state
-                _pendingRequestId = null;
-                _pendingTask = null;
+                _pendingRequests.TryRemove(requestId, out _);
             }
         }
 
-        public string NpcId => _pendingRequestId;
+        /// <summary>
+        /// NpcId is not used for routing in this service since we track multiple requests.
+        /// The WebSocketClient routes by RequestId which we register per-request.
+        /// </summary>
+        public string NpcId => "AnalysisService";
 
         public void OnTextMessage(string json)
         {
             try
             {
-                //Debug.Log($"[AnalysisService] OnTextMessage received: {(json.Length > 200 ? json.Substring(0, 200) + "..." : json)}");
-
                 // Quick check if JSON contains "type" field (optimization before full parse)
                 if (!json.Contains("\"type\"", StringComparison.OrdinalIgnoreCase))
                 {
-                    Debug.Log($"[AnalysisService] Message has no type field, ignoring");
                     return;
                 }
 
                 // Parse to check actual type value
-                //Debug.Log($"[AnalysisService] Parsing message to check type...");
                 var message = Newtonsoft.Json.JsonConvert.DeserializeObject<AnalysisResponseMessage>(json);
 
                 // Check if it's actually an analysis response
                 if (message == null ||
                     !string.Equals(message.Type, "analysisresponse", StringComparison.OrdinalIgnoreCase))
                 {
-                    //Debug.Log($"[AnalysisService] Message type is '{message?.Type ?? "null"}', not analysisresponse, ignoring");
                     return;
                 }
 
-                //Debug.Log($"[AnalysisService] Analysis response received successfully");
-
-                if (message.RequestId == _pendingRequestId)
+                // Find the TaskCompletionSource for this RequestId
+                if (_pendingRequests.TryGetValue(message.RequestId, out var tcs))
                 {
                     // Convert llmResponse object to JObject if needed
                     Newtonsoft.Json.Linq.JObject llmResponseJObject = null;
@@ -217,22 +211,18 @@ namespace Tsc.AIBridge.Services
                         timing = message.Timing
                     };
 
-                    //Debug.Log($"[AnalysisService] Analysis response processed for RequestId: {message.RequestId}");
-
                     // Complete the task with the result
-                    _pendingTask?.TrySetResult(response);
+                    tcs.TrySetResult(response);
                 }
                 else
                 {
-                    Debug.LogWarning($"[AnalysisService] Analysis response received but RequestId mismatch. Expected: {_pendingRequestId}, Got: {message.RequestId}");
+                    // This can happen if the request timed out and was cleaned up before the response arrived
+                    Debug.LogWarning($"[AnalysisService] Received response for unknown RequestId: {message.RequestId} (request may have timed out)");
                 }
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[AnalysisService] Failed to parse response: {ex.Message}\nStack trace: {ex.StackTrace}");
-
-                // Complete the task with an exception
-                _pendingTask?.TrySetException(new InvalidOperationException($"Failed to parse response: {ex.Message}", ex));
             }
         }
 
@@ -244,10 +234,6 @@ namespace Tsc.AIBridge.Services
         public void OnRequestComplete(string requestId)
         {
             // Request is complete - analysis response should have been received by now
-            //if (requestId == _pendingRequestId)
-            //{
-            //    Debug.Log($"[AnalysisService] Request {requestId} marked as complete");
-            //}
         }
 
         /// <summary>
