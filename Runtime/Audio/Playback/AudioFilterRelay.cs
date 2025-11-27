@@ -367,8 +367,9 @@ namespace Tsc.AIBridge.Audio.Playback
             // This allows VoiceLinePlayer to play pre-recorded audio (MP3/WAV) through the same
             // AudioSource while maintaining OVRLipSync compatibility
             // NOTE: Use cached clip name to avoid threading exceptions (OnAudioFilterRead runs on audio thread)
-            bool hasRealClip = !string.IsNullOrEmpty(_cachedClipName) &&
-                               !_cachedClipName.StartsWith("StreamingAudio");
+            bool hasStreamingDummyClip = !string.IsNullOrEmpty(_cachedClipName) &&
+                                         _cachedClipName.StartsWith("StreamingAudio");
+            bool hasRealClip = !string.IsNullOrEmpty(_cachedClipName) && !hasStreamingDummyClip;
 
             if (hasRealClip && !isStreamingActive)
             {
@@ -394,6 +395,12 @@ namespace Tsc.AIBridge.Audio.Playback
             // (because we're playing a clip filled with SpatialDummyValue, and Unity applied spatial processing)
             // The weights are scaled by SpatialDummyValue, so we normalize by dividing
             // We need to: 1) Store & normalize weights, 2) Fill with our samples, 3) Multiply by weights
+            //
+            // CRITICAL FIX: Only calculate spatial weights if we have the streaming dummy clip!
+            // If a real clip is still loaded (transition from scripted to streaming audio),
+            // the data array contains real audio samples (e.g., 0.5) instead of SpatialDummyValue (1e-6).
+            // Multiplying by invDummyValue (1,000,000) would result in MASSIVE gain causing distortion!
+            // In this case, skip spatial processing and use weights of 1.0 (no spatial attenuation).
 
             // Ensure buffer is large enough (lazy allocation, only grows)
             if (_spatialWeightsBuffer == null || _spatialWeightsBuffer.Length < data.Length)
@@ -401,13 +408,26 @@ namespace Tsc.AIBridge.Audio.Playback
                 _spatialWeightsBuffer = new float[data.Length];
             }
 
-            // Store and normalize spatial weights before we overwrite them
-            // Unity calculated: output = SpatialDummyValue * spatialWeight
-            // So: spatialWeight = output / SpatialDummyValue
-            var invDummyValue = 1f / SpatialDummyValue;
-            for (int i = 0; i < data.Length; i++)
+            if (hasStreamingDummyClip)
             {
-                _spatialWeightsBuffer[i] = data[i] * invDummyValue;
+                // NORMAL PATH: Streaming dummy clip is loaded, calculate spatial weights correctly
+                // Unity calculated: output = SpatialDummyValue * spatialWeight
+                // So: spatialWeight = output / SpatialDummyValue
+                var invDummyValue = 1f / SpatialDummyValue;
+                for (int i = 0; i < data.Length; i++)
+                {
+                    _spatialWeightsBuffer[i] = data[i] * invDummyValue;
+                }
+            }
+            else
+            {
+                // FALLBACK PATH: Real clip still loaded during streaming transition
+                // Skip spatial weight calculation - use unity gain (1.0) to prevent distortion
+                // This briefly disables spatial audio but prevents severe oversaturation/clipping
+                for (int i = 0; i < data.Length; i++)
+                {
+                    _spatialWeightsBuffer[i] = 1.0f;
+                }
             }
 
             // Fill buffer with streaming audio samples (this overwrites data)

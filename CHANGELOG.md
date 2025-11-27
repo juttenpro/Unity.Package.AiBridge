@@ -6,6 +6,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.6] - 2025-11-27
+
+### Fixed
+- **CRITICAL: AI streaming audio severely distorted/oversaturated after scripted audio**
+  - **Problem**: When AI streaming audio started after scripted audio playback, the sound was extremely distorted and oversaturated
+  - **Root Cause**: Spatial weight calculation in `AudioFilterRelay.OnAudioFilterRead()` used wrong audio samples
+    - Spatial audio trick uses dummy clip filled with `SpatialDummyValue` (1e-6)
+    - Unity applies spatial processing to these samples, producing spatial weights
+    - We normalize by multiplying with `invDummyValue` (1,000,000) to get correct weights
+    - **BUG**: When streaming started while real AudioClip was still loaded (scripted audio),
+      the data array contained real audio samples (e.g., 0.5) instead of SpatialDummyValue
+    - Result: `0.5 * 1,000,000 = 500,000` → MASSIVE gain causing severe distortion!
+  - **Symptom**: AI-generated voice sounds extremely oversaturated/clipping after pre-recorded reactions
+  - **When this occurs**:
+    - Tutorial introduction: scripted reactions followed by AI conversation response
+    - Any scenario transitioning from scripted audio to AI streaming
+    - Race condition between clip swap and streaming start
+  - **Fix**:
+    - Added `hasStreamingDummyClip` check in `OnAudioFilterRead()`
+    - Only calculate spatial weights when streaming dummy clip is loaded
+    - When real clip still present during transition, use unity gain (1.0) as fallback
+    - Brief loss of spatial audio during transition (<50ms) prevents severe distortion
+  - **Business Impact**:
+    - CRITICAL: Eliminates audio distortion that made AI responses incomprehensible
+    - Improves user experience during scripted-to-AI transitions
+    - Prevents hearing damage from extreme volume spikes
+  - **Location**: AudioFilterRelay.cs - `OnAudioFilterRead()` method
+
 ## [1.1.5] - 2025-11-26
 
 ### Fixed
