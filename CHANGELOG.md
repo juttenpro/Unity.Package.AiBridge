@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.9] - 2025-11-27
+
+### Fixed
+- **Spatial audio missing when streaming starts while scripted audio playing**
+  - **Problem**: When streaming audio arrived while scripted audio was still playing, the streaming audio had no spatial positioning (panning or distance attenuation)
+  - **Root Cause**: When `StartPlayback()` was called, the AudioSource still had the scripted clip loaded (e.g., "N6"). The check only recreated the dummy clip if `clip == null`, not when it was a non-streaming clip
+  - **Fix**: `StartPlayback()` now checks if the clip is NOT the streaming dummy clip and recreates it if needed
+  - **Business Impact**: Streaming audio now always has proper 3D spatial positioning, even during transitions from scripted audio
+
+### Changed
+- **Removed debug logging from AudioFilterRelay**
+  - Spatial audio diagnostics logging (every second) removed now that spatial audio fix is confirmed working
+  - Reduces log spam and improves performance
+
 ## [1.1.8] - 2025-11-27
 
 ### Fixed

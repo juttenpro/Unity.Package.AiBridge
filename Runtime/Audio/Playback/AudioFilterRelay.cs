@@ -222,14 +222,20 @@ namespace Tsc.AIBridge.Audio.Playback
 
             if (_audioSource)
             {
-                // DEFENSIVE PROGRAMMING: If dummy clip is missing, recreate it
-                // This handles edge cases where:
-                // - Initialize() was called before AudioSource was available
-                // - Clip was destroyed/nulled by external code
-                // - NPC was spawned at runtime after scene start
-                if (_audioSource.clip == null)
+                // CRITICAL: If the current clip is not our streaming dummy clip, we need to replace it
+                // This handles the case where streaming starts while scripted audio is playing:
+                // - NpcAudioPlayer plays scripted audio (e.g., N6.wav)
+                // - Streaming audio arrives from backend while scripted audio is playing
+                // - AudioSource.clip is still "N6", not "StreamingAudio_Relay"
+                // - hasStreamingDummyClip=false → FALLBACK path → no spatial audio!
+                //
+                // We MUST replace ANY non-streaming clip with our dummy clip for spatial audio to work
+                bool needsDummyClip = _audioSource.clip == null || _audioSource.clip.name != StreamingClipName;
+
+                if (needsDummyClip)
                 {
-                    Debug.LogWarning($"[AudioFilterRelay] StartPlayback: clip is null, recreating dummy clip for spatial audio");
+                    var reason = _audioSource.clip == null ? "clip is null" : $"clip is '{_audioSource.clip.name}' (not streaming dummy)";
+                    Debug.LogWarning($"[AudioFilterRelay] StartPlayback: {reason}, recreating dummy clip for spatial audio");
 
                     var sampleRate = 48000;
                     var channels = 1;
@@ -429,6 +435,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 // Unity calculated: output = SpatialDummyValue * spatialWeight
                 // So: spatialWeight = output / SpatialDummyValue
                 var invDummyValue = 1f / SpatialDummyValue;
+
                 for (int i = 0; i < data.Length; i++)
                 {
                     _spatialWeightsBuffer[i] = data[i] * invDummyValue;
