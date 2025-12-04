@@ -6,6 +6,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.12] - 2025-12-04
+
+### Added
+- **macOS support for Opus native libraries**
+  - **Feature**: OpusNativeLibraryImporter now supports macOS Intel (x86_64) and Apple Silicon (ARM64/M1/M2/M3/M4)
+  - **New Configurations**:
+    - `ConfigureMacOSX64()` - Intel Mac support with Editor integration
+    - `ConfigureMacOSARM64()` - Apple Silicon Mac support with Editor integration
+  - **Directory Structure**:
+    - `runtimes/osx-x64/native/` - Place Intel Mac `libopus.dylib` here
+    - `runtimes/osx-arm64/native/` - Place Apple Silicon `libopus.dylib` here
+  - **How to Obtain Library**:
+    - Via Homebrew: `brew install opus && cp $(brew --prefix opus)/lib/libopus.dylib ./`
+    - Build from source: See README.md in each native directory
+  - **What Was Fixed**:
+    - macOS was explicitly disabled (`SetCompatibleWithPlatform(BuildTarget.StandaloneOSX, false)`)
+    - No native library files existed for macOS
+    - Plugin importer had no macOS configuration methods
+  - **Symptoms Fixed**:
+    - `DllNotFoundException: opus` on macOS
+    - "Unable to load DLL 'opus': The specified module could not be found"
+    - NPC speech not working in Unity Editor on Mac
+  - **Business Impact**:
+    - Content creators on Mac can now test NPC conversations in Unity Editor
+    - Enables macOS development workflow for the full team
+    - Removes Windows-only development limitation
+  - **Location**: OpusNativeLibraryImporter.cs
+
 ## [1.1.11] - 2025-11-27
 
 ### Fixed

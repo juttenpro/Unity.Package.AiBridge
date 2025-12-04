@@ -63,7 +63,13 @@ namespace OpusSharp.Editor
                 
                 // Linux x64 SO
                 anyChanges |= ConfigureLinuxX64();
-                
+
+                // macOS x64 (Intel)
+                anyChanges |= ConfigureMacOSX64();
+
+                // macOS ARM64 (Apple Silicon - M1/M2/M3)
+                anyChanges |= ConfigureMacOSARM64();
+
                 if (anyChanges)
                 {
                     AssetDatabase.Refresh();
@@ -267,6 +273,106 @@ namespace OpusSharp.Editor
             
             importer.SaveAndReimport();
             Debug.Log($"[OpusSharp] Configured Linux x64 SO: {soPath}");
+            return true;
+        }
+
+        private static bool ConfigureMacOSX64()
+        {
+            string dylibPath = $"{OPUS_NATIVES_PATH}/osx-x64/native/libopus.dylib";
+
+            if (!File.Exists(dylibPath))
+            {
+                Debug.LogWarning($"[OpusSharp] macOS x64 dylib not found at: {dylibPath}");
+                Debug.LogWarning("[OpusSharp] To enable macOS Intel support, add libopus.dylib to this location.");
+                return false;
+            }
+
+            PluginImporter importer = AssetImporter.GetAtPath(dylibPath) as PluginImporter;
+            if (importer == null)
+            {
+                Debug.LogWarning($"[OpusSharp] Could not get importer for: {dylibPath}");
+                return false;
+            }
+
+            // Check if already configured correctly - for x64 we enable editor on Intel Macs
+            bool isConfiguredForOSX = importer.GetCompatibleWithPlatform(BuildTarget.StandaloneOSX);
+            if (isConfiguredForOSX)
+            {
+                return false; // No changes needed
+            }
+
+            // Clear all settings first
+            importer.ClearSettings();
+
+            // Configure for macOS x64 (Intel) - also enable for Editor on Intel Macs
+            importer.SetCompatibleWithAnyPlatform(false);
+            importer.SetCompatibleWithEditor(true);
+            importer.SetEditorData("CPU", "x86_64");
+            importer.SetEditorData("OS", "OSX");
+
+            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneOSX, true);
+            importer.SetPlatformData(BuildTarget.StandaloneOSX, "CPU", "x86_64");
+
+            // Explicitly disable for other platforms
+            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneWindows64, false);
+            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneWindows, false);
+            importer.SetCompatibleWithPlatform(BuildTarget.Android, false);
+            importer.SetCompatibleWithPlatform(BuildTarget.iOS, false);
+            importer.SetCompatibleWithPlatform(BuildTarget.WebGL, false);
+            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneLinux64, false);
+
+            importer.SaveAndReimport();
+            Debug.Log($"[OpusSharp] Configured macOS x64 (Intel) dylib: {dylibPath}");
+            return true;
+        }
+
+        private static bool ConfigureMacOSARM64()
+        {
+            string dylibPath = $"{OPUS_NATIVES_PATH}/osx-arm64/native/libopus.dylib";
+
+            if (!File.Exists(dylibPath))
+            {
+                Debug.LogWarning($"[OpusSharp] macOS ARM64 dylib not found at: {dylibPath}");
+                Debug.LogWarning("[OpusSharp] To enable macOS Apple Silicon support, add libopus.dylib to this location.");
+                return false;
+            }
+
+            PluginImporter importer = AssetImporter.GetAtPath(dylibPath) as PluginImporter;
+            if (importer == null)
+            {
+                Debug.LogWarning($"[OpusSharp] Could not get importer for: {dylibPath}");
+                return false;
+            }
+
+            // Check if already configured correctly
+            bool isConfiguredForOSX = importer.GetCompatibleWithPlatform(BuildTarget.StandaloneOSX);
+            if (isConfiguredForOSX)
+            {
+                return false; // No changes needed
+            }
+
+            // Clear all settings first
+            importer.ClearSettings();
+
+            // Configure for macOS ARM64 (Apple Silicon M1/M2/M3)
+            importer.SetCompatibleWithAnyPlatform(false);
+            importer.SetCompatibleWithEditor(true);
+            importer.SetEditorData("CPU", "ARM64");
+            importer.SetEditorData("OS", "OSX");
+
+            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneOSX, true);
+            importer.SetPlatformData(BuildTarget.StandaloneOSX, "CPU", "ARM64");
+
+            // Explicitly disable for other platforms
+            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneWindows64, false);
+            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneWindows, false);
+            importer.SetCompatibleWithPlatform(BuildTarget.Android, false);
+            importer.SetCompatibleWithPlatform(BuildTarget.iOS, false);
+            importer.SetCompatibleWithPlatform(BuildTarget.WebGL, false);
+            importer.SetCompatibleWithPlatform(BuildTarget.StandaloneLinux64, false);
+
+            importer.SaveAndReimport();
+            Debug.Log($"[OpusSharp] Configured macOS ARM64 (Apple Silicon) dylib: {dylibPath}");
             return true;
         }
     }
