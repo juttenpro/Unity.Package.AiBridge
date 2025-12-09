@@ -1,7 +1,9 @@
 using UnityEngine;
 using UnityEditor;
 using System.IO;
-using System.Diagnostics;
+using Debug = UnityEngine.Debug;
+using Process = System.Diagnostics.Process;
+using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 
 namespace OpusSharp.Editor
 {
@@ -71,7 +73,7 @@ namespace OpusSharp.Editor
                 }
 
                 File.Copy(sourcePath, targetPath, overwrite: true);
-                UnityEngine.Debug.Log($"[OpusSharp] Successfully copied libopus.dylib to {targetPath}");
+                Debug.Log($"[OpusSharp] Successfully copied libopus.dylib to {targetPath}");
 
                 AssetDatabase.Refresh();
                 ConfigureNativeLibraries(true);
@@ -83,7 +85,7 @@ namespace OpusSharp.Editor
             }
             catch (System.Exception ex)
             {
-                UnityEngine.Debug.LogError($"[OpusSharp] Failed to copy libopus.dylib: {ex.Message}");
+                Debug.LogError($"[OpusSharp] Failed to copy libopus.dylib: {ex.Message}");
                 EditorUtility.DisplayDialog(
                     "Error",
                     $"Failed to copy library: {ex.Message}",
@@ -113,7 +115,7 @@ namespace OpusSharp.Editor
 
                     if (process.ExitCode == 0)
                     {
-                        UnityEngine.Debug.Log($"[OpusSharp] Homebrew install complete: {output}");
+                        Debug.Log($"[OpusSharp] Homebrew install complete: {output}");
                         EditorUtility.DisplayDialog(
                             "Homebrew Install Complete",
                             "Opus has been installed via Homebrew.\n\n" +
@@ -122,7 +124,7 @@ namespace OpusSharp.Editor
                     }
                     else
                     {
-                        UnityEngine.Debug.LogError($"[OpusSharp] Homebrew install failed: {error}");
+                        Debug.LogError($"[OpusSharp] Homebrew install failed: {error}");
                         EditorUtility.DisplayDialog(
                             "Installation Failed",
                             $"Failed to install opus via Homebrew.\n\nError: {error}\n\n" +
@@ -133,7 +135,7 @@ namespace OpusSharp.Editor
             }
             catch (System.Exception ex)
             {
-                UnityEngine.Debug.LogError($"[OpusSharp] Failed to run Homebrew: {ex.Message}");
+                Debug.LogError($"[OpusSharp] Failed to run Homebrew: {ex.Message}");
                 EditorUtility.DisplayDialog(
                     "Error",
                     "Could not run Homebrew. Please ensure Homebrew is installed.\n\n" +
