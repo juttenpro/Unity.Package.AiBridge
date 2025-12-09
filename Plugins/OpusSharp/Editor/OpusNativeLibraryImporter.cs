@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 using System.IO;
+using System.Diagnostics;
 
 namespace OpusSharp.Editor
 {
@@ -29,6 +30,119 @@ namespace OpusSharp.Editor
         {
             ConfigureNativeLibraries(true);
         }
+
+#if UNITY_EDITOR_OSX
+        [MenuItem("Tools/OpusSharp/Setup macOS Libraries (Homebrew)")]
+        public static void SetupMacOSLibraries()
+        {
+            bool isAppleSilicon = SystemInfo.processorType.Contains("Apple") ||
+                                  System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64;
+
+            string homebrewPath = isAppleSilicon ? "/opt/homebrew" : "/usr/local";
+            string sourcePath = $"{homebrewPath}/lib/libopus.dylib";
+            string targetFolder = isAppleSilicon ? "osx-arm64" : "osx-x64";
+            string targetPath = $"{OPUS_NATIVES_PATH}/{targetFolder}/native/libopus.dylib";
+
+            // Check if Homebrew opus is installed
+            if (!File.Exists(sourcePath))
+            {
+                bool install = EditorUtility.DisplayDialog(
+                    "Opus Library Not Found",
+                    "The Opus library is not installed via Homebrew.\n\n" +
+                    "Would you like to install it now?\n\n" +
+                    "This will run: brew install opus",
+                    "Install",
+                    "Cancel");
+
+                if (install)
+                {
+                    InstallOpusViaHomebrew();
+                }
+                return;
+            }
+
+            // Copy the library
+            try
+            {
+                string targetDir = Path.GetDirectoryName(targetPath);
+                if (!Directory.Exists(targetDir))
+                {
+                    Directory.CreateDirectory(targetDir);
+                }
+
+                File.Copy(sourcePath, targetPath, overwrite: true);
+                UnityEngine.Debug.Log($"[OpusSharp] Successfully copied libopus.dylib to {targetPath}");
+
+                AssetDatabase.Refresh();
+                ConfigureNativeLibraries(true);
+
+                EditorUtility.DisplayDialog(
+                    "Success",
+                    $"Opus library installed successfully!\n\nArchitecture: {(isAppleSilicon ? "Apple Silicon (ARM64)" : "Intel (x64)")}",
+                    "OK");
+            }
+            catch (System.Exception ex)
+            {
+                UnityEngine.Debug.LogError($"[OpusSharp] Failed to copy libopus.dylib: {ex.Message}");
+                EditorUtility.DisplayDialog(
+                    "Error",
+                    $"Failed to copy library: {ex.Message}",
+                    "OK");
+            }
+        }
+
+        private static void InstallOpusViaHomebrew()
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo
+                {
+                    FileName = "/bin/zsh",
+                    Arguments = "-c \"brew install opus\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+
+                using (Process process = Process.Start(psi))
+                {
+                    string output = process.StandardOutput.ReadToEnd();
+                    string error = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+
+                    if (process.ExitCode == 0)
+                    {
+                        UnityEngine.Debug.Log($"[OpusSharp] Homebrew install complete: {output}");
+                        EditorUtility.DisplayDialog(
+                            "Homebrew Install Complete",
+                            "Opus has been installed via Homebrew.\n\n" +
+                            "Click 'Setup macOS Libraries' again to copy the library to the project.",
+                            "OK");
+                    }
+                    else
+                    {
+                        UnityEngine.Debug.LogError($"[OpusSharp] Homebrew install failed: {error}");
+                        EditorUtility.DisplayDialog(
+                            "Installation Failed",
+                            $"Failed to install opus via Homebrew.\n\nError: {error}\n\n" +
+                            "Please install manually by running:\nbrew install opus",
+                            "OK");
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                UnityEngine.Debug.LogError($"[OpusSharp] Failed to run Homebrew: {ex.Message}");
+                EditorUtility.DisplayDialog(
+                    "Error",
+                    "Could not run Homebrew. Please ensure Homebrew is installed.\n\n" +
+                    "Install Homebrew from: https://brew.sh\n\n" +
+                    "Then run: brew install opus",
+                    "OK");
+            }
+        }
+#endif
         
         public static void ConfigureNativeLibraries(bool forceReconfigure)
         {
@@ -282,8 +396,11 @@ namespace OpusSharp.Editor
 
             if (!File.Exists(dylibPath))
             {
+                // Only show warning on macOS - not relevant for Windows/Linux users
+#if UNITY_EDITOR_OSX
                 Debug.LogWarning($"[OpusSharp] macOS x64 dylib not found at: {dylibPath}");
-                Debug.LogWarning("[OpusSharp] To enable macOS Intel support, add libopus.dylib to this location.");
+                Debug.LogWarning("[OpusSharp] To enable macOS Intel support, run: Tools > OpusSharp > Setup macOS Libraries");
+#endif
                 return false;
             }
 
@@ -332,8 +449,11 @@ namespace OpusSharp.Editor
 
             if (!File.Exists(dylibPath))
             {
+                // Only show warning on macOS - not relevant for Windows/Linux users
+#if UNITY_EDITOR_OSX
                 Debug.LogWarning($"[OpusSharp] macOS ARM64 dylib not found at: {dylibPath}");
-                Debug.LogWarning("[OpusSharp] To enable macOS Apple Silicon support, add libopus.dylib to this location.");
+                Debug.LogWarning("[OpusSharp] To enable macOS Apple Silicon support, run: Tools > OpusSharp > Setup macOS Libraries");
+#endif
                 return false;
             }
 

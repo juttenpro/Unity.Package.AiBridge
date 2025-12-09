@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.13] - 2025-12-09
+
+### Changed
+- **macOS Opus library warnings now only show on macOS**
+  - Windows and Linux users no longer see warnings about missing macOS libraries
+  - Warnings wrapped in `#if UNITY_EDITOR_OSX` preprocessor directive
+  - Reduces console noise for non-macOS developers
+
+### Added
+- **One-click macOS library setup via Unity menu** (macOS only)
+  - New menu item: `Tools > OpusSharp > Setup macOS Libraries (Homebrew)`
+  - Automatically detects Apple Silicon vs Intel Mac
+  - Installs Opus via Homebrew if not present (with user confirmation)
+  - Copies libopus.dylib to correct location (osx-arm64 or osx-x64)
+  - Configures plugin import settings automatically
+  - **Business Impact**: Non-technical Mac users can enable Opus support with one click
+
 ## [1.1.12] - 2025-12-04
 
 ### Added
