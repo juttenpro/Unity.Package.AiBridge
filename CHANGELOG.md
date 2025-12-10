@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.14] - 2025-12-10
+
+### Added
+- **macOS setup documentation in README**
+  - Added "Step 3: Platform-Specific Setup" section with complete macOS instructions
+  - Documents Quick Setup via Unity menu (`Tools > OpusSharp > Setup macOS Libraries`)
+  - Documents Manual Setup via Terminal for troubleshooting
+  - Includes troubleshooting section for common error message
+  - Includes instructions for contributing pre-built macOS libraries to the package
+  - **Business Impact**: Mac users now have clear documentation to resolve Opus library issues
+
 ## [1.1.13] - 2025-12-09
 
 ### Changed
