@@ -2,6 +2,7 @@ fileFormatVersion: 2
 guid: d2a724ef5aa1f3a489d819141738d28f
 labels:
 - NuGetForUnity
+- OpusSharp-Source
 PluginImporter:
   externalObjects: {}
   serializedVersion: 3
@@ -15,15 +16,23 @@ PluginImporter:
   platformData:
     Any:
       enabled: 0
-      settings: {}
+      settings:
+        Exclude Editor: 1
+        Exclude Linux64: 1
+        Exclude OSXUniversal: 1
+        Exclude Win: 1
+        Exclude Win64: 1
+        Exclude Android: 1
+        Exclude iOS: 1
+        Exclude WebGL: 1
     Editor:
       enabled: 0
       settings:
         DefaultValueInitialized: true
     Linux64:
-      enabled: 1
+      enabled: 0
       settings:
         CPU: x86_64
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+  userData:
+  assetBundleName:
+  assetBundleVariant:

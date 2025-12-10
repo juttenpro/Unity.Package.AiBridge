@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.16] - 2025-12-10
+
+### Fixed
+- **"Multiple plugins with the same name 'opus'" error**
+  - Disabled all native libraries in package folder via .meta files
+  - Libraries in package are now source-only (labeled `OpusSharp-Source`)
+  - Only libraries in `Assets/Plugins/OpusSharp/` are active
+  - **Error Fixed**: "Multiple plugins with the same name 'opus' (found at 'Assets/Plugins/...' and 'Packages/...')"
+  - **Business Impact**: Package now works correctly without plugin conflicts
+
 ## [1.1.15] - 2025-12-10
 
 ### Added
