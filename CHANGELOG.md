@@ -6,6 +6,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.15] - 2025-12-10
+
+### Added
+- **Automatic native library installation to Assets/Plugins/OpusSharp/**
+  - New `OpusPluginInstaller` editor script automatically copies native libraries on first run
+  - Libraries installed to `Assets/Plugins/OpusSharp/` instead of package folder
+  - Supports Windows (x64/x86), Linux (x64), Android (ARM64), and macOS
+  - **Why**: Package folder may be immutable (git cache), Assets/Plugins is always writable
+  - **Menu**: `Tools > OpusSharp > Install Native Libraries to Project` for manual trigger
+  - **Business Impact**: Eliminates "immutable folder" errors for all users
+
+- **Improved macOS library setup**
+  - Auto-detects Homebrew opus installation and offers one-click install
+  - New menu: `Tools > OpusSharp > Setup macOS Library (Homebrew)`
+  - Installs to `Assets/Plugins/OpusSharp/macOS/libopus.dylib`
+  - Automatic plugin import configuration after installation
+  - **Business Impact**: Mac users can now install opus library without terminal commands
+
+### Changed
+- **Deprecated OpusNativeLibraryImporter** in favor of OpusPluginInstaller
+  - Old class kept for backward compatibility, redirects to new installer
+  - Menu items redirect to new functionality
+
+### Fixed
+- **macOS "immutable folder" error when adding libopus.dylib**
+  - Libraries now install to Assets/Plugins (always writable) instead of package cache
+  - **Error Fixed**: "has no meta file, but it's in an immutable folder"
+
 ## [1.1.14] - 2025-12-10
 
 ### Added

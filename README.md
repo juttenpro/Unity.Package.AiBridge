@@ -67,78 +67,72 @@ https://github.com/juttenpro/Unity.Package.AiBridge.git
 
 **Note**: If NativeWebSocket is not installed, Unity will show a missing dependency error.
 
-### Step 3: Platform-Specific Setup
+### Step 3: Native Library Installation (Automatic)
+
+AI Bridge uses the Opus audio codec which requires platform-specific native libraries. These are **automatically installed** to `Assets/Plugins/OpusSharp/` when you open Unity.
+
+```
+Assets/Plugins/OpusSharp/
+├── Windows/
+│   ├── x86_64/opus.dll    ← Auto-installed
+│   └── x86/opus.dll       ← Auto-installed
+├── Linux/
+│   └── x86_64/opus.so     ← Auto-installed
+├── Android/
+│   └── ARM64/libopus.so   ← Auto-installed
+└── macOS/
+    └── libopus.dylib      ← Requires manual setup (see below)
+```
+
+#### Windows, Linux, Android
+
+**No setup required.** Libraries are automatically copied from the package on first run.
+
+To manually trigger installation: **Tools → OpusSharp → Install Native Libraries to Project**
 
 #### macOS Setup (Required for Mac Users)
 
-The Opus audio codec requires a native library (`libopus.dylib`) that is not included in the package due to licensing and build requirements. Mac users must install this library locally.
+The macOS library (`libopus.dylib`) is not included in the package due to Apple's code signing requirements. Mac users must install it locally.
 
-**Quick Setup (Recommended)**
+**Automatic Setup (Recommended)**
 
-In Unity on your Mac, use the built-in menu:
+If you have Homebrew installed with opus, Unity will detect it and offer to install automatically.
 
-1. Open Unity
-2. Go to **Tools → OpusSharp → Setup macOS Libraries (Homebrew)**
-3. If Homebrew opus is not installed, Unity will prompt to install it automatically
-4. The library will be copied to the correct location
+Or use the menu: **Tools → OpusSharp → Setup macOS Library (Homebrew)**
+
+This will:
+1. Check if `brew install opus` has been run
+2. Copy `libopus.dylib` to `Assets/Plugins/OpusSharp/macOS/`
+3. Configure the plugin import settings
 
 **Manual Setup**
 
-If the menu option doesn't work, install manually via Terminal:
-
 ```bash
-# 1. Install opus via Homebrew (if not already installed)
+# 1. Install opus via Homebrew
 brew install opus
 
-# 2. Find and copy the library
+# 2. Copy to your Unity project
 # For Apple Silicon (M1/M2/M3/M4):
-cp /opt/homebrew/lib/libopus.dylib ~/Library/PackageCache/com.simulationcrew.aibridge@*/Plugins/OpusSharp/OpusSharp.Natives/runtimes/osx-arm64/native/
+mkdir -p Assets/Plugins/OpusSharp/macOS
+cp /opt/homebrew/lib/libopus.dylib Assets/Plugins/OpusSharp/macOS/
 
 # For Intel Mac:
-cp /usr/local/lib/libopus.dylib ~/Library/PackageCache/com.simulationcrew.aibridge@*/Plugins/OpusSharp/OpusSharp.Natives/runtimes/osx-x64/native/
+mkdir -p Assets/Plugins/OpusSharp/macOS
+cp /usr/local/lib/libopus.dylib Assets/Plugins/OpusSharp/macOS/
 
-# 3. Restart Unity or reimport the package
+# 3. Open Unity - the plugin will be configured automatically
 ```
 
 **Troubleshooting macOS**
 
-If you see this error on startup:
+If you see this error:
 ```
 [OpusAudioEncoder] Failed to initialize: opus assembly:<unknown assembly> type:<unknown type> member:(null)
 ```
 
 This means the native library is missing. Follow the setup steps above.
 
-**Contributing macOS Libraries**
-
-If you'd like to contribute pre-built macOS libraries to the package:
-
-```bash
-# On your Mac, after installing via Homebrew:
-# 1. Clone the AIBridge repository
-git clone https://github.com/juttenpro/Unity.Package.AiBridge.git
-cd Unity.Package.AiBridge
-
-# 2. Copy your architecture's library
-# Apple Silicon:
-cp /opt/homebrew/lib/libopus.dylib Plugins/OpusSharp/OpusSharp.Natives/runtimes/osx-arm64/native/
-
-# Intel:
-cp /usr/local/lib/libopus.dylib Plugins/OpusSharp/OpusSharp.Natives/runtimes/osx-x64/native/
-
-# 3. Verify the architecture
-file Plugins/OpusSharp/OpusSharp.Natives/runtimes/osx-arm64/native/libopus.dylib
-# Should show: Mach-O 64-bit dynamically linked shared library arm64
-
-# 4. Commit and create a PR
-git add .
-git commit -m "feat: add macOS ARM64 native opus library"
-git push
-```
-
-#### Windows and Linux
-
-No additional setup required. Native libraries are included in the package.
+**Note for Teams**: The `Assets/Plugins/OpusSharp/` folder should be committed to version control so Mac users only need to add `libopus.dylib` once per project.
 
 ## Audio Configuration
 
