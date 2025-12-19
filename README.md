@@ -1,54 +1,32 @@
 # AI Bridge Core Package
 
-Core AI conversation and audio streaming system for Unity, providing WebSocket-based communication with LLM services.
+Real-time AI conversation system for Unity with WebSocket-based communication, audio streaming, and multi-provider support.
 
-## Features
+## What is AI Bridge?
 
-- 🎤 **Audio Capture**: Microphone input with AGC and gain control
-- 🔊 **Audio Streaming**: Real-time Opus codec support with adaptive buffering
-- 🌐 **WebSocket Communication**: Binary and text message handling
-- 🎯 **VAD Processing**: Multiple Voice Activity Detection implementations
-- 📦 **Minimal Dependencies**: Only requires NativeWebSocket and Unity modules
-- 🔌 **Extensible**: Interface-based design for custom implementations
+AI Bridge enables natural voice conversations between users and AI-powered NPCs in Unity. It handles the complete audio pipeline:
 
-## Dependencies
-
-### Required External Packages
-
-**NativeWebSocket** (v1.1.4 or higher)
-- High-performance WebSocket implementation for Unity
-- GitHub: https://github.com/endel/NativeWebSocket
-- Installation via Package Manager:
-  ```
-  https://github.com/endel/NativeWebSocket.git#upm
-  ```
-
-### Unity Modules
-- `com.unity.modules.audio`: Audio system integration
-- `com.unity.modules.jsonserialize`: JSON serialization
-- `com.unity.modules.unitywebrequest`: HTTP requests
-
-### Optional Dependencies
-**Concentus** (Opus codec via NuGet for Unity)
-- Required for audio encoding/decoding
-- Pre-compiled DLLs included in package
-
-## Installation
-
-### Step 1: Install NativeWebSocket
-
-**REQUIRED**: Install NativeWebSocket before installing AI Bridge.
-
-In Unity Package Manager → Add package from git URL:
 ```
-https://github.com/endel/NativeWebSocket.git#upm
+User speaks → Microphone → Opus encoding → WebSocket → Backend
+                                                          ↓
+                                                    STT → LLM → TTS
+                                                          ↓
+User hears ← AudioSource ← Opus decoding ← WebSocket ← Backend
 ```
 
-### Step 2: Install AI Bridge
+**Key Capabilities:**
+- Real-time voice-to-voice conversations (sub-second latency)
+- Multiple AI providers: OpenAI, Vertex AI, Azure OpenAI
+- Multiple TTS providers: ElevenLabs (Turbo, Flash, Multilingual)
+- Multiple STT providers: Google Cloud Speech, Azure, OpenAI
+- VR-ready with spatial audio support
+- Cross-platform: Windows, macOS, Linux, Android, iOS, VR headsets
 
-#### Via Unity Package Manager
+## Quick Start
 
-Add to your `manifest.json`:
+### 1. Install Dependencies
+
+Add to your `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
@@ -58,411 +36,199 @@ Add to your `manifest.json`:
 }
 ```
 
-#### Via Git URL
+### 2. Configure Audio (Critical!)
 
-In Unity Package Manager, add package from git URL:
-```
-https://github.com/juttenpro/Unity.Package.AiBridge.git
-```
-
-**Note**: If NativeWebSocket is not installed, Unity will show a missing dependency error.
-
-### Step 3: Native Library Installation (Automatic)
-
-AI Bridge uses the Opus audio codec which requires platform-specific native libraries. These are **automatically installed** to `Assets/Plugins/OpusSharp/` when you open Unity.
-
-```
-Assets/Plugins/OpusSharp/
-├── Windows/
-│   ├── x86_64/opus.dll    ← Auto-installed
-│   └── x86/opus.dll       ← Auto-installed
-├── Linux/
-│   └── x86_64/opus.so     ← Auto-installed
-├── Android/
-│   └── ARM64/libopus.so   ← Auto-installed
-└── macOS/
-    └── libopus.dylib      ← Requires manual setup (see below)
-```
-
-#### Windows, Linux, Android
-
-**No setup required.** Libraries are automatically copied from the package on first run.
-
-To manually trigger installation: **Tools → OpusSharp → Install Native Libraries to Project**
-
-#### macOS Setup (Required for Mac Users)
-
-The macOS library (`libopus.dylib`) is not included in the package due to Apple's code signing requirements. Mac users must install it locally.
-
-**Automatic Setup (Recommended)**
-
-If you have Homebrew installed with opus, Unity will detect it and offer to install automatically.
-
-Or use the menu: **Tools → OpusSharp → Setup macOS Library (Homebrew)**
-
-This will:
-1. Check if `brew install opus` has been run
-2. Copy `libopus.dylib` to `Assets/Plugins/OpusSharp/macOS/`
-3. Configure the plugin import settings
-
-**Manual Setup**
-
-```bash
-# 1. Install opus via Homebrew
-brew install opus
-
-# 2. Copy to your Unity project
-# For Apple Silicon (M1/M2/M3/M4):
-mkdir -p Assets/Plugins/OpusSharp/macOS
-cp /opt/homebrew/lib/libopus.dylib Assets/Plugins/OpusSharp/macOS/
-
-# For Intel Mac:
-mkdir -p Assets/Plugins/OpusSharp/macOS
-cp /usr/local/lib/libopus.dylib Assets/Plugins/OpusSharp/macOS/
-
-# 3. Open Unity - the plugin will be configured automatically
-```
-
-**Troubleshooting macOS**
-
-If you see this error:
-```
-[OpusAudioEncoder] Failed to initialize: opus assembly:<unknown assembly> type:<unknown type> member:(null)
-```
-
-This means the native library is missing. Follow the setup steps above.
-
-**Note for Teams**: The `Assets/Plugins/OpusSharp/` folder should be committed to version control so Mac users only need to add `libopus.dylib` once per project.
-
-## Audio Configuration
-
-### ⚠️ CRITICAL: Audio Sample Rate Setup
-
-**AI Bridge requires Unity's audio system to run at 48000 Hz** to match the TTS audio stream format (Opus 48kHz).
-
-If your Unity project uses a different sample rate (e.g., auto-selected 24kHz or 44.1kHz), **TTS playback will be at incorrect speed**.
-
-#### Symptoms of Incorrect Sample Rate
-- 🐌 **Slow, robotic voice** (if system < 48kHz)
-- 🏃 **Fast, chipmunk voice** (if system > 48kHz)
-- ⚡ **Playback speed = (48000 / systemSampleRate)x**
-
-Example: 24kHz system → 48000/24000 = 2x slower playback
-
-#### Solution 1: Project Settings (Recommended)
-
-Set the sample rate in Unity's audio settings:
-
-1. Open **Edit → Project Settings → Audio**
+Set Unity's audio sample rate to 48kHz:
+1. **Edit → Project Settings → Audio**
 2. Set **System Sample Rate** to **48000**
-3. Rebuild your project
 
-Or edit `ProjectSettings/AudioManager.asset` directly:
-```yaml
-AudioManager:
-  m_SampleRate: 48000  # Set to 48000 (not 0 for auto)
+### 3. Set Up Scene
+
+Add these components to your scene:
+
+```
+Scene Hierarchy:
+├── AIBridgeManager (Empty GameObject)
+│   ├── WebSocketClient
+│   ├── RequestOrchestrator
+│   ├── SpeechInputHandler
+│   └── EnvironmentApiKeyProvider
+│
+└── NPC (Your character)
+    └── SimpleNpcClient (or custom NpcClientBase)
 ```
 
-#### Solution 2: Runtime Configuration
+### 4. Configure API Key
 
-Configure sample rate at application startup:
+Set environment variable before running Unity:
+```bash
+# Windows PowerShell
+$env:ORCHESTRATOR_API_KEY = "your_api_key"
+
+# Linux/Mac
+export ORCHESTRATOR_API_KEY="your_api_key"
+```
+
+### 5. Start a Conversation
 
 ```csharp
-using UnityEngine;
+using Tsc.AIBridge.Core;
 
-public class AudioInitializer : MonoBehaviour
+public class ConversationStarter : MonoBehaviour
 {
-    private void Awake()
+    [SerializeField] private SimpleNpcClient npc;
+
+    public void StartConversation()
     {
-        const int REQUIRED_SAMPLE_RATE = 48000;
-
-        if (AudioSettings.outputSampleRate != REQUIRED_SAMPLE_RATE)
-        {
-            var config = AudioSettings.GetConfiguration();
-            config.sampleRate = REQUIRED_SAMPLE_RATE;
-            bool success = AudioSettings.Reset(config);
-
-            if (success)
-            {
-                Debug.Log($"Audio sample rate set to {AudioSettings.outputSampleRate}Hz");
-            }
-            else
-            {
-                Debug.LogError("Failed to set audio sample rate!");
-            }
-        }
-    }
-}
-```
-
-#### Automatic Detection
-
-AI Bridge automatically detects sample rate mismatches and logs a **warning** with the playback speed ratio:
-
-```
-[AIBridge] AudioSettings.outputSampleRate is 24000Hz but TTS audio requires 48000Hz.
-This will cause incorrect playback speed (audio will play 2.00x too fast/slow).
-SOLUTION: Set Project Settings > Audio > System Sample Rate to 48000Hz...
-```
-
-**Always check Unity Console** for this warning during development.
-
-#### Impact on Other Audio
-
-Setting Unity to 48kHz affects **all audio in your project**:
-- ✅ **48kHz is industry standard** (video, broadcasting, pro audio)
-- ✅ **Unity automatically resamples** other audio files (44.1kHz music, etc.)
-- ✅ **Minimal quality loss** from resampling (generally inaudible)
-- ✅ **All modern hardware supports 48kHz** (desktop, mobile, VR)
-
-**Recommendation**: Use 48kHz for your entire project for consistency.
-
-## Core Components
-
-### Audio Pipeline
-
-#### Capture
-- `IAudioCaptureProvider`: Interface for audio input
-- `MicrophoneCapture`: Unity microphone implementation with PTT support
-
-#### Codecs
-- `OpusAudioEncoder`: PCM to Opus encoding
-- `OpusStreamDecoder`: Opus/OGG stream decoding with queue-based processing
-- `OggOpusParser`: OGG packet parsing for stream boundaries
-
-#### Playback
-- `StreamingAudioPlayer`: Unity audio playback with adaptive buffering
-- `AdaptiveBufferManager`: Dynamic buffer sizing based on network conditions
-
-#### VAD (Voice Activity Detection)
-- `VADProcessorBase`: Base class for VAD implementations
-- `DynamicRangeVADProcessor`: Adaptive threshold VAD
-- `SimpleVADProcessor`: Basic threshold-based VAD
-
-### WebSocket Communication
-
-- `EnhancedWebSocket`: Robust binary/text message separation
-- `IWebSocketConnection`: WebSocket interface for implementations
-- Message types for conversation protocol
-
-### Interfaces for Extension
-
-The package provides interfaces for integration with external systems:
-
-```csharp
-// NPC configuration without implementation dependencies
-public interface INpcPersona
-{
-    bool AllowInterruption { get; }
-    float PersistenceTime { get; }
-    string SystemPrompt { get; }
-    string TtsVoice { get; }
-    // ... more properties
-}
-
-// Service for finding NPCs in the scene
-public interface INpcFinder
-{
-    INpcPersona FindActiveNpc();
-    IEnumerable<INpcPersona> FindAllNpcs();
-}
-
-// Conversation history management
-public interface IConversationHistoryProvider
-{
-    ChatMessage[] GetMessages();
-    void AddUserMessage(string content, string metadata = null);
-    void AddAssistantMessage(string content, string metadata = null);
-}
-```
-
-## Basic Usage
-
-### Audio Capture
-```csharp
-using Tsc.AIBridge.Audio.Capture;
-
-public class AudioCaptureExample : MonoBehaviour
-{
-    private MicrophoneCapture micCapture;
-
-    void Start()
-    {
-        micCapture = GetComponent<MicrophoneCapture>();
-        micCapture.OnAudioDataAvailable += ProcessAudio;
-    }
-
-    void ProcessAudio(float[] audioData)
-    {
-        // Process captured audio
-    }
-
-    public void StartRecording()
-    {
-        micCapture.StartCapture();
+        var orchestrator = RequestOrchestrator.Instance;
+        orchestrator.StartAudioRequest(npc.NpcId);
     }
 
     public void StopRecording()
     {
-        micCapture.StopCapture();
+        RequestOrchestrator.Instance.EndAudioRequest();
     }
 }
 ```
 
-### WebSocket Messages
-```csharp
-using Tsc.AIBridge.Messages;
+## Documentation
 
-// Create session start message
-var sessionStart = new SessionStartMessage
-{
-    sessionId = Guid.NewGuid().ToString(),
-    systemPrompt = "You are a helpful assistant",
-    messages = conversationHistory,
-    llmModel = "gpt-4o-mini",
-    ttsVoice = "voice_id"
-};
+| Document | Description |
+|----------|-------------|
+| [Getting Started](Documentation~/GettingStarted.md) | Complete setup guide with step-by-step instructions |
+| [Best Practices](Documentation~/BestPractices.md) | Patterns, anti-patterns, and production tips |
+| [Examples](Documentation~/Examples.md) | Real-world implementation examples |
+| [API Reference](Documentation~/API-Reference.md) | Complete API documentation |
+| [API Key Providers](Runtime/Auth/README_API_KEY_PROVIDERS.md) | Authentication configuration |
+| [Recording Architecture](Runtime/Input/RECORDING_ARCHITECTURE.md) | Recording system design |
 
-// Handle incoming messages
-void OnMessageReceived(WebSocketMessage message)
-{
-    switch (message.type)
-    {
-        case WebSocketMessageTypes.Transcription:
-            var transcription = message as TranscriptionMessage;
-            Debug.Log($"User said: {transcription.text}");
-            break;
-        case WebSocketMessageTypes.AiResponse:
-            var response = message as AiResponseMessage;
-            Debug.Log($"AI response: {response.content}");
-            break;
-    }
-}
-```
+## Core Concepts
 
-### VAD Processing
-```csharp
-using Tsc.AIBridge.Audio.VAD;
+### The Conversation Flow
 
-public class VADExample : MonoBehaviour
-{
-    private DynamicRangeVADProcessor vadProcessor;
+1. **User presses PTT** (Push-to-Talk) or VAD detects speech
+2. **SpeechInputHandler** captures microphone audio
+3. **RequestOrchestrator** creates a session and buffers audio
+4. Audio is **Opus-encoded** and sent via WebSocket
+5. Backend processes: **STT → LLM → TTS**
+6. **Audio streams back** as Opus/OGG chunks
+7. **NpcClient** decodes and plays through AudioSource
+8. Session completes, ready for next turn
 
-    void Start()
-    {
-        vadProcessor = GetComponent<DynamicRangeVADProcessor>();
-        vadProcessor.OnSpeechStart += () => Debug.Log("Speech started");
-        vadProcessor.OnSpeechEnd += () => Debug.Log("Speech ended");
-    }
+### Key Components
 
-    void ProcessAudioFrame(float[] samples)
-    {
-        vadProcessor.ProcessAudioFrame(samples);
-        bool isSpeaking = vadProcessor.IsSpeaking;
-    }
-}
-```
+| Component | Responsibility |
+|-----------|----------------|
+| `WebSocketClient` | Manages WebSocket connection, message routing |
+| `RequestOrchestrator` | Coordinates conversation flow, session lifecycle |
+| `SpeechInputHandler` | Microphone capture, PTT/VAD control |
+| `NpcClientBase` | NPC-side message handling, audio playback |
+| `StreamingAudioPlayer` | Real-time audio playback with buffering |
 
-### Pause Handling
+### Extension Points
 
-AI Bridge automatically handles Unity's `OnApplicationPause()`, but you can also integrate with custom pause systems (e.g., in-game pause menus, training systems):
+Customize behavior by implementing these interfaces:
 
 ```csharp
-using Tsc.AIBridge.Core;
-using UnityEngine;
-
-public class CustomPauseManager : MonoBehaviour
+// Custom NPC configuration
+public interface INpcConfiguration
 {
-    private RequestOrchestrator orchestrator;
+    string Id { get; }
+    string SystemPrompt { get; }
+    string VoiceId { get; }
+    // ... see API Reference for full interface
+}
 
-    void Start()
-    {
-        orchestrator = RequestOrchestrator.Instance;
-    }
+// Custom API key retrieval
+public interface IApiKeyProvider
+{
+    string GetOrchestratorApiKey();
+}
 
-    public void PauseGame()
-    {
-        // Forward pause state to AIBridge
-        orchestrator.HandlePauseStateChange(isPaused: true, source: "GamePause");
-
-        // Pausing will:
-        // - Stop any active audio recording
-        // - Reset request state to prevent orphaned sessions
-        // - Clear audio buffers to prevent stale audio
-
-        Time.timeScale = 0f;
-    }
-
-    public void ResumeGame()
-    {
-        // Forward resume state to AIBridge
-        orchestrator.HandlePauseStateChange(isPaused: false, source: "GameResume");
-
-        // After resume:
-        // - User needs to press PTT again to start new recording
-        // - This prevents resuming half-recorded audio (safe approach)
-
-        Time.timeScale = 1f;
-    }
+// Custom audio capture
+public interface IAudioCaptureProvider
+{
+    void StartCapture();
+    void StopCapture();
+    event Action<float[]> OnAudioDataAvailable;
 }
 ```
 
-**Why this matters:**
-- Prevents recording state desync during pause
-- Cleans up orphaned sessions when pause occurs mid-recording
-- Ensures safe state when resuming from pause
+## Features
 
-**Note:** The `source` parameter is optional and used for logging to help debug pause-related issues.
+### Audio Pipeline
+- Real-time microphone capture (16kHz mono)
+- Opus encoding (~85% bandwidth reduction)
+- Adaptive buffering for network conditions
+- Streaming playback (48kHz stereo)
+- Spatial audio support for VR
 
-## Architecture
+### Voice Activity Detection (VAD)
+- `DynamicRangeVADProcessor`: Adaptive threshold, auto-calibrating
+- `SimpleVADProcessor`: Fixed threshold for consistent environments
+- Smart offset: VAD-based silence detection after PTT release
 
-The package follows a clean, interface-based architecture:
+### Session Management
+- Request queuing prevents concurrent conflicts
+- Audio buffering during WebSocket reconnection
+- Pause/resume handling (VR headset, game pause)
+- Interruption detection (user speaks while NPC talking)
 
-```
-com.simulationcrew.aibridge/
-├── Runtime/
-│   ├── Audio/
-│   │   ├── Capture/       # Audio input interfaces and implementations
-│   │   ├── Codecs/        # Opus/OGG encoding and decoding
-│   │   ├── Playback/      # Audio output and buffering
-│   │   ├── VAD/           # Voice Activity Detection
-│   │   └── Feedback/      # Audio feedback detection
-│   ├── WebSocket/         # WebSocket communication layer
-│   ├── Messages/          # Protocol message definitions
-│   ├── Core/              # Core interfaces and session management
-│   │   └── Interfaces/    # Extension point interfaces
-│   ├── Auth/              # Authentication interfaces
-│   ├── Configuration/     # API endpoints and constants
-│   ├── Data/              # Data structures
-│   ├── Models/            # Model definitions
-│   └── Attributes/        # Custom attributes
-└── Samples~/
-    └── BasicConversation/ # Example implementation
-```
+### Recording Modes
+- **Push-to-Talk (PTT)**: Manual control via button
+- **Voice Activation**: Automatic start/stop via VAD
+- **Smart Offset**: PTT + VAD silence detection
+- **Fixed Delay**: PTT + configurable timeout
 
-## Performance Considerations
+## Requirements
 
-- **Audio Processing**: Optimized for real-time with minimal latency
-- **Memory Management**: Queue-based streaming to minimize allocations
-- **Network Efficiency**: Opus compression reduces bandwidth by ~85%
-- **Thread Safety**: Concurrent collections for cross-thread communication
+### Unity Version
+- Unity 6 (6000.x) or Unity 2022.3 LTS
 
-## Extension Points
+### Dependencies
+- **NativeWebSocket** (required): High-performance WebSocket
+- **Opus codec** (included): Audio compression
 
-The package is designed to be extended through:
+### Platform Support
+- Windows (x64, x86)
+- macOS (Intel, Apple Silicon)
+- Linux (x64)
+- Android (ARM64)
+- iOS
+- VR: Meta Quest, Pico, SteamVR
 
-1. **Custom Audio Capture**: Implement `IAudioCaptureProvider`
-2. **Custom VAD**: Extend `VADProcessorBase`
-3. **Custom NPC Systems**: Implement `INpcPersona` and `INpcFinder`
-4. **Custom History**: Implement `IConversationHistoryProvider`
+### Backend
+AI Bridge requires a compatible backend service. The backend handles:
+- Speech-to-Text (STT)
+- Language Model (LLM) inference
+- Text-to-Speech (TTS)
+- WebSocket message routing
 
-## Compatibility
+## Troubleshooting
 
-- Unity 6 (6000.x) or Unity 2022.3 LTS or higher
-- Supports all Unity platforms with microphone access
-- VR Ready (Meta Quest, Pico, etc.)
-- Desktop (Windows, macOS, Linux)
-- Mobile (Android, iOS)
+### Audio plays at wrong speed
+**Cause**: Unity sample rate not set to 48kHz
+**Fix**: Edit → Project Settings → Audio → System Sample Rate = 48000
+
+### No audio output
+**Cause**: AudioSource not configured correctly
+**Fix**: Ensure AudioSource has Spatial Blend set appropriately for your use case
+
+### WebSocket connection fails
+**Cause**: API key not configured
+**Fix**: Set ORCHESTRATOR_API_KEY environment variable
+
+### macOS: "DllNotFoundException: opus"
+**Cause**: Native library not installed
+**Fix**: Run `Tools → OpusSharp → Setup macOS Library (Homebrew)`
+
+See [Troubleshooting Guide](Documentation~/GettingStarted.md#troubleshooting) for more solutions.
+
+## Version History
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
+
+**Current Version**: 1.1.16
 
 ## License
 

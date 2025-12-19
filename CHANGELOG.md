@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2025-12-19
+
+### Added
+- **Comprehensive Documentation Suite for 3rd Party Developers**
+  - **README.md**: Complete rewrite with clear Quick Start guide, visual architecture diagram, and concise feature overview
+  - **Documentation~/GettingStarted.md**: Step-by-step setup guide covering installation, project configuration, scene setup, and basic implementation with code examples
+  - **Documentation~/BestPractices.md**: Production-ready patterns including architecture patterns, performance optimization, error handling, VR/spatial audio, conversation design, and common anti-patterns to avoid
+  - **Documentation~/Examples.md**: Seven real-world implementation examples:
+    - Basic Conversation NPC
+    - VR Training Scenario (job interview simulation)
+    - Customer Service Bot with knowledge base
+    - Multi-NPC Environment with dynamic targeting
+    - Language Learning App with progress tracking
+    - Interactive Museum Guide
+    - Healthcare Training Simulation (patient simulation)
+  - **Documentation~/API-Reference.md**: Complete API documentation covering all public classes, interfaces, data types, enums, and provider values
+  - **Business Impact**: 3rd party developers can now understand capabilities, implement correctly, and follow best practices without reading source code
+
+### Changed
+- **README.md restructured** for better developer experience
+  - Added visual pipeline diagram showing conversation flow
+  - Added Quick Start section (5 steps to first conversation)
+  - Added documentation links table
+  - Improved troubleshooting section
+  - Removed redundant technical details (moved to dedicated docs)
+
 ## [1.1.16] - 2025-12-10
 
 ### Fixed
