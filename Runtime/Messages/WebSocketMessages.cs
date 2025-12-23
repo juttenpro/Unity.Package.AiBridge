@@ -201,6 +201,15 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("voiceSpeed")]
         public float VoiceSpeed { get; set; } = 1.0f;
 
+        /// <summary>
+        /// Optional ISO 639-1 language code to force TTS pronunciation (e.g., "nl", "en", "de").
+        /// When set, ElevenLabs uses this language instead of auto-detecting.
+        /// Prevents accent drift (e.g., Flemish instead of Dutch).
+        /// When null/empty, ElevenLabs auto-detects the language (default behavior).
+        /// </summary>
+        [JsonProperty("ttsLanguageCode")]
+        public string TtsLanguageCode { get; set; }
+
         public SessionStartMessage()
         {
             Type = WebSocketMessageTypes.SessionStart;

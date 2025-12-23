@@ -1200,6 +1200,7 @@ namespace Tsc.AIBridge.Core
                     VoiceStyle = _currentConversationRequest?.TtsStyle ?? 0f,
                     VoiceUseSpeakerBoost = _currentConversationRequest?.TtsSpeakerBoost ?? true,
                     VoiceSpeed = _currentConversationRequest?.TtsSpeed ?? 1.0f,
+                    TtsLanguageCode = _currentConversationRequest?.TtsLanguageCode, // Force TTS language (e.g., "nl" to prevent Flemish)
                     // LLM settings
                     LlmProvider = parameters.LlmProvider,
                     LlmModel = parameters.LlmModel,
@@ -1363,6 +1364,7 @@ namespace Tsc.AIBridge.Core
                         voiceStyle = _currentConversationRequest?.TtsStyle,
                         voiceUseSpeakerBoost = _currentConversationRequest?.TtsSpeakerBoost,
                         voiceSpeed = _currentConversationRequest?.TtsSpeed,
+                        ttsLanguageCode = _currentConversationRequest?.TtsLanguageCode, // Force TTS language
                     }
                 };
 

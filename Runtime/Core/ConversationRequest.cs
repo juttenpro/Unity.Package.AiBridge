@@ -38,6 +38,15 @@ namespace Tsc.AIBridge.Core
         public bool TtsSpeakerBoost { get; set; } = true;
         public float TtsStyle { get; set; } = 0f;
         public float TtsSpeed { get; set; } = 1.0f;
+
+        /// <summary>
+        /// Optional ISO 639-1 language code to force TTS pronunciation (e.g., "nl", "en", "de").
+        /// When set, ElevenLabs uses this language instead of auto-detecting.
+        /// Prevents accent drift (e.g., Flemish instead of Dutch).
+        /// When null/empty, ElevenLabs auto-detects the language.
+        /// </summary>
+        public string TtsLanguageCode { get; set; }
+
         public bool AllowInterruption { get; set; } = true;
         public float InterruptionPersistenceTime { get; set; } = 1.5f;
     }

@@ -740,6 +740,7 @@ public class ConversationRequest
     public float TtsSimilarityBoost { get; set; }
     public float TtsStyle { get; set; }
     public bool TtsSpeakerBoost { get; set; }
+    public string TtsLanguageCode { get; set; } // Optional: Force TTS language (e.g., "nl", "en")
 
     // LLM settings
     public string LlmProvider { get; set; }
@@ -815,6 +816,7 @@ public class SessionStartMessage
     public float? VoiceSimilarityBoost;
     public float? VoiceStyle;
     public bool? VoiceUseSpeakerBoost;
+    public string TtsLanguageCode;  // Optional: ISO 639-1 code to force TTS pronunciation (e.g., "nl", "en")
 }
 ```
 

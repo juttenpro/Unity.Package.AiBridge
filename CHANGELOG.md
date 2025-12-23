@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2025-12-23
+
+### Added
+- **TTS Language Override (Force Language)**
+  - New `TtsLanguageCode` property in `ConversationRequest`, `SessionStartMessage`, and `ConversationContext`
+  - Allows forcing ElevenLabs to use a specific ISO 639-1 language code (e.g., "nl", "en", "de")
+  - Prevents accent drift (e.g., Flemish instead of Dutch) by overriding auto-detection
+  - When null/empty, ElevenLabs auto-detects language (default behavior, no breaking change)
+  - **Business Impact**: Dutch training scenarios can now force standard Dutch pronunciation instead of risking Flemish accent
+
 ## [1.2.0] - 2025-12-19
 
 ### Added
