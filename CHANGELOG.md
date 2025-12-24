@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2025-12-24
+
+### Added
+- **ShouldBlockRecording delegate for external recording control**
+  - New `SpeechInputHandler.ShouldBlockRecording` static callback
+  - Allows external systems to prevent PTT recording from starting
+  - **Use Case**: Block speech recording when user is interacting with VR UI
+  - When callback returns true, PTT press is ignored and no recording starts
+  - **Business Impact**: VR users can now interact with UI using trigger button without accidentally starting STT recording
+
 ## [1.3.0] - 2025-12-23
 
 ### Added

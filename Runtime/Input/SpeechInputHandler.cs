@@ -81,6 +81,13 @@ namespace Tsc.AIBridge.Input
         /// </summary>
         public static event Action<float[]> RecordingDataReceived;
 
+        /// <summary>
+        /// Optional callback to determine if recording should be blocked.
+        /// External systems (e.g., VR UI interaction) can register to prevent recording when user is interacting with UI.
+        /// Returns true if recording should be blocked, false otherwise.
+        /// </summary>
+        public static Func<bool> ShouldBlockRecording;
+
         #endregion
 
         #region Settings
@@ -530,6 +537,14 @@ namespace Tsc.AIBridge.Input
 
         private void OnPttPressed(InputAction.CallbackContext context)
         {
+            // Check if recording should be blocked (e.g., user is interacting with UI)
+            if (ShouldBlockRecording?.Invoke() == true)
+            {
+                if (enableVerboseLogging)
+                    Debug.Log("[SpeechInputHandler] PTT blocked - user interacting with UI");
+                return;
+            }
+
             _isPttPressed = true;
             _pttPressTime = Time.time;
 
