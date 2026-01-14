@@ -336,13 +336,17 @@ namespace Tsc.AIBridge.Core
                          $"Type: {(request.IsNpcInitiated ? "NPC-initiated" : "Player-initiated")}, " +
                          $"STT: {request.SttProvider}, LLM: {request.LlmModel}");
 
-                // DEBUG: Log message count in request
+                // DEBUG: Log message count and content in request
                 Debug.Log($"[RequestOrchestrator] ConversationRequest has {request.Messages?.Count ?? 0} messages before adapter");
                 if (request.Messages != null)
                 {
                     foreach (var msg in request.Messages)
                     {
-                        var preview = msg.Content?.Length > 50 ? msg.Content.Substring(0, 50) + "..." : msg.Content;
+                        // Log full content for system prompts, truncate others at 2000 chars
+                        var maxLength = msg.Role?.ToLower() == "system" ? 5000 : 2000;
+                        var preview = msg.Content?.Length > maxLength
+                            ? msg.Content.Substring(0, maxLength) + $"... [TRUNCATED, total {msg.Content.Length} chars]"
+                            : msg.Content;
                         Debug.Log($"  - [{msg.Role}] {preview}");
                     }
                 }
