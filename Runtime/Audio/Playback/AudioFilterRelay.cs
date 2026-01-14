@@ -258,8 +258,9 @@ namespace Tsc.AIBridge.Audio.Playback
                     Debug.Log($"[AudioFilterRelay] Recreated dummy clip: {streamingClip.name}");
                 }
 
-                // DEBUG: Log AudioSource state BEFORE unmute
+                // DEBUG: Log AudioSource and AudioListener state BEFORE unmute
                 Debug.Log($"[AudioFilterRelay] StartPlayback on {gameObject.name} - BEFORE: mute={_audioSource.mute}, volume={_audioSource.volume}, enabled={_audioSource.enabled}, isPlaying={_audioSource.isPlaying}, clip={(_audioSource.clip != null ? _audioSource.clip.name : "null")}");
+                Debug.Log($"[AudioFilterRelay] AudioListener: volume={AudioListener.volume}, pause={AudioListener.pause}");
 
                 _audioSource.mute = false; // Unmute when starting
                 if (!_audioSource.isPlaying)
