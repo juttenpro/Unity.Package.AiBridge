@@ -1445,7 +1445,19 @@ namespace Tsc.AIBridge.Core
             if (_activeNpcConfig.Messages != null && _activeNpcConfig.Messages.Count > 0)
             {
                 if (enableVerboseLogging)
+                {
                     Debug.Log($"[RequestOrchestrator] Using {_activeNpcConfig.Messages.Count} messages from config (includes system prompt)");
+
+                    // Log each message with role and content preview
+                    for (int i = 0; i < _activeNpcConfig.Messages.Count; i++)
+                    {
+                        var msg = _activeNpcConfig.Messages[i];
+                        var contentPreview = msg.Content?.Length > 500
+                            ? msg.Content.Substring(0, 500) + "... [TRUNCATED]"
+                            : msg.Content;
+                        Debug.Log($"[RequestOrchestrator] Message[{i}] role={msg.Role}:\n{contentPreview}");
+                    }
+                }
                 return new List<ChatMessage>(_activeNpcConfig.Messages);
             }
 
@@ -1477,6 +1489,16 @@ namespace Tsc.AIBridge.Core
                 if (messages.Count > 0)
                 {
                     Debug.Log($"[RequestOrchestrator] Built {messages.Count} messages from SystemPrompt + history");
+
+                    // Log each message with role and content preview
+                    for (int i = 0; i < messages.Count; i++)
+                    {
+                        var msg = messages[i];
+                        var contentPreview = msg.Content?.Length > 500
+                            ? msg.Content.Substring(0, 500) + "... [TRUNCATED]"
+                            : msg.Content;
+                        Debug.Log($"[RequestOrchestrator] Message[{i}] role={msg.Role}:\n{contentPreview}");
+                    }
                 }
                 else
                 {
