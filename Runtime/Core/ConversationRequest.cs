@@ -49,5 +49,18 @@ namespace Tsc.AIBridge.Core
 
         public bool AllowInterruption { get; set; } = true;
         public float InterruptionPersistenceTime { get; set; } = 1.5f;
+
+        #region Context Caching (Gemini Cost Optimization)
+
+        /// <summary>
+        /// Full Gemini cached content resource name.
+        /// Format: "projects/{project}/locations/{location}/cachedContents/{id}"
+        /// Obtained from ContextCacheManager after calling EnsureCache().
+        /// When provided, VertexAIService uses this cache for 75% cost reduction on cached tokens.
+        /// Note: When using cache, system prompt should NOT be included in Messages (it's in the cache).
+        /// </summary>
+        public string ContextCacheName { get; set; }
+
+        #endregion
     }
 }

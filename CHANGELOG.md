@@ -6,6 +6,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2025-01-23
+
+### Added
+- **Gemini Context Caching Support (75% Cost Reduction)**
+  - **Feature**: Cache large system prompts on Gemini's servers for significant cost savings
+  - **New Components**:
+    - `ContextCacheManager`: Singleton for cache lifecycle management (create, lookup, remove)
+    - `ContextCacheService`: REST API calls to `/api/cache/ensure` endpoint
+  - **New Properties**:
+    - `ConversationContext.contextCacheName`: Full Gemini cache resource name
+    - `ConversationRequest.ContextCacheName`: Pass cache reference through conversation flow
+    - `SessionStartMessage.ContextCacheName`: Include cache in WebSocket session start
+  - **How It Works**:
+    1. Use `SystemPromptSetupNode` in RuleSystem (at caseStart) to create/refresh cache
+    2. Use `SystemPromptCacheNode` in PromptComposer flow to reference the cached system prompt
+    3. System prompt is loaded from Gemini's cache, not included in Messages
+    4. 75% cost reduction on cached tokens for all requests using that cache
+  - **Caching Rules**:
+    - Cache is shared across users with same cacheKey (cost-efficient)
+    - Cache is model-specific (gemini-2.0-flash cache only works with that model)
+    - Cannot combine cached system prompt with additional system messages
+    - Dynamic context (user-specific data) should go in first user message, not system
+  - **Business Impact**:
+    - Significant cost reduction for training scenarios with large, static system prompts
+    - Enables complex AI persona definitions without cost penalty
+    - Cache TTL configurable (1-60 minutes for 75% discount)
+  - **Backward Compatibility**: Fully backward compatible - caching is opt-in via new nodes
+  - **Locations**:
+    - ContextCacheManager.cs, ContextCacheService.cs (AIBridge package)
+    - ConversationContext.cs, ConversationRequest.cs, WebSocketMessages.cs (AIBridge package)
+    - RequestOrchestrator.cs (passes contextCacheName to API)
+
+### Added
+- **Unit Tests for ContextCacheManager**
+  - Tests for cache lookup, validity checking, removal, and clearing
+  - Business documentation in test comments explaining caching behavior
+  - Location: Tests/Runtime/ContextCacheManagerTests.cs
+
 ## [1.4.0] - 2025-12-24
 
 ### Added

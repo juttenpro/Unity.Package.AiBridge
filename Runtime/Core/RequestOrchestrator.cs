@@ -1217,7 +1217,9 @@ namespace Tsc.AIBridge.Core
                     CustomVocabulary = speechInputHandler?.ParsedCustomVocabulary,
                     CustomVocabularyBoost = 10.0f, // Fixed boost value for Google STT
                     // Enable metrics if configured
-                    EnableMetrics = enableMetrics
+                    EnableMetrics = enableMetrics,
+                    // Context caching (Gemini cost optimization)
+                    ContextCacheName = _currentConversationRequest?.ContextCacheName
                 };
 
                 // CRITICAL FIX: Subscribe to SessionStarted BEFORE sending SessionStart
@@ -1369,6 +1371,8 @@ namespace Tsc.AIBridge.Core
                         voiceUseSpeakerBoost = _currentConversationRequest?.TtsSpeakerBoost,
                         voiceSpeed = _currentConversationRequest?.TtsSpeed,
                         ttsLanguageCode = _currentConversationRequest?.TtsLanguageCode, // Force TTS language
+                        // Context caching (Gemini cost optimization)
+                        contextCacheName = _currentConversationRequest?.ContextCacheName,
                     }
                 };
 

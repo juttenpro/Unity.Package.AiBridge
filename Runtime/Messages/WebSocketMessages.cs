@@ -210,6 +210,20 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("ttsLanguageCode")]
         public string TtsLanguageCode { get; set; }
 
+        #region Context Caching (Gemini Cost Optimization)
+
+        /// <summary>
+        /// Full Gemini cached content resource name.
+        /// Format: "projects/{project}/locations/{location}/cachedContents/{id}"
+        /// Obtained from POST /api/cache/ensure endpoint via ContextCacheManager.
+        /// When provided, VertexAIService uses this cache for 75% cost reduction on cached tokens.
+        /// Note: When using cache, system prompt should NOT be included in Messages (it's in the cache).
+        /// </summary>
+        [JsonProperty("contextCacheName")]
+        public string ContextCacheName { get; set; }
+
+        #endregion
+
         public SessionStartMessage()
         {
             Type = WebSocketMessageTypes.SessionStart;

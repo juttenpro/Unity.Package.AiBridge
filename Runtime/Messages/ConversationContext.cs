@@ -150,6 +150,19 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("location")]
         public string location;
 
+        #region Context Caching (Gemini Cost Optimization)
+
+        /// <summary>
+        /// Full Gemini cached content resource name.
+        /// Format: "projects/{project}/locations/{location}/cachedContents/{id}"
+        /// Obtained from POST /api/cache/ensure endpoint.
+        /// When provided, VertexAIService uses this cache for 75% cost reduction.
+        /// </summary>
+        [JsonProperty("contextCacheName")]
+        public string contextCacheName;
+
+        #endregion
+
         // REMOVED: audioFormat, sampleRate, opusBitrate
         // These are misleading - API always uses opus_48000_64 hardcoded
         // ElevenLabs supports different bitrates but API doesn't expose this
