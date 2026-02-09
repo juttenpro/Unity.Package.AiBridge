@@ -141,9 +141,8 @@ namespace Tsc.AIBridge.Tests.Runtime
             _playerGameObject.SetActive(true);
             yield return null; // Wait for Start() to be called
 
-            // Act - trigger recording started event
-            bool eventReceived = false;
-            _interruptionManager.OnInterruption += () => eventReceived = true;
+            // Act - trigger recording started event (subscription validates event architecture exists)
+            _interruptionManager.OnInterruption += () => { };
 
             // Simulate user input started
             var onRecordingStarted = typeof(SpeechInputHandler)

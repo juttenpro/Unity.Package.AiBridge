@@ -19,17 +19,17 @@ Before you begin, ensure you have:
 
 - **Unity 2022.3 LTS** or **Unity 6 (6000.x)** or later
 - A compatible **backend service** (handles STT, LLM, TTS)
-- An **API key** for the orchestrator service
+- An **API key** for the orchestrator service (see [API Key Setup](#configure-api-key))
 - **Microphone access** on your target platform
 
 ### Backend Requirements
 
-AI Bridge is a client-side package. You need a backend service that:
-- Accepts WebSocket connections
-- Processes audio via Speech-to-Text
-- Generates responses via LLM
-- Synthesizes speech via Text-to-Speech
-- Streams audio back to the client
+AI Bridge is a client-side package that connects to a backend orchestrator service over WebSocket. The backend handles the full AI pipeline:
+- **STT** (Speech-to-Text): Transcribes user speech (Google, Azure, or OpenAI)
+- **LLM** (Large Language Model): Generates NPC responses (OpenAI, Vertex AI, or Azure OpenAI)
+- **TTS** (Text-to-Speech): Synthesizes voice audio (ElevenLabs)
+
+The default backend is the **API Orchestrator** hosted on Google Cloud Run. Contact the backend provider to obtain your API key.
 
 ## Installation
 
@@ -178,9 +178,10 @@ In the Inspector:
 
 | Field | Value |
 |-------|-------|
-| Api Base Url | Your backend URL (e.g., `https://api.example.com`) |
-| WebSocket Endpoint | WebSocket path (e.g., `/ws/conversation`) |
+| Api Base Url | Your backend URL (default: `https://api-orchestrator-service-104588943109.europe-west4.run.app`) |
+| WebSocket Endpoint | `/api/websocket` (this is the correct endpoint for the API Orchestrator) |
 | Establish Connection On Start | ✓ (checked) |
+| Send Wake Up Call | ✓ (recommended - prevents Cloud Run cold start delays) |
 | Api Key Provider Component | Drag the `EnvironmentApiKeyProvider` component |
 | Enable Verbose Logging | ✓ (for development) |
 
@@ -211,18 +212,61 @@ In the Inspector:
 
 #### 6. Configure SimpleNpcClient
 
-| Field | Value |
-|-------|-------|
-| Npc Name | "Assistant" (display name) |
-| System Prompt | Your NPC's personality/instructions |
-| Voice Id | ElevenLabs voice ID |
-| Llm Provider | "openai", "vertexai", or "azure-openai" |
-| Llm Model | "gpt-4o-mini", "gemini-1.5-flash", etc. |
-| Stt Provider | "google", "azure", or "openai" |
-| Audio Source | Drag the AudioSource component |
-| Streaming Audio Player | Drag the StreamingAudioPlayer component |
+SimpleNpcClient exposes all AI provider settings directly in the Inspector, so you can configure the full conversation pipeline without writing code.
+
+**NPC Configuration:**
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| Npc Name | "Assistant" | Display name for this NPC |
+| System Prompt | Your NPC's personality | Multi-line text defining behavior (e.g., "You are a helpful receptionist...") |
+
+**LLM Settings:**
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| Llm Provider | `openai` | Options: `openai`, `vertexai`, `azure-openai` |
+| Llm Model | `gpt-4o-mini` | Model ID (e.g., `gpt-4o`, `gpt-4o-mini`, `gemini-1.5-flash`) |
+| Temperature | 0.7 | Response randomness: 0 = deterministic, 2 = creative |
+| Max Tokens | 500 | Maximum length of LLM response |
+
+**STT Settings:**
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| Stt Provider | `google` | Options: `google`, `azure`, `openai` |
+| Language | `en-US` | Language code for speech recognition (e.g., `nl-NL`, `en-US`) |
+
+**TTS Settings:**
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| Voice Id | ElevenLabs voice ID | Get voice IDs from your ElevenLabs account |
+| Tts Model | `eleven_turbo_v2_5` | Options: `eleven_turbo_v2_5` (fast), `eleven_flash_v2_5`, `eleven_multilingual_v2` |
+| Tts Streaming Mode | `batch` | `batch` = wait for full response, `sentence` = stream per sentence |
+| Tts Speed | 1.0 | Voice speed: 0.7 (slow) to 1.2 (fast) |
+
+**Interruption Settings:**
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| Allow Interruption | ✓ | Whether the user can interrupt the NPC |
+| Persistence Time | 1.5 | Seconds user must speak to trigger interruption |
+
+> **Note**: The `AudioSource` and `StreamingAudioPlayer` components are auto-discovered on the same GameObject or its children. You don't need to drag them into SimpleNpcClient.
+
+> **Tip**: SimpleNpcClient implements `INpcConfiguration`, so you can pass it directly to `RequestOrchestrator.StartAudioRequest()` without building a separate configuration object.
 
 ### Configure API Key
+
+The `ORCHESTRATOR_API_KEY` is a shared secret that authenticates your client with the backend service. **You receive this key from the backend provider** - it is not self-generated.
+
+The authentication flow is:
+1. Client sends API key to `POST /api/auth/token` (via `X-API-Key` header)
+2. Backend validates the key and returns a short-lived JWT token (1 hour)
+3. Client uses the JWT token to authenticate WebSocket connections
+
+AI Bridge handles steps 1-3 automatically. You only need to provide the API key.
 
 Set the environment variable before running Unity:
 
@@ -243,7 +287,9 @@ export ORCHESTRATOR_API_KEY="your-api-key-here"
 ```
 
 **Unity Editor (persistent):**
-Add to your system environment variables.
+Add `ORCHESTRATOR_API_KEY` to your system environment variables (Windows: System Properties → Environment Variables, macOS/Linux: `~/.bashrc` or `~/.zshrc`).
+
+> **Custom key providers**: If you need to load the API key from a vault, database, or web service instead of an environment variable, implement `IApiKeyProvider` (sync) or `IAsyncApiKeyProvider` (async) and assign it to the WebSocketClient's `Api Key Provider Component` field. See [API Key Providers](../Runtime/Auth/README_API_KEY_PROVIDERS.md) for details.
 
 ## Basic Implementation
 

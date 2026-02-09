@@ -55,18 +55,22 @@ Scene Hierarchy:
 │   └── EnvironmentApiKeyProvider
 │
 └── NPC (Your character)
-    └── SimpleNpcClient (or custom NpcClientBase)
+    ├── AudioSource
+    ├── StreamingAudioPlayer
+    └── SimpleNpcClient (configure LLM/STT/TTS in Inspector)
 ```
 
 ### 4. Configure API Key
 
-Set environment variable before running Unity:
+The API key authenticates your client with the backend service. You receive this key from the backend provider.
+
+Set the environment variable before running Unity:
 ```bash
 # Windows PowerShell
-$env:ORCHESTRATOR_API_KEY = "your_api_key"
+$env:ORCHESTRATOR_API_KEY = "your-api-key-here"
 
 # Linux/Mac
-export ORCHESTRATOR_API_KEY="your_api_key"
+export ORCHESTRATOR_API_KEY="your-api-key-here"
 ```
 
 ### 5. Start a Conversation
@@ -228,7 +232,7 @@ See [Troubleshooting Guide](Documentation~/GettingStarted.md#troubleshooting) fo
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 
-**Current Version**: 1.1.16
+**Current Version**: 1.5.0
 
 ## License
 

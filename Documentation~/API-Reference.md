@@ -233,44 +233,35 @@ public async Task SendTextInputAsync(string npcId, string text, string requestId
 
 ### NpcClientBase
 
-Abstract base class for NPC implementations.
+Abstract base class for NPC implementations. Handles WebSocket message routing, audio playback lifecycle, and conversation state management. Extend this class to create custom NPC implementations.
 
 **Namespace:** `Tsc.AIBridge.Core`
 
-**Inheritance:** `MonoBehaviour`, `IConversationHistory`, `INpcMessageHandler`
+**Inheritance:** `MonoBehaviour`
 
-#### Abstract Properties
+**Implements:** `IConversationHistory`, `INpcMessageHandler`
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `NpcName` | `string` | Display name of the NPC |
+#### Abstract Members
 
-#### Virtual Properties
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `SystemPrompt` | `string` | `""` | System prompt for LLM |
-| `VoiceId` | `string` | `""` | TTS voice identifier |
-| `TtsModel` | `string` | `"eleven_turbo_v2_5"` | TTS model name |
-| `TtsStreamingMode` | `string` | `"sentence"` | Streaming mode |
-| `TtsSpeed` | `float` | `1.0f` | Voice speed multiplier |
-| `LlmProvider` | `string` | `"openai"` | LLM provider |
-| `LlmModel` | `string` | `"gpt-4o-mini"` | LLM model name |
-| `Temperature` | `float` | `0.7f` | LLM temperature |
-| `MaxTokens` | `int` | `500` | Max response tokens |
-| `SttProvider` | `string` | `"google"` | STT provider |
-| `Language` | `string` | `"en-US"` | Language code |
-| `AllowInterruption` | `bool` | `true` | Allow user interruption |
+| Member | Type | Description |
+|--------|------|-------------|
+| `NpcName` | `string` (property) | Display name of the NPC |
+| `ValidateConfiguration()` | `void` (method) | Called on Start to validate Inspector settings |
 
 #### Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `NpcId` | `string` | Unique identifier (auto-generated GUID) |
+| `NpcId` | `string` | Unique identifier (based on GameObject instance ID) |
 | `IsActive` | `bool` | Whether NPC is active for conversation |
 | `IsTalking` | `bool` | Whether NPC is currently speaking |
+| `IsSpeaking` | `bool` | Alias for IsTalking |
 | `IsListening` | `bool` | Whether NPC is listening to user |
 | `LastResponseText` | `string` | Last AI response text |
+| `AudioPlayer` | `StreamingAudioPlayer` | Auto-discovered audio player (from children) |
+| `MetadataHandler` | `ConversationMetadataHandler` | Internal message handler |
+
+> **Note**: NpcClientBase does not define provider settings (LLM, STT, TTS). These are configured by derived classes. `SimpleNpcClient` exposes them as Inspector fields. Custom implementations can source them from ScriptableObjects, databases, or any other source.
 
 #### Methods
 
@@ -326,44 +317,84 @@ public virtual void ClearHistory()
 
 | Event | Type | Description |
 |-------|------|-------------|
-| `OnSessionStarted` | `Action` | Fired when session starts |
+| `OnSessionStarted` | `Action` | Fired when backend confirms session started |
 | `OnAudioStarted` | `Action` | Fired when audio playback begins |
 | `OnAudioStopped` | `Action` | Fired when audio playback ends |
-| `OnAiResponseReceived` | `Action<AiResponseMessage>` | Fired when AI response received |
-| `OnStartListening` | `Action` | Fired when NPC starts listening |
-| `OnStopListening` | `Action` | Fired when NPC stops listening |
-| `OnStartSpeaking` | `Action` | Fired when NPC starts speaking |
-| `OnStopSpeaking` | `Action` | Fired when NPC stops speaking |
+| `OnResponseReceived` | `Action<LlmResponseData>` | Fired when AI response received (typed data with Text, Intents) |
+| `OnNpcResponse` | `UnityEvent<string>` | Unity event fired with response text (assignable in Inspector) |
+| `OnConversationStarted` | `Action` | Fired when conversation begins |
+| `OnConversationEnded` | `Action` | Fired when conversation ends |
+
+**Static Events** (for debug UI):
+
+| Event | Type | Description |
+|-------|------|-------------|
+| `OnTranscriptionReceivedStatic` | `Action<string, string>` | (npcName, transcript) |
+| `OnAIResponseReceivedStatic` | `Action<string, string>` | (npcName, response) |
 
 ---
 
 ### SimpleNpcClient
 
-Basic NPC implementation with Inspector-configurable properties.
+Self-contained NPC client with all AI provider settings configurable from the Inspector. Implements `INpcConfiguration` so it can be used directly with `RequestOrchestrator.StartAudioRequest()`.
 
 **Namespace:** `Tsc.AIBridge.Core`
 
 **Inheritance:** `NpcClientBase`
 
-All properties from `NpcClientBase` are exposed as serialized fields in the Inspector.
+**Implements:** `INpcConfiguration`
 
 #### Inspector Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `npcName` | `string` | NPC display name |
-| `systemPrompt` | `string` | System prompt (TextArea) |
-| `voiceId` | `string` | ElevenLabs voice ID |
-| `ttsModel` | `string` | TTS model |
-| `voiceSpeed` | `float` | Voice speed (0.7-1.3) |
-| `llmProvider` | `string` | LLM provider |
-| `llmModel` | `string` | LLM model name |
-| `temperature` | `float` | LLM temperature (0-1) |
-| `sttProvider` | `string` | STT provider |
-| `language` | `string` | Language code |
-| `allowInterruption` | `bool` | Allow interruption |
-| `audioSource` | `AudioSource` | Audio output |
-| `streamingAudioPlayer` | `StreamingAudioPlayer` | Audio player |
+**NPC Configuration:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `npcName` | `string` | `"NPC"` | NPC display name |
+| `systemPrompt` | `string` | `""` | System prompt defining personality (TextArea) |
+
+**LLM Settings:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `llmProvider` | `string` | `"openai"` | LLM provider: `openai`, `vertexai`, `azure-openai` |
+| `llmModel` | `string` | `"gpt-4o-mini"` | Model ID: `gpt-4o`, `gpt-4o-mini`, `gemini-1.5-flash`, etc. |
+| `temperature` | `float` | `0.7` | Response randomness (0.0 - 2.0) |
+| `maxTokens` | `int` | `500` | Maximum response tokens |
+
+**STT Settings:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `sttProvider` | `string` | `"google"` | STT provider: `google`, `azure`, `openai` |
+| `language` | `string` | `"en-US"` | Language code for recognition: `en-US`, `nl-NL`, etc. |
+
+**TTS Settings:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `voiceId` | `string` | `"default"` | ElevenLabs voice ID |
+| `ttsModel` | `string` | `"eleven_turbo_v2_5"` | TTS model variant |
+| `ttsStreamingMode` | `string` | `"batch"` | `batch` or `sentence` |
+| `ttsSpeed` | `float` | `1.0` | Voice speed (0.7 - 1.2) |
+
+**Interruption Settings:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `allowInterruption` | `bool` | `true` | Whether NPC can be interrupted |
+| `persistenceTime` | `float` | `1.5` | Seconds to trigger interruption (0 - 5) |
+
+> **Note**: `AudioSource` and `StreamingAudioPlayer` are auto-discovered from the same GameObject or its children. You do not need to assign them manually.
+
+#### Additional Events (beyond NpcClientBase)
+
+| Event | Type | Description |
+|-------|------|-------------|
+| `OnStartListening` | `Action` | Fired when NPC starts listening (call `NotifyStartListening()`) |
+| `OnStopListening` | `Action` | Fired when NPC stops listening (call `NotifyStopListening()`) |
+| `OnStartSpeaking` | `Action` | Fired when audio playback begins (automatic) |
+| `OnStopSpeaking` | `Action` | Fired when audio playback ends (automatic) |
 
 ---
 
@@ -965,36 +996,78 @@ public enum RecordingMode
 
 ## Usage Patterns
 
-### Minimal NPC Setup
+### Using SimpleNpcClient (Recommended for Getting Started)
+
+The easiest way to set up an NPC is with `SimpleNpcClient`. Configure everything in the Inspector - no code needed for basic usage.
 
 ```csharp
-public class MinimalNpc : NpcClientBase
-{
-    public override string NpcName => "Assistant";
+// Start a conversation using SimpleNpcClient as INpcConfiguration
+var orchestrator = RequestOrchestrator.Instance;
 
-    // Uses all default values for other properties
-}
+// SimpleNpcClient implements INpcConfiguration, so pass it directly
+orchestrator.StartAudioRequest(mySimpleNpcClient);
 ```
 
-### Custom NPC with All Options
+### Using ConversationRequest (Programmatic Configuration)
+
+For dynamic configuration (e.g., changing providers at runtime):
 
 ```csharp
-public class FullyConfiguredNpc : NpcClientBase
+var request = new ConversationRequest
+{
+    NpcId = myNpc.NpcId,
+    LlmProvider = "vertexai",
+    LlmModel = "gemini-1.5-flash",
+    SttProvider = "google",
+    Language = "nl-NL",
+    TtsModel = "eleven_turbo_v2_5",
+    VoiceId = "your-elevenlabs-voice-id",
+    Temperature = 0.7f,
+    MaxTokens = 500,
+    Messages = new List<ChatMessage>
+    {
+        new ChatMessage { Role = "system", Content = "You are a helpful assistant." }
+    }
+};
+
+orchestrator.StartConversationRequest(request);
+```
+
+### Custom NPC Implementation
+
+For advanced use cases, extend `NpcClientBase` and implement `INpcConfiguration`:
+
+```csharp
+public class CustomNpc : NpcClientBase, INpcConfiguration
 {
     [SerializeField] private NpcConfigSO config;
 
     public override string NpcName => config.name;
-    public override string SystemPrompt => config.systemPrompt;
-    public override string VoiceId => config.voiceId;
-    public override string TtsModel => "eleven_turbo_v2_5";
-    public override float TtsSpeed => config.voiceSpeed;
-    public override string LlmProvider => "openai";
-    public override string LlmModel => "gpt-4o";
-    public override float Temperature => config.temperature;
-    public override int MaxTokens => 1000;
-    public override string SttProvider => "google";
-    public override string Language => "en-US";
-    public override bool AllowInterruption => true;
+
+    // INpcConfiguration implementation
+    string INpcConfiguration.Id => NpcId;
+    string INpcConfiguration.Name => config.name;
+    string INpcConfiguration.SystemPrompt => config.systemPrompt;
+    List<ChatMessage> INpcConfiguration.Messages => null;
+    string INpcConfiguration.VoiceId => config.voiceId;
+    string INpcConfiguration.TtsModel => "eleven_turbo_v2_5";
+    string INpcConfiguration.TtsStreamingMode => "batch";
+    float INpcConfiguration.TtsSpeed => 1.0f;
+    string INpcConfiguration.LlmProvider => "openai";
+    string INpcConfiguration.LlmModel => "gpt-4o";
+    float INpcConfiguration.Temperature => config.temperature;
+    int INpcConfiguration.MaxTokens => 1000;
+    string INpcConfiguration.SttProvider => "google";
+    string INpcConfiguration.Language => "en-US";
+    bool INpcConfiguration.AllowInterruption => true;
+    float INpcConfiguration.InterruptionPersistenceTime => 1.5f;
+    bool INpcConfiguration.IsActive => IsActive;
+    bool INpcConfiguration.IsTalking => IsTalking;
+
+    public event Action OnStartListening;
+    public event Action OnStopListening;
+    public event Action OnStartSpeaking;
+    public event Action OnStopSpeaking;
 
     private List<ChatMessage> _history = new();
 
@@ -1002,10 +1075,15 @@ public class FullyConfiguredNpc : NpcClientBase
 
     public override void AddPlayerMessage(string message)
     {
-        _history.Add(new ChatMessage { role = "user", content = message });
+        _history.Add(new ChatMessage { Role = "user", Content = message });
     }
 
     public override void ClearHistory() => _history.Clear();
+
+    protected override void ValidateConfiguration()
+    {
+        if (config == null) Debug.LogError($"[{NpcName}] Config ScriptableObject not assigned!");
+    }
 }
 ```
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Tsc.AIBridge.Messages;
@@ -5,21 +6,57 @@ using Tsc.AIBridge.Messages;
 namespace Tsc.AIBridge.Core
 {
     /// <summary>
-    /// Simple NPC client for core package - no PersonaSO dependencies.
-    /// Can be configured via Inspector or programmatically.
-    /// For PersonaSO integration, use the extended package NpcClient.
+    /// Self-contained NPC client with all AI provider settings configurable from the Inspector.
+    /// Implements INpcConfiguration so it can be used directly with RequestOrchestrator.
+    /// For PersonaSO integration (RuleSystem-driven), use the extended package NpcClient.
     /// Inherits IConversationHistory implementation from NpcClientBase.
     /// </summary>
-    public class SimpleNpcClient : NpcClientBase
+    public class SimpleNpcClient : NpcClientBase, INpcConfiguration
     {
         #region Configuration
 
         [Header("NPC Configuration")]
         [SerializeField] private string npcName = "NPC";
 
-        [Header("Voice Settings")]
+        [Tooltip("System prompt that defines this NPC's personality and behavior")]
+        [TextArea(3, 10)]
+        [SerializeField] private string systemPrompt;
+
+        [Header("LLM Settings")]
+        [Tooltip("LLM provider: \"openai\", \"vertexai\", or \"azure-openai\"")]
+        [SerializeField] private string llmProvider = "openai";
+
+        [Tooltip("LLM model name (e.g. \"gpt-4o-mini\", \"gemini-1.5-flash\")")]
+        [SerializeField] private string llmModel = "gpt-4o-mini";
+
+        [Tooltip("LLM response randomness (0 = deterministic, 2 = very creative)")]
+        [Range(0f, 2f)]
+        [SerializeField] private float temperature = 0.7f;
+
+        [Tooltip("Maximum tokens in the LLM response")]
+        [Min(1)]
+        [SerializeField] private int maxTokens = 500;
+
+        [Header("STT Settings")]
+        [Tooltip("Speech-to-Text provider: \"google\", \"azure\", or \"openai\"")]
+        [SerializeField] private string sttProvider = "google";
+
+        [Tooltip("Language code for STT recognition (e.g. \"en-US\", \"nl-NL\")")]
+        [SerializeField] private string language = "en-US";
+
+        [Header("TTS Settings")]
+        [Tooltip("ElevenLabs voice ID")]
         [SerializeField] private string voiceId = "default";
+
+        [Tooltip("TTS model: \"eleven_turbo_v2_5\", \"eleven_flash_v2_5\", or \"eleven_multilingual_v2\"")]
+        [SerializeField] private string ttsModel = "eleven_turbo_v2_5";
+
+        [Tooltip("TTS streaming mode: \"batch\" (full response) or \"sentence\" (per sentence)")]
         [SerializeField] private string ttsStreamingMode = "batch";
+
+        [Tooltip("Voice playback speed (0.7 = slow, 1.0 = normal, 1.2 = fast)")]
+        [Range(0.7f, 1.2f)]
+        [SerializeField] private float ttsSpeed = 1.0f;
 
         [Header("Interruption Settings")]
         [Tooltip("Whether this NPC can be interrupted during speech")]
@@ -35,6 +72,48 @@ namespace Tsc.AIBridge.Core
 
         #endregion
 
+        #region INpcConfiguration Implementation
+
+        string INpcConfiguration.Id => NpcId;
+        string INpcConfiguration.Name => npcName;
+        string INpcConfiguration.SystemPrompt => systemPrompt;
+        List<ChatMessage> INpcConfiguration.Messages => null; // null = use SystemPrompt + history path
+        string INpcConfiguration.TtsStreamingMode => ttsStreamingMode;
+        string INpcConfiguration.TtsModel => ttsModel;
+        string INpcConfiguration.VoiceId => voiceId;
+        string INpcConfiguration.Language => language;
+        string INpcConfiguration.SttProvider => sttProvider;
+        string INpcConfiguration.LlmProvider => llmProvider;
+        string INpcConfiguration.LlmModel => llmModel;
+        float INpcConfiguration.Temperature => temperature;
+        int INpcConfiguration.MaxTokens => maxTokens;
+        bool INpcConfiguration.AllowInterruption => allowInterruption;
+        float INpcConfiguration.InterruptionPersistenceTime => persistenceTime;
+        bool INpcConfiguration.IsActive => IsActive;
+        bool INpcConfiguration.IsTalking => IsTalking;
+
+        /// <summary>
+        /// Fired when this NPC starts listening for user input
+        /// </summary>
+        public event Action OnStartListening;
+
+        /// <summary>
+        /// Fired when this NPC stops listening for user input
+        /// </summary>
+        public event Action OnStopListening;
+
+        /// <summary>
+        /// Fired when this NPC starts speaking (audio playback begins)
+        /// </summary>
+        public event Action OnStartSpeaking;
+
+        /// <summary>
+        /// Fired when this NPC stops speaking (audio playback ends)
+        /// </summary>
+        public event Action OnStopSpeaking;
+
+        #endregion
+
         #region Property Overrides
 
         public override string NpcName => npcName;
@@ -44,14 +123,59 @@ namespace Tsc.AIBridge.Core
         #region Public Properties
 
         /// <summary>
+        /// System prompt that defines this NPC's personality and behavior
+        /// </summary>
+        public string SystemPrompt => systemPrompt;
+
+        /// <summary>
         /// Voice ID for TTS
         /// </summary>
         public string VoiceId => voiceId;
 
         /// <summary>
+        /// TTS model name
+        /// </summary>
+        public string TtsModel => ttsModel;
+
+        /// <summary>
         /// TTS streaming mode ("sentence" or "batch")
         /// </summary>
         public string TtsStreamingMode => ttsStreamingMode;
+
+        /// <summary>
+        /// Voice playback speed
+        /// </summary>
+        public float TtsSpeed => ttsSpeed;
+
+        /// <summary>
+        /// LLM provider name
+        /// </summary>
+        public string LlmProvider => llmProvider;
+
+        /// <summary>
+        /// LLM model name
+        /// </summary>
+        public string LlmModel => llmModel;
+
+        /// <summary>
+        /// LLM response temperature
+        /// </summary>
+        public float Temperature => temperature;
+
+        /// <summary>
+        /// Maximum tokens in LLM response
+        /// </summary>
+        public int MaxTokens => maxTokens;
+
+        /// <summary>
+        /// Speech-to-Text provider name
+        /// </summary>
+        public string SttProvider => sttProvider;
+
+        /// <summary>
+        /// Language code for STT recognition
+        /// </summary>
+        public string Language => language;
 
         /// <summary>
         /// Whether this NPC can be interrupted
@@ -102,30 +226,73 @@ namespace Tsc.AIBridge.Core
             persistenceTime = persistence;
         }
 
-
         /// <summary>
         /// Configure this NPC programmatically.
-        /// Sets all NPC parameters in a single call.
+        /// Sets all NPC parameters in a single call. Only non-null values are applied.
         /// </summary>
-        /// <param name="npcName">Optional NPC name override</param>
-        /// <param name="voiceId">Optional voice ID for TTS</param>
-        /// <param name="ttsStreamingMode">Optional TTS streaming mode ("sentence" or "batch")</param>
-        /// <param name="allowInterruption">Optional interruption enabled flag</param>
-        /// <param name="persistenceTime">Optional persistence time in seconds for interruption</param>
         public void Configure(
             string npcName = null,
+            string systemPrompt = null,
             string voiceId = null,
+            string ttsModel = null,
             string ttsStreamingMode = null,
+            float? ttsSpeed = null,
+            string llmProvider = null,
+            string llmModel = null,
+            float? temperature = null,
+            int? maxTokens = null,
+            string sttProvider = null,
+            string language = null,
             bool? allowInterruption = null,
             float? persistenceTime = null)
         {
             if (!string.IsNullOrEmpty(npcName)) this.npcName = npcName;
+            if (systemPrompt != null) this.systemPrompt = systemPrompt;
             if (!string.IsNullOrEmpty(voiceId)) this.voiceId = voiceId;
+            if (!string.IsNullOrEmpty(ttsModel)) this.ttsModel = ttsModel;
             if (!string.IsNullOrEmpty(ttsStreamingMode)) this.ttsStreamingMode = ttsStreamingMode;
+            if (ttsSpeed.HasValue) this.ttsSpeed = ttsSpeed.Value;
+            if (!string.IsNullOrEmpty(llmProvider)) this.llmProvider = llmProvider;
+            if (!string.IsNullOrEmpty(llmModel)) this.llmModel = llmModel;
+            if (temperature.HasValue) this.temperature = temperature.Value;
+            if (maxTokens.HasValue) this.maxTokens = maxTokens.Value;
+            if (!string.IsNullOrEmpty(sttProvider)) this.sttProvider = sttProvider;
+            if (!string.IsNullOrEmpty(language)) this.language = language;
             if (allowInterruption.HasValue) this.allowInterruption = allowInterruption.Value;
             if (persistenceTime.HasValue) this.persistenceTime = persistenceTime.Value;
 
-            LogDebug($"Configured NPC: {this.npcName}");
+            LogDebug($"Configured NPC: {this.npcName} (LLM: {this.llmProvider}/{this.llmModel}, STT: {this.sttProvider}, TTS: {this.ttsModel})");
+        }
+
+        #endregion
+
+        #region Lifecycle
+
+        protected override void Start()
+        {
+            base.Start();
+
+            // Bridge NpcClientBase audio events to INpcConfiguration speaking events
+            OnAudioStarted += () => OnStartSpeaking?.Invoke();
+            OnAudioStopped += () => OnStopSpeaking?.Invoke();
+        }
+
+        /// <summary>
+        /// Notify that this NPC started listening (call from your input controller)
+        /// </summary>
+        public void NotifyStartListening()
+        {
+            IsListening = true;
+            OnStartListening?.Invoke();
+        }
+
+        /// <summary>
+        /// Notify that this NPC stopped listening (call from your input controller)
+        /// </summary>
+        public void NotifyStopListening()
+        {
+            IsListening = false;
+            OnStopListening?.Invoke();
         }
 
         #endregion
@@ -137,7 +304,6 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public override List<ChatMessage> GetApiHistoryAsChatMessages()
         {
-            // Pre-allocate capacity to avoid resizing
             return new List<ChatMessage>(chatHistory);
         }
 
@@ -179,27 +345,26 @@ namespace Tsc.AIBridge.Core
 
         /// <summary>
         /// Get conversation context for this NPC.
-        /// Creates a fully configured ConversationContext with all required parameters.
+        /// Creates a fully configured ConversationContext with all parameters from Inspector settings.
         /// </summary>
-        /// <param name="systemPrompt">Optional system prompt. If null, uses empty string</param>
+        /// <param name="systemPromptOverride">Optional system prompt override. If null, uses the Inspector-configured system prompt</param>
         /// <returns>A ConversationContext configured with this NPC's settings</returns>
-        public ConversationContext GetConversationContext(string systemPrompt = null)
+        public ConversationContext GetConversationContext(string systemPromptOverride = null)
         {
             var context = new ConversationContext
             {
-                systemPrompt = systemPrompt,
+                systemPrompt = systemPromptOverride ?? systemPrompt,
                 messages = GetApiHistoryAsChatMessages() ?? new List<ChatMessage>(),
                 voiceId = voiceId,
+                ttsModel = ttsModel,
                 ttsStreamingMode = ttsStreamingMode,
-                // These MUST be provided by caller
-                language = null,
-                temperature = 0,
-                maxTokens = 0,
-                llmModel = null,
-                llmProvider = null,
-                ttsModel = null,
-                sttProvider = null,
-                // Audio settings removed - API always uses opus_48000_64
+                voiceSpeed = ttsSpeed,
+                llmProvider = llmProvider,
+                llmModel = llmModel,
+                temperature = temperature,
+                maxTokens = maxTokens,
+                sttProvider = sttProvider,
+                language = language,
             };
 
             return context;
@@ -212,16 +377,21 @@ namespace Tsc.AIBridge.Core
         protected override void ValidateConfiguration()
         {
             if (string.IsNullOrEmpty(npcName))
-            {
                 Debug.LogWarning($"[SimpleNpcClient] No NPC name configured for {gameObject.name}");
-            }
 
-            if (string.IsNullOrEmpty(voiceId))
-            {
-                Debug.LogWarning($"[SimpleNpcClient] No voice ID configured for {gameObject.name}");
-            }
+            if (string.IsNullOrEmpty(voiceId) || voiceId == "default")
+                Debug.LogWarning($"[SimpleNpcClient] Voice ID is '{voiceId}' for {gameObject.name} - set a valid ElevenLabs voice ID for TTS");
 
-            Debug.Log($"[SimpleNpcClient] Initialized: {npcName}, Voice: {voiceId}, Streaming: {ttsStreamingMode}");
+            if (string.IsNullOrEmpty(llmProvider))
+                Debug.LogWarning($"[SimpleNpcClient] No LLM provider configured for {gameObject.name}");
+
+            if (string.IsNullOrEmpty(llmModel))
+                Debug.LogWarning($"[SimpleNpcClient] No LLM model configured for {gameObject.name}");
+
+            if (string.IsNullOrEmpty(systemPrompt))
+                Debug.LogWarning($"[SimpleNpcClient] No system prompt configured for {gameObject.name} - NPC will have no personality");
+
+            Debug.Log($"[SimpleNpcClient] Initialized: {npcName}, LLM: {llmProvider}/{llmModel}, STT: {sttProvider}, TTS: {ttsModel}, Voice: {voiceId}, Streaming: {ttsStreamingMode}");
         }
 
         #endregion
