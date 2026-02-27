@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-02-27
+
+### Added
+- **InspectorApiKeyProvider**: MonoBehaviour-based API key provider for quick local testing
+  - Paste API key directly in Unity Inspector
+  - Includes validation and warnings for empty keys
+  - WARNING: For development/testing only, never commit scenes with real API keys
+
 ## [1.5.0] - 2025-01-23
 
 ### Added
