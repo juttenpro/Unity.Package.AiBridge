@@ -235,13 +235,22 @@ namespace Tsc.AIBridge.Core
 
         private void OnApplicationPause(bool pauseStatus)
         {
-            // Forward to public method (enables external components to trigger pause handling)
+            if (UseExternalPauseSystem)
+                return;
+
             HandlePauseStateChange(pauseStatus, "ApplicationPause");
         }
 
         #endregion
 
         #region Public API
+
+        /// <summary>
+        /// When true, OnApplicationPause is not handled internally.
+        /// Set this when an external pause system (like PauseManager) manages pause state
+        /// to prevent double-pause state corruption.
+        /// </summary>
+        public bool UseExternalPauseSystem { get; set; }
 
         /// <summary>
         /// Handle pause state change (called by OnApplicationPause or external pause systems).

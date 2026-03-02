@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-03-02
+
+### Added
+- **UseExternalPauseSystem**: Public property on `RequestOrchestrator` to disable built-in `OnApplicationPause` handling
+  - Prevents double-pause state corruption when a host application manages pause externally
+  - Default `false` (backward compatible): standalone usage works as before
+  - Set to `true` when an external pause system (e.g., PauseManager) is the single source of truth
+
+### Fixed
+- **Android audio resume failure**: When both `OnApplicationPause` and an external pause system fired simultaneously, `_wasPlayingBeforePause` was overwritten to `false` by the second pause call, making audio resume impossible
+
 ## [1.5.1] - 2026-02-27
 
 ### Added
