@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-03-04
+
+### Fixed
+- **First audio sample log spam**: `StreamingAudioPlayer.FillAudioBuffer()` logged "First audio sample output at frame" on every audio frame (141x per stream) instead of once, due to race condition between audio thread setting `_hasFirstAudioPlayed = true` and `Update()` resetting it to `false`. Added separate `_hasLoggedFirstAudio` guard that is only reset per stream, not per event fire. This log spam caused significant frame drops on Quest VR, triggering visible ASW/SpaceWarp artifacts.
+
 ## [1.5.2] - 2026-03-02
 
 ### Added

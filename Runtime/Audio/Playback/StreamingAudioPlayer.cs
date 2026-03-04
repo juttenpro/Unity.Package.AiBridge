@@ -72,6 +72,7 @@ namespace Tsc.AIBridge.Audio.Playback
         private bool _forceStop; // CRITICAL: Force audio to stop immediately for interruptions
         private bool _isPrimingBuffer; // PRIMING BUFFER: Use larger buffer for first chunks to prevent "catching up"
         private bool _hasFirstAudioPlayed; // Track if first audio sample has been output (for accurate latency)
+        private bool _hasLoggedFirstAudio; // Separate flag to prevent repeated logging (not reset by Update())
         private int _totalSamplesReceived;
         private int _totalSamplesPlayed;
         private readonly object _stateLock = new();
@@ -440,6 +441,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 _isStreamActive = true;
                 _isPlaybackStarted = false; // CRITICAL: Reset for each stream to trigger OnPlaybackStarted event
                 _hasFirstAudioPlayed = false; // CRITICAL: Reset for each stream to trigger OnFirstAudioPlayed event
+                _hasLoggedFirstAudio = false; // Reset log guard for new stream
                 _streamComplete = false;
                 _isReceivingResponse = true; // NEW: Mark that we're receiving a response
                 _isPrimingBuffer = true; // PRIMING BUFFER: Enable larger initial buffer for first chunks
@@ -929,11 +931,16 @@ namespace Tsc.AIBridge.Audio.Playback
             // Mark when first audio sample is actually output
             // This is the TRUE perceived latency moment - when user actually hears audio
             // Set flag here (audio thread) but fire event in Update() (main thread)
+            // NOTE: _hasFirstAudioPlayed is reset by Update() after firing the event,
+            // so we use _hasLoggedFirstAudio (never reset mid-stream) to prevent repeated logging
             if (!_hasFirstAudioPlayed && samplesProvided > 0)
             {
                 _hasFirstAudioPlayed = true;
-                if (enableVerboseLogging)
+                if (enableVerboseLogging && !_hasLoggedFirstAudio)
+                {
+                    _hasLoggedFirstAudio = true;
                     UnityEngine.Debug.Log($"[{_cachedGameObjectName}] 🔊 First audio sample output at frame");
+                }
             }
 
             // Store the last played audio frame for feedback detection
