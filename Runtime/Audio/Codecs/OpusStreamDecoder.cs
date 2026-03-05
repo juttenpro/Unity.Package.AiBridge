@@ -177,7 +177,7 @@ namespace Tsc.AIBridge.Audio.Codecs
                     // Use the WORKING signature from the previous version
                     var frameSize = 960; // Standard 20ms at 48kHz
                     var decodedSampleCount = _opusDecoder.Decode(
-                        _opusPacketBuffer,
+                        _opusPacketBuffer.AsSpan(0, packetSize),
                         _decodedSamples,
                         frameSize);
 
