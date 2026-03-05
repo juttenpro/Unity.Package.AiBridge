@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
-using OpusSharp.Core;
+using Concentus;
 
 namespace Tsc.AIBridge.Audio.Codecs
 {
@@ -23,7 +23,7 @@ namespace Tsc.AIBridge.Audio.Codecs
 
         // Components
         private OggOpusParser _oggParser;
-        private OpusDecoder _opusDecoder;
+        private IOpusDecoder _opusDecoder;
 
         // Single continuous stream
         private MemoryStream _continuousStream;
@@ -140,7 +140,7 @@ namespace Tsc.AIBridge.Audio.Codecs
                 }
 
                 // Create decoder from parsed header info
-                _opusDecoder = new OpusDecoder(_oggParser.SampleRate, _oggParser.Channels);
+                _opusDecoder = OpusCodecFactory.CreateDecoder(_oggParser.SampleRate, _oggParser.Channels);
                 _channels = _oggParser.Channels;
                 _sampleRate = _oggParser.SampleRate;
 
@@ -178,11 +178,8 @@ namespace Tsc.AIBridge.Audio.Codecs
                     var frameSize = 960; // Standard 20ms at 48kHz
                     var decodedSampleCount = _opusDecoder.Decode(
                         _opusPacketBuffer,
-                        packetSize,
                         _decodedSamples,
-                        frameSize,
-                        false
-                    );
+                        frameSize);
 
                     if (decodedSampleCount > 0)
                     {

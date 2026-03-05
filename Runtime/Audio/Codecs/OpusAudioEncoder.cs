@@ -1,6 +1,6 @@
 using System;
 using UnityEngine;
-using OpusSharp.Core;
+using Concentus;
 
 namespace Tsc.AIBridge.Audio.Codecs
 {
@@ -20,7 +20,7 @@ namespace Tsc.AIBridge.Audio.Codecs
         public int FrameSizeMs => (_frameSize * 1000) / _sampleRate;
 
         // Encoder instance
-        private OpusEncoder _encoder;
+        private IOpusEncoder _encoder;
 
         // Configuration
         private int _sampleRate;
@@ -51,8 +51,9 @@ namespace Tsc.AIBridge.Audio.Codecs
 
             try
             {
+                
                 // Create encoder with OpusSharp
-                _encoder = new OpusEncoder(sampleRate, channels, OpusPredefinedValues.OPUS_APPLICATION_VOIP);
+                _encoder = OpusCodecFactory.CreateEncoder(sampleRate, channels, Concentus.Enums.OpusApplication.OPUS_APPLICATION_VOIP);
 
                 // Initialize buffers
                 _sampleBuffer = new float[_frameSize * channels];
