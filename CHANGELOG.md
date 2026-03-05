@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-03-05
+
+### Added
+- **iOS Opus native library support**: Added `libopus.a` static libraries for iOS device (ARM64) and iOS Simulator (ARM64 + x86_64)
+- **OpusPluginInstaller iOS integration**: Automatically installs and configures iOS native libraries alongside existing platforms
+- Separate device and simulator libraries to avoid Xcode build conflicts
+- Native libraries sourced from OpusSharp v1.6.1 with sanitized symbols to prevent Unity symbol conflicts
+
 ## [1.5.3] - 2026-03-04
 
 ### Fixed

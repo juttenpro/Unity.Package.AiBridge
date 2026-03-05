@@ -20,7 +20,7 @@ namespace OpusSharp.Editor
         private const string PackageNativesPath = "Packages/com.simulationcrew.aibridge/Plugins/OpusSharp/OpusSharp.Natives/runtimes";
         private const string TargetPluginsPath = "Assets/Plugins/OpusSharp";
         private const string InstalledVersionKey = "OpusSharp.InstalledVersion";
-        private const string CurrentVersion = "1.1.15";
+        private const string CurrentVersion = "1.2.0";
 
         static OpusPluginInstaller()
         {
@@ -95,6 +95,20 @@ namespace OpusSharp.Editor
                 $"{PackageNativesPath}/android-arm64/native/libopus.so",
                 $"{TargetPluginsPath}/Android/ARM64/libopus.so",
                 "Android ARM64"
+            );
+
+            // Install iOS ARM64 (device)
+            anyInstalled |= InstallLibrary(
+                $"{PackageNativesPath}/ios-arm64/native/libopus.a",
+                $"{TargetPluginsPath}/iOS/libopus.a",
+                "iOS ARM64"
+            );
+
+            // Install iOS Simulator (ARM64 + x86_64)
+            anyInstalled |= InstallLibrary(
+                $"{PackageNativesPath}/ios-simulator/native/libopus.a",
+                $"{TargetPluginsPath}/iOS/Simulator/libopus.a",
+                "iOS Simulator"
             );
 
             // macOS - check if user has already added the library
@@ -419,6 +433,18 @@ namespace OpusSharp.Editor
                 platformCPU: "ARM64"
             );
 
+            // iOS ARM64 (device)
+            ConfigurePlugin(
+                $"{TargetPluginsPath}/iOS/libopus.a",
+                BuildTarget.iOS,
+                editorEnabled: false,
+                platformCPU: "ARM64",
+                addToEmbeddedFrameworks: true
+            );
+
+            // iOS Simulator - configured separately so it doesn't end up in device builds
+            ConfigureIOSSimulatorPlugin($"{TargetPluginsPath}/iOS/Simulator/libopus.a");
+
             // macOS (if exists)
             string macOSPath = $"{TargetPluginsPath}/macOS/libopus.dylib";
             if (File.Exists(macOSPath))
@@ -432,13 +458,47 @@ namespace OpusSharp.Editor
             }
         }
 
+        private static void ConfigureIOSSimulatorPlugin(string pluginPath)
+        {
+            if (!File.Exists(pluginPath))
+            {
+                return;
+            }
+
+            var importer = AssetImporter.GetAtPath(pluginPath) as PluginImporter;
+            if (importer == null)
+            {
+                return;
+            }
+
+            // Check if already configured
+            if (importer.GetCompatibleWithPlatform(BuildTarget.iOS))
+            {
+                return;
+            }
+
+            importer.ClearSettings();
+            importer.SetCompatibleWithAnyPlatform(false);
+            importer.SetCompatibleWithEditor(false);
+            importer.SetCompatibleWithPlatform(BuildTarget.iOS, true);
+            importer.SetPlatformData(BuildTarget.iOS, "CPU", "AnyCPU");
+            importer.SetPlatformData(BuildTarget.iOS, "CompileFlags", "");
+            importer.SetPlatformData(BuildTarget.iOS, "FrameworkDependencies", "");
+            // Mark as simulator-only so Xcode excludes it from device builds
+            importer.SetPlatformData(BuildTarget.iOS, "SimulatorSDK", "true");
+
+            importer.SaveAndReimport();
+            Debug.Log($"[OpusSharp] Configured iOS simulator plugin: {pluginPath}");
+        }
+
         private static void ConfigurePlugin(
             string pluginPath,
             BuildTarget buildTarget,
             bool editorEnabled,
             string editorOS = null,
             string editorCPU = null,
-            string platformCPU = null)
+            string platformCPU = null,
+            bool addToEmbeddedFrameworks = false)
         {
             if (!File.Exists(pluginPath))
             {
@@ -474,6 +534,10 @@ namespace OpusSharp.Editor
             if (platformCPU != null)
             {
                 importer.SetPlatformData(buildTarget, "CPU", platformCPU);
+            }
+            if (addToEmbeddedFrameworks)
+            {
+                importer.SetPlatformData(buildTarget, "AddToEmbeddedBinaries", "true");
             }
 
             // Disable for all other platforms explicitly
