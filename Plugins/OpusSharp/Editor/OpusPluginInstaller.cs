@@ -433,13 +433,12 @@ namespace OpusSharp.Editor
                 platformCPU: "ARM64"
             );
 
-            // iOS ARM64 (device)
+            // iOS ARM64 (device) - static library, linked at compile time (NOT embedded in Frameworks)
             ConfigurePlugin(
                 $"{TargetPluginsPath}/iOS/libopus.a",
                 BuildTarget.iOS,
                 editorEnabled: false,
-                platformCPU: "ARM64",
-                addToEmbeddedFrameworks: true
+                platformCPU: "ARM64"
             );
 
             // iOS Simulator - configured separately so it doesn't end up in device builds
@@ -497,8 +496,7 @@ namespace OpusSharp.Editor
             bool editorEnabled,
             string editorOS = null,
             string editorCPU = null,
-            string platformCPU = null,
-            bool addToEmbeddedFrameworks = false)
+            string platformCPU = null)
         {
             if (!File.Exists(pluginPath))
             {
@@ -535,11 +533,6 @@ namespace OpusSharp.Editor
             {
                 importer.SetPlatformData(buildTarget, "CPU", platformCPU);
             }
-            if (addToEmbeddedFrameworks)
-            {
-                importer.SetPlatformData(buildTarget, "AddToEmbeddedBinaries", "true");
-            }
-
             // Disable for all other platforms explicitly
             var allTargets = new[] {
                 BuildTarget.StandaloneWindows64,

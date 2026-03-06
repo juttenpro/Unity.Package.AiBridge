@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-03-06
+
+### Fixed
+- **iOS App Store validation failure**: Removed `AddToEmbeddedBinaries` flag from iOS static library configuration
+  - Static libraries (.a) are linked at compile time and must NOT appear in Frameworks/
+  - Apple rejects apps with .a files in Frameworks/ directory (Validation error 409)
+  - Error was: "Invalid bundle structure. Your app cannot contain standalone executables or libraries"
+
 ## [1.6.0] - 2026-03-05
 
 ### Added
