@@ -20,7 +20,7 @@ namespace OpusSharp.Editor
         private const string PackageNativesPath = "Packages/com.simulationcrew.aibridge/Plugins/OpusSharp/OpusSharp.Natives/runtimes";
         private const string TargetPluginsPath = "Assets/Plugins/OpusSharp";
         private const string InstalledVersionKey = "OpusSharp.InstalledVersion";
-        private const string CurrentVersion = "1.2.0";
+        private const string CurrentVersion = "1.3.0";
 
         static OpusPluginInstaller()
         {
@@ -61,6 +61,8 @@ namespace OpusSharp.Editor
         {
             Debug.Log("[OpusSharp] Checking native library installation...");
 
+            string installedVersion = EditorPrefs.GetString(InstalledVersionKey, "");
+            bool versionChanged = installedVersion != CurrentVersion;
             bool anyInstalled = false;
 
             // Create base directory
@@ -119,8 +121,11 @@ namespace OpusSharp.Editor
             {
                 AssetDatabase.Refresh();
                 Debug.Log("[OpusSharp] Native libraries installed to Assets/Plugins/OpusSharp/");
+            }
 
-                // Configure the installed plugins
+            // Always reconfigure on version change to fix stale .meta settings
+            if (anyInstalled || versionChanged || forceReinstall)
+            {
                 ConfigureInstalledPlugins();
             }
 
@@ -470,12 +475,6 @@ namespace OpusSharp.Editor
                 return;
             }
 
-            // Check if already configured
-            if (importer.GetCompatibleWithPlatform(BuildTarget.iOS))
-            {
-                return;
-            }
-
             importer.ClearSettings();
             importer.SetCompatibleWithAnyPlatform(false);
             importer.SetCompatibleWithEditor(false);
@@ -509,12 +508,7 @@ namespace OpusSharp.Editor
                 return;
             }
 
-            // Check if already configured
-            if (importer.GetCompatibleWithPlatform(buildTarget) == true)
-            {
-                return;
-            }
-
+            // Always clear and reconfigure to ensure stale settings (like AddToEmbeddedBinaries) are removed
             importer.ClearSettings();
             importer.SetCompatibleWithAnyPlatform(false);
             importer.SetCompatibleWithEditor(editorEnabled);

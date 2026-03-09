@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-03-09
+
+### Fixed
+- **iOS App Store validation still failing**: Stale `.meta` with `AddToEmbeddedBinaries` was not cleared on existing installs
+  - Installer now always reconfigures all plugins on version change (calls `ClearSettings()` to wipe stale flags)
+  - Removed early-return skip in `ConfigurePlugin` that prevented reconfiguration of already-enabled plugins
+  - Colleague action: Delete `Assets/Plugins/OpusSharp/iOS/` folder if issue persists, installer will recreate it
+
 ## [1.6.1] - 2026-03-06
 
 ### Fixed
