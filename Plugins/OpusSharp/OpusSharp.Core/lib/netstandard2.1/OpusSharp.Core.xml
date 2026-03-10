@@ -374,16 +374,6 @@
             Provide external DNN weights from binary object (only when explicitly built without the weights).
             </summary>
         </member>
-        <member name="F:OpusSharp.Core.EncoderCTL.OPUS_SET_QEXT">
-            <summary>
-            If set to 1, enables quality extension (QEXT), otherwise disables it (default). Warning: This will hurt audio quality unless operating at a very high bitrate.
-            </summary>
-        </member>
-        <member name="F:OpusSharp.Core.EncoderCTL.OPUS_GET_QEXT">
-            <summary>
-            Gets the encoder's configured quality extension (QEXT).
-            </summary>
-        </member>
         <member name="T:OpusSharp.Core.DecoderCTL">
             <summary>
             These are convenience macros for use with the opus_decoder_ctl interface
@@ -409,26 +399,6 @@
             Gets the pitch of the last decoded frame, if available.
             </summary>
         </member>
-        <member name="F:OpusSharp.Core.DecoderCTL.OPUS_SET_OSCE_BWE">
-            <summary>
-            Enables blind bandwidth extension for wideband signals if decoding sampling rate is 48 kHz.
-            </summary>
-        </member>
-        <member name="F:OpusSharp.Core.DecoderCTL.OPUS_GET_OSCE_BWE">
-            <summary>
-            Gets blind bandwidth extension flag for wideband signals if decoding sampling rate is 48 kHz.
-            </summary>
-        </member>
-        <member name="F:OpusSharp.Core.DecoderCTL.OPUS_SET_IGNORE_EXTENSIONS">
-            <summary>
-            If set to 1, the decoder will ignore all extensions found in the padding area (does not affect DRED, which is decoded separately).
-            </summary>
-        </member>
-        <member name="F:OpusSharp.Core.DecoderCTL.OPUS_GET_IGNORE_EXTENSIONS">
-            <summary>
-            Gets whether the decoder is ignoring extensions.
-            </summary>
-        </member>
         <member name="T:OpusSharp.Core.MultistreamCTL">
             <summary>
             These are convenience macros that are specific to the opus_multistream_encoder_ctl() and opus_multistream_decoder_ctl() interface.
@@ -444,20 +414,13 @@
             Gets the decoder state for an individual stream of a multi-stream decoder.
             </summary>
         </member>
-        <member name="T:OpusSharp.Core.Extensions.OpusDecoderExtensions">
-            <summary>
-            Contains the <see cref="T:OpusSharp.Core.OpusDecoder"/> helper extensions.
-            </summary>
-            <remarks>OPUS_SET_COMPLEXITY and OPUS_GET_COMPLEXITY have not been added since they aren't documented yet in the opus documentation.</remarks>
-        </member>
+        <!-- Badly formed XML comment ignored for member "T:OpusSharp.Core.Extensions.OpusDecoderExtensions" -->
         <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.SetGain(OpusSharp.Core.OpusDecoder,System.Int16)">
             <summary>
             Sets gain for an opus decoder.
             </summary>
             <param name="decoder">The decoder state.</param>
             <param name="gain">The gain to set.</param>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.GetGain(OpusSharp.Core.OpusDecoder)">
             <summary>
@@ -465,8 +428,6 @@
             </summary>
             <param name="decoder">The decoder state.</param>
             <returns>The gain for the opus decoder.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.GetLastPacketDuration(OpusSharp.Core.OpusDecoder)">
             <summary>
@@ -474,8 +435,6 @@
             </summary>
             <param name="decoder">The decoder state.</param>
             <returns>The last packet duration (in samples).</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.GetPitch(OpusSharp.Core.OpusDecoder)">
             <summary>
@@ -483,52 +442,12 @@
             </summary>
             <param name="decoder">The decoder state.</param>
             <returns>The pitch of the last decoded frame if available.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
-        </member>
-        <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.SetOsceBwe(OpusSharp.Core.OpusDecoder,System.Boolean)">
-            <summary>
-            Enables or disables the decoder's OSCE BWE module.
-            </summary>
-            <param name="decoder">The decoder state.</param>
-            <param name="enabled">Whether to enable or disable the OSCE BWE module.</param>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
-        </member>
-        <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.GetOsceBwe(OpusSharp.Core.OpusDecoder)">
-            <summary>
-            Determines whether the decoder's OSCE BWE module is enabled or not.
-            </summary>
-            <param name="decoder">The decoder state.</param>
-            <returns>Whether the OSCE BWE module is enabled or not.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
-        </member>
-        <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.SetIgnoreExtensions(OpusSharp.Core.OpusDecoder,System.Boolean)">
-            <summary>
-            Sets whether the decoder should ignore extensions in the padding area.
-            </summary>
-            <param name="decoder">The decoder state.</param>
-            <param name="disabled">Whether to disable all found extensions in the padding area.</param>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
-        </member>
-        <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.GetIgnoreExtensions(OpusSharp.Core.OpusDecoder)">
-            <summary>
-            Determines whether the decoder is ignoring extensions found in the padding area.
-            </summary>
-            <param name="decoder">The decoder state.</param>
-            <returns>Whether the decoder is ignoring extensions.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.Reset(OpusSharp.Core.OpusDecoder)">
             <summary>
             Resets the codec state to be equivalent to a freshly initialized state.
             </summary>
             <param name="decoder">The decoder state.</param>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.GetFinalRange(OpusSharp.Core.OpusDecoder)">
             <summary>
@@ -536,8 +455,6 @@
             </summary>
             <param name="decoder">The decoder state.</param>
             <returns>The final state of the codec's entropy coder.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.GetBandwidth(OpusSharp.Core.OpusDecoder)">
             <summary>
@@ -545,8 +462,6 @@
             </summary>
             <param name="decoder">The decoder state.</param>
             <returns>The decoder's last bandpass.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.GetSampleRate(OpusSharp.Core.OpusDecoder)">
             <summary>
@@ -554,8 +469,6 @@
             </summary>
             <param name="decoder">The decoder state.</param>
             <returns>The decoder's configured sample rate.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.SetPhaseInversionDisabled(OpusSharp.Core.OpusDecoder,System.Boolean)">
             <summary>
@@ -563,8 +476,6 @@
             </summary>
             <param name="decoder">The decoder state.</param>
             <param name="disabled">Whether to disable or not.</param>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.Extensions.OpusDecoderExtensions.GetPhaseInversionDisabled(OpusSharp.Core.OpusDecoder)">
             <summary>
@@ -572,8 +483,6 @@
             </summary>
             <param name="decoder">The decoder state.</param>
             <returns>Whether the phase inversion is disabled or not.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="T:OpusSharp.Core.Extensions.OpusEncoderExtensions">
             <summary>
@@ -862,24 +771,6 @@
             <exception cref="T:OpusSharp.Core.OpusException" />
             <exception cref="T:System.ObjectDisposedException" />
         </member>
-        <member name="M:OpusSharp.Core.Extensions.OpusEncoderExtensions.SetQext(OpusSharp.Core.OpusEncoder,System.Boolean)">
-            <summary>
-            Configures the encoder's QEXT extension.
-            </summary>
-            <param name="encoder">The encoder state.</param>
-            <param name="enabled">Whether to enable the QEXT extension or not.</param>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
-        </member>
-        <member name="M:OpusSharp.Core.Extensions.OpusEncoderExtensions.GetQext(OpusSharp.Core.OpusEncoder)">
-            <summary>
-            Determine if the QEXT extension is enabled in the encoder.
-            </summary>
-            <param name="encoder">The encoder state.</param>
-            <returns>Whether the QEXT extension is enabled or not.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
-        </member>
         <member name="M:OpusSharp.Core.Extensions.OpusEncoderExtensions.Reset(OpusSharp.Core.OpusEncoder)">
             <summary>
             Resets the codec state to be equivalent to a freshly initialized state.
@@ -947,7 +838,7 @@
         </member>
         <member name="M:OpusSharp.Core.NativeOpus.opus_encoder_create(System.Int32,System.Int32,System.Int32,System.Int32*)">
             <summary>
-            Allocates and initializes an encoder state (statically linked).
+            Allocates and initializes an encoder state.
             </summary>
             <param name="Fs">Sampling rate of input signal (Hz) This must be one of 8000, 12000, 16000, 24000, or 48000.</param>
             <param name="channels">Number of channels (1 or 2) in input signal.</param>
@@ -971,17 +862,6 @@
             </summary>
             <param name="st">Encoder state.</param>
             <param name="pcm">Input signal (interleaved if 2 channels). length is frame_size*channels*sizeof(short)</param>
-            <param name="frame_size">Number of samples per channel in the input signal. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
-            <param name="data">Output payload. This must contain storage for at least max_data_bytes.</param>
-            <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
-            <returns>The length of the encoded packet (in bytes) on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.NativeOpus.opus_encode24(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Int32*,System.Int32,System.Byte*,System.Int32)">
-            <summary>
-            Encodes an Opus frame.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="pcm">Input signal (interleaved if 2 channels) representing (or slightly exceeding) 24-bit values. length is frame_size*channels*sizeof(int)</param>
             <param name="frame_size">Number of samples per channel in the input signal. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
             <param name="data">Output payload. This must contain storage for at least max_data_bytes.</param>
             <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
@@ -1093,18 +973,6 @@
             <param name="data">Input payload. Use a NULL pointer to indicate packet loss.</param>
             <param name="len">Number of bytes in payload.</param>
             <param name="pcm">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(short).</param>
-            <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=1), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
-            <param name="decode_fec">Flag (0 or 1) to request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
-            <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.NativeOpus.opus_decode24(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,System.Byte*,System.Int32,System.Int32*,System.Int32,System.Int32)">
-            <summary>
-            Decode an Opus packet.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="data">Input payload. Use a NULL pointer to indicate packet loss.</param>
-            <param name="len">Number of bytes in payload.</param>
-            <param name="pcm">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(int).</param>
             <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=1), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
             <param name="decode_fec">Flag (0 or 1) to request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
             <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
@@ -1246,17 +1114,6 @@
             <param name="dred">DRED state.</param>
             <param name="dred_offset">position of the redundancy to decode (in samples before the beginning of the real audio data in the packet).</param>
             <param name="pcm">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(short)</param>
-            <param name="frame_size">Number of samples per channel to decode in pcm. frame_size must be a multiple of 2.5 ms.</param>
-            <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.NativeOpus.opus_decoder_dred_decode24(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle,System.Int32,System.Int32*,System.Int32)">
-            <summary>
-            Decode audio from an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle"/> packet with floating point output.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="dred">DRED state.</param>
-            <param name="dred_offset">position of the redundancy to decode (in samples before the beginning of the real audio data in the packet).</param>
-            <param name="pcm">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(int)</param>
             <param name="frame_size">Number of samples per channel to decode in pcm. frame_size must be a multiple of 2.5 ms.</param>
             <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
         </member>
@@ -1526,17 +1383,6 @@
             <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
             <returns>The length of the encoded packet (in bytes) on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
         </member>
-        <member name="M:OpusSharp.Core.NativeOpus.opus_multistream_encode24(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int32*,System.Int32,System.Byte*,System.Int32)">
-            <summary>
-            Encodes a multistream Opus frame.
-            </summary>
-            <param name="st">Multistream encoder state.</param>
-            <param name="pcm">The input signal as interleaved samples. This must contain frame_size*channels samples.</param>
-            <param name="frame_size">Number of samples per channel in the input signal. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
-            <param name="data">Output payload. This must contain storage for at least max_data_bytes.</param>
-            <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
-            <returns>The length of the encoded packet (in bytes) on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
         <member name="M:OpusSharp.Core.NativeOpus.opus_multistream_encode_float(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Single*,System.Int32,System.Byte*,System.Int32)">
             <summary>
             Encodes a multistream Opus frame from floating point input.
@@ -1654,18 +1500,6 @@
             <param name="decode_fec">Flag (0 or 1) to request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
             <returns>Number of samples decoded on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
         </member>
-        <member name="M:OpusSharp.Core.NativeOpus.opus_multistream_decode24(OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle,System.Int32*,System.Int32,System.Int16*,System.Int32,System.Int32)">
-            <summary>
-            Decode a multistream Opus packet.
-            </summary>
-            <param name="st">Multistream decoder state.</param>
-            <param name="data">Input payload. Use a NULL pointer to indicate packet loss.</param>
-            <param name="len">Number of bytes in payload.</param>
-            <param name="pcm">Output signal, with interleaved samples. This must contain room for frame_size*channels samples.</param>
-            <param name="frame_size">The number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120 ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=1), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
-            <param name="decode_fec">Flag (0 or 1) to request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
-            <returns>Number of samples decoded on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
         <member name="M:OpusSharp.Core.NativeOpus.opus_multistream_decode_float(OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle,System.Byte*,System.Int32,System.Single*,System.Int32,System.Int32)">
             <summary>
             Decode a multistream Opus packet with floating point output.
@@ -1733,13 +1567,12 @@
             Direct safe handle for the <see cref="T:OpusSharp.Core.OpusDecoder"/>. IT IS NOT RECOMMENDED TO CLOSE THE HANDLE DIRECTLY! Instead, use <see cref="M:OpusSharp.Core.OpusDecoder.Dispose(System.Boolean)"/> to dispose the handle and object safely.
             </summary>
         </member>
-        <member name="M:OpusSharp.Core.OpusDecoder.#ctor(System.Int32,System.Int32,System.Boolean)">
+        <member name="M:OpusSharp.Core.OpusDecoder.#ctor(System.Int32,System.Int32)">
             <summary>
             Creates a new opus decoder.
             </summary>
             <param name="sample_rate">The sample rate, this must be one of 8000, 12000, 16000, 24000, or 48000.</param>
             <param name="channels">Number of channels, this must be 1 or 2.</param>
-            <param name="use_static">Whether to use a statically linked version of opus.</param>
             <exception cref="T:OpusSharp.Core.OpusException" />
         </member>
         <member name="M:OpusSharp.Core.OpusDecoder.Finalize">
@@ -1757,8 +1590,6 @@
             <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=true), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
             <param name="decode_fec">Request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
             <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.OpusDecoder.Decode(System.Span{System.Byte},System.Int32,System.Span{System.Int16},System.Int32,System.Boolean)">
             <summary>
@@ -1770,21 +1601,6 @@
             <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=true), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
             <param name="decode_fec">Request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
             <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
-        </member>
-        <member name="M:OpusSharp.Core.OpusDecoder.Decode(System.Span{System.Byte},System.Int32,System.Span{System.Int32},System.Int32,System.Boolean)">
-            <summary>
-            Decodes an opus encoded frame.
-            </summary>
-            <param name="input">Input payload. Use null to indicate packet loss</param>
-            <param name="length">Number of bytes in payload.</param>
-            <param name="output">Output signal (interleaved if 2 channels). length is frame_size*channels.</param>
-            <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=true), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
-            <param name="decode_fec">Request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
-            <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.OpusDecoder.Decode(System.Span{System.Byte},System.Int32,System.Span{System.Single},System.Int32,System.Boolean)">
             <summary>
@@ -1796,8 +1612,6 @@
             <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=true), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
             <param name="decode_fec">Request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
             <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.OpusDecoder.Decode(System.Byte[],System.Int32,System.Byte[],System.Int32,System.Boolean)">
             <summary>
@@ -1805,12 +1619,10 @@
             </summary>
             <param name="input">Input payload. Use null to indicate packet loss</param>
             <param name="length">Number of bytes in payload.</param>
-            <param name="output">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(short).</param>
+            <param name="output">Output signal (interleaved if 2 channels). length is frame_size*channels</param>
             <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=true), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
             <param name="decode_fec">Request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
             <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.OpusDecoder.Decode(System.Byte[],System.Int32,System.Int16[],System.Int32,System.Boolean)">
             <summary>
@@ -1818,25 +1630,10 @@
             </summary>
             <param name="input">Input payload. Use null to indicate packet loss</param>
             <param name="length">Number of bytes in payload.</param>
-            <param name="output">Output signal (interleaved if 2 channels). length is frame_size*channels.</param>
+            <param name="output">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(short)</param>
             <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=true), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
             <param name="decode_fec">Request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
             <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
-        </member>
-        <member name="M:OpusSharp.Core.OpusDecoder.Decode(System.Byte[],System.Int32,System.Int32[],System.Int32,System.Boolean)">
-            <summary>
-            Decodes an opus encoded frame.
-            </summary>
-            <param name="input">Input payload. Use null to indicate packet loss</param>
-            <param name="length">Number of bytes in payload.</param>
-            <param name="output">Output signal (interleaved if 2 channels). length is frame_size*channels.</param>
-            <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=true), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
-            <param name="decode_fec">Request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
-            <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.OpusDecoder.Decode(System.Byte[],System.Int32,System.Single[],System.Int32,System.Boolean)">
             <summary>
@@ -1844,12 +1641,10 @@
             </summary>
             <param name="input">Input payload. Use null to indicate packet loss</param>
             <param name="length">Number of bytes in payload.</param>
-            <param name="output">Output signal (interleaved if 2 channels). length is (frame_size*channels)/2. Note: I don't know if this is correct.</param>
+            <param name="output">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(float)</param>
             <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=true), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
             <param name="decode_fec">Request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
             <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
         </member>
         <member name="M:OpusSharp.Core.OpusDecoder.Ctl(OpusSharp.Core.DecoderCTL)">
             <summary>
@@ -1943,13 +1738,12 @@
             Direct safe handle for the <see cref="T:OpusSharp.Core.OpusEncoder"/>. IT IS NOT RECOMMENDED TO CLOSE THE HANDLE DIRECTLY! Instead, use <see cref="M:OpusSharp.Core.OpusEncoder.Dispose(System.Boolean)"/> to dispose the handle and object safely.
             </summary>
         </member>
-        <member name="M:OpusSharp.Core.OpusEncoder.#ctor(System.Int32,System.Int32,OpusSharp.Core.OpusPredefinedValues,System.Boolean)">
+        <member name="M:OpusSharp.Core.OpusEncoder.#ctor(System.Int32,System.Int32,OpusSharp.Core.OpusPredefinedValues)">
             <summary>
             Creates a new opus encoder.
             </summary>
             <param name="sample_rate">The sample rate, this must be one of 8000, 12000, 16000, 24000, or 48000.</param>
             <param name="channels">Number of channels, this must be 1 or 2.</param>
-            <param name="use_static">Whether to use a statically linked version of opus.</param>
             <param name="application">Coding mode (one of <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_VOIP"/>, <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_AUDIO"/> or <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_RESTRICTED_LOWDELAY"/></param>
             <exception cref="T:OpusSharp.Core.OpusException" />
         </member>
@@ -1975,18 +1769,6 @@
             Encodes a pcm frame.
             </summary>
             <param name="input">Input signal (interleaved if 2 channels). length is frame_size*channels*sizeof(short).</param>
-            <param name="frame_size">The frame size of the pcm data. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
-            <param name="output">Output payload. This must contain storage for at least max_data_bytes.</param>
-            <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
-            <returns>The length of the encoded packet (in bytes).</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
-        </member>
-        <member name="M:OpusSharp.Core.OpusEncoder.Encode(System.Span{System.Int32},System.Int32,System.Span{System.Byte},System.Int32)">
-            <summary>
-            Encodes a pcm frame.
-            </summary>
-            <param name="input">Input signal (interleaved if 2 channels). length is frame_size*channels*sizeof(int).</param>
             <param name="frame_size">The frame size of the pcm data. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
             <param name="output">Output payload. This must contain storage for at least max_data_bytes.</param>
             <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
@@ -2023,18 +1805,6 @@
             Encodes a pcm frame.
             </summary>
             <param name="input">Input signal (interleaved if 2 channels). length is frame_size*channels*sizeof(short).</param>
-            <param name="frame_size">The frame size of the pcm data. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
-            <param name="output">Output payload. This must contain storage for at least max_data_bytes.</param>
-            <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
-            <returns>The length of the encoded packet (in bytes).</returns>
-            <exception cref="T:OpusSharp.Core.OpusException" />
-            <exception cref="T:System.ObjectDisposedException" />
-        </member>
-        <member name="M:OpusSharp.Core.OpusEncoder.Encode(System.Int32[],System.Int32,System.Byte[],System.Int32)">
-            <summary>
-            Encodes a pcm frame.
-            </summary>
-            <param name="input">Input signal (interleaved if 2 channels). length is frame_size*channels*sizeof(int).</param>
             <param name="frame_size">The frame size of the pcm data. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
             <param name="output">Output payload. This must contain storage for at least max_data_bytes.</param>
             <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
@@ -2201,19 +1971,17 @@
             Provides information about the opus DLL.
             </summary>
         </member>
-        <member name="M:OpusSharp.Core.OpusInfo.Version(System.Boolean)">
+        <member name="M:OpusSharp.Core.OpusInfo.Version">
             <summary>
             Gets the libopus version string.
             </summary>
-            <param name="use_static">Whether to use a statically linked version of opus.</param>
             <returns>Version string.</returns>
         </member>
-        <member name="M:OpusSharp.Core.OpusInfo.StringError(System.Int32,System.Boolean)">
+        <member name="M:OpusSharp.Core.OpusInfo.StringError(System.Int32)">
             <summary>
             Converts an opus error code into a human-readable string.
             </summary>
             <param name="error">Error number.</param>
-            <param name="use_static">Whether to use a statically linked version of opus.</param>
             <returns>Error string.</returns>
         </member>
         <member name="T:OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle">
@@ -2232,14 +2000,6 @@
         <member name="M:OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle.ReleaseHandle">
             <inheritdoc/>
         </member>
-        <member name="T:OpusSharp.Core.SafeHandlers.StaticOpusDecoderSafeHandle">
-            <summary>
-            Managed wrapper over the OpusDecoder state (statically linked).
-            </summary>
-        </member>
-        <member name="M:OpusSharp.Core.SafeHandlers.StaticOpusDecoderSafeHandle.ReleaseHandle">
-            <inheritdoc/>
-        </member>
         <member name="T:OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle">
             <summary>
             Managed wrapper over the OpusDREDDecoder state.
@@ -2254,14 +2014,6 @@
             <inheritdoc/>
         </member>
         <member name="M:OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle.ReleaseHandle">
-            <inheritdoc/>
-        </member>
-        <member name="T:OpusSharp.Core.SafeHandlers.StaticOpusDREDDecoderSafeHandle">
-            <summary>
-            Managed wrapper over the OpusDREDDecoder state (statically linked).
-            </summary>
-        </member>
-        <member name="M:OpusSharp.Core.SafeHandlers.StaticOpusDREDDecoderSafeHandle.ReleaseHandle">
             <inheritdoc/>
         </member>
         <member name="T:OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle">
@@ -2280,14 +2032,6 @@
         <member name="M:OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle.ReleaseHandle">
             <inheritdoc/>
         </member>
-        <member name="T:OpusSharp.Core.SafeHandlers.StaticOpusDREDSafeHandle">
-            <summary>
-            Managed wrapper over the OpusDRED state (statically linked).
-            </summary>
-        </member>
-        <member name="M:OpusSharp.Core.SafeHandlers.StaticOpusDREDSafeHandle.ReleaseHandle">
-            <inheritdoc/>
-        </member>
         <member name="T:OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle">
             <summary>
             Managed wrapper over the OpusEncoder state.
@@ -2302,14 +2046,6 @@
             <inheritdoc/>
         </member>
         <member name="M:OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle.ReleaseHandle">
-            <inheritdoc/>
-        </member>
-        <member name="T:OpusSharp.Core.SafeHandlers.StaticOpusEncoderSafeHandle">
-            <summary>
-            Managed wrapper over the OpusEncoder state (statically linked).
-            </summary>
-        </member>
-        <member name="M:OpusSharp.Core.SafeHandlers.StaticOpusEncoderSafeHandle.ReleaseHandle">
             <inheritdoc/>
         </member>
         <member name="T:OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle">
@@ -2328,14 +2064,6 @@
         <member name="M:OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle.ReleaseHandle">
             <inheritdoc/>
         </member>
-        <member name="T:OpusSharp.Core.SafeHandlers.StaticOpusMSDecoderSafeHandle">
-            <summary>
-            Managed wrapper over the OpusMultistreamDecoder state (statically linked).
-            </summary>
-        </member>
-        <member name="M:OpusSharp.Core.SafeHandlers.StaticOpusMSDecoderSafeHandle.ReleaseHandle">
-            <inheritdoc/>
-        </member>
         <member name="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle">
             <summary>
             Managed wrapper over the OpusMultistreamEncoder state.
@@ -2350,14 +2078,6 @@
             <inheritdoc/>
         </member>
         <member name="M:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle.ReleaseHandle">
-            <inheritdoc/>
-        </member>
-        <member name="T:OpusSharp.Core.SafeHandlers.StaticOpusMSEncoderSafeHandle">
-            <summary>
-            Managed wrapper over the OpusMultistreamEncoder state (statically linked).
-            </summary>
-        </member>
-        <member name="M:OpusSharp.Core.SafeHandlers.StaticOpusMSEncoderSafeHandle.ReleaseHandle">
             <inheritdoc/>
         </member>
         <member name="T:OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle">
@@ -2375,804 +2095,6 @@
         </member>
         <member name="M:OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle.ReleaseHandle">
             <inheritdoc/>
-        </member>
-        <member name="T:OpusSharp.Core.SafeHandlers.StaticOpusRepacketizerSafeHandle">
-            <summary>
-            Managed wrapper over the OpusRepacketizer state (statically linked).
-            </summary>
-        </member>
-        <member name="M:OpusSharp.Core.SafeHandlers.StaticOpusRepacketizerSafeHandle.ReleaseHandle">
-            <inheritdoc/>
-        </member>
-        <member name="T:OpusSharp.Core.StaticNativeOpus">
-            <summary>
-            Native opus handler that directly calls the exported opus functions. Requires a dynamically loaded library.
-            </summary>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_get_size(System.Int32)">
-            <summary>
-            Gets the size of an <see cref="T:OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle"/> structure.
-            </summary>
-            <param name="channels">Number of channels. This must be 1 or 2.</param>
-            <returns>The size in bytes.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_create(System.Int32,System.Int32,System.Int32,System.Int32*)">
-            <summary>
-            Allocates and initializes an encoder state (statically linked).
-            </summary>
-            <param name="Fs">Sampling rate of input signal (Hz) This must be one of 8000, 12000, 16000, 24000, or 48000.</param>
-            <param name="channels">Number of channels (1 or 2) in input signal.</param>
-            <param name="application">Coding mode (one of <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_VOIP"/>, <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_AUDIO"/> or <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_RESTRICTED_LOWDELAY"/>)</param>
-            <param name="error"><see cref="F:OpusSharp.Core.OpusErrorCodes.OPUS_OK"/> Success or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</param>
-            <returns><see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusEncoderSafeHandle"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_init(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Int32,System.Int32,System.Int32)">
-            <summary>
-            Initializes a previously allocated <see cref="T:OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle"/> state. The memory pointed to by st must be at least the size returned by <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_get_size(System.Int32)"/>.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="Fs">Sampling rate of input signal (Hz) This must be one of 8000, 12000, 16000, 24000, or 48000.</param>
-            <param name="channels">Number of channels (1 or 2) in input signal.</param>
-            <param name="application">>Coding mode (one of <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_VOIP"/>, <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_AUDIO"/> or <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_RESTRICTED_LOWDELAY"/>)</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encode(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Int16*,System.Int32,System.Byte*,System.Int32)">
-            <summary>
-            Encodes an Opus frame.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="pcm">Input signal (interleaved if 2 channels). length is frame_size*channels*sizeof(short)</param>
-            <param name="frame_size">Number of samples per channel in the input signal. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
-            <param name="data">Output payload. This must contain storage for at least max_data_bytes.</param>
-            <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
-            <returns>The length of the encoded packet (in bytes) on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encode24(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Int32*,System.Int32,System.Byte*,System.Int32)">
-            <summary>
-            Encodes an Opus frame.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="pcm">Input signal (interleaved if 2 channels) representing (or slightly exceeding) 24-bit values. length is frame_size*channels*sizeof(int)</param>
-            <param name="frame_size">Number of samples per channel in the input signal. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
-            <param name="data">Output payload. This must contain storage for at least max_data_bytes.</param>
-            <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
-            <returns>The length of the encoded packet (in bytes) on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encode_float(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Single*,System.Int32,System.Byte*,System.Int32)">
-            <summary>
-            Encodes an Opus frame from floating point input.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="pcm">Input in float format (interleaved if 2 channels), with a normal range of +/-1.0. Samples with a range beyond +/-1.0 are supported but will be clipped by decoders using the integer API and should only be used if it is known that the far end supports extended dynamic range. length is frame_size*channels*sizeof(float)</param>
-            <param name="frame_size">Number of samples per channel in the input signal. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
-            <param name="data">Output payload. This must contain storage for at least max_data_bytes.</param>
-            <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
-            <returns>The length of the encoded packet (in bytes) on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_destroy(System.IntPtr)">
-            <summary>
-            Frees an <see cref="T:OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle"/> allocated by <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_create(System.Int32,System.Int32,System.Int32,System.Int32*)"/>.
-            </summary>
-            <param name="st">State to be freed.</param>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Int32)">
-            <summary>
-            Perform a CTL function on an <see cref="T:OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.EncoderCTL"/>.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Int32,System.Int32)">
-            <summary>
-            Perform a CTL function on an <see cref="T:OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.EncoderCTL"/>.</param>
-            <param name="data">The data to input.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Int32,System.Void*)">
-            <summary>
-            Perform a CTL function on an <see cref="T:OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.EncoderCTL"/>.</param>
-            <param name="data">The data to input/output.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Int32,System.Void*,System.Int32)">
-            <summary>
-            Perform a CTL function on an Opus encoder.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.EncoderCTL"/>.</param>
-            <param name="data">The data to input/output.</param>
-            <param name="data2">The second data to input.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Int32,System.Int32,System.Void*)">
-            <summary>
-            Perform a CTL function on an Opus encoder.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.EncoderCTL"/>.</param>
-            <param name="data">The data to input.</param>
-            <param name="data2">The second data to input/output.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusEncoderSafeHandle,System.Int32,System.Void*,System.Void*)">
-            <summary>
-            Perform a CTL function on an Opus encoder.
-            </summary>
-            <param name="st">Encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.EncoderCTL"/>.</param>
-            <param name="data">The data to input/output.</param>
-            <param name="data2">The second data to input/output.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_get_size(System.Int32)">
-            <summary>
-            Gets the size of an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle"/> structure.
-            </summary>
-            <param name="channels">Number of channels. This must be 1 or 2.</param>
-            <returns>The size in bytes.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_create(System.Int32,System.Int32,System.Int32*)">
-            <summary>
-            Allocates and initializes a <see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusDecoderSafeHandle"/> state.
-            </summary>
-            <param name="Fs">Sample rate to decode at (Hz). This must be one of 8000, 12000, 16000, 24000, or 48000.</param>
-            <param name="channels">Number of channels (1 or 2) to decode.</param>
-            <param name="error"><see cref="F:OpusSharp.Core.OpusErrorCodes.OPUS_OK"/> Success or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</param>
-            <returns><see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusDecoderSafeHandle"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_init(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,System.Int32,System.Int32)">
-            <summary>
-            Initializes a previously allocated <see cref="T:OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle"/> state.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="Fs">Sampling rate to decode to (Hz). This must be one of 8000, 12000, 16000, 24000, or 48000.</param>
-            <param name="channels">Number of channels (1 or 2) to decode.</param>
-            <returns><see cref="F:OpusSharp.Core.OpusErrorCodes.OPUS_OK"/> Success or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decode(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,System.Byte*,System.Int32,System.Int16*,System.Int32,System.Int32)">
-            <summary>
-            Decode an Opus packet.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="data">Input payload. Use a NULL pointer to indicate packet loss.</param>
-            <param name="len">Number of bytes in payload.</param>
-            <param name="pcm">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(short).</param>
-            <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=1), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
-            <param name="decode_fec">Flag (0 or 1) to request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
-            <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decode24(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,System.Byte*,System.Int32,System.Int32*,System.Int32,System.Int32)">
-            <summary>
-            Decode an Opus packet.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="data">Input payload. Use a NULL pointer to indicate packet loss.</param>
-            <param name="len">Number of bytes in payload.</param>
-            <param name="pcm">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(int).</param>
-            <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=1), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
-            <param name="decode_fec">Flag (0 or 1) to request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
-            <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decode_float(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,System.Byte*,System.Int32,System.Single*,System.Int32,System.Int32)">
-            <summary>
-            Decode an Opus packet with floating point output.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="data">Input payload. Use a NULL pointer to indicate packet loss.</param>
-            <param name="len">Number of bytes in payload.</param>
-            <param name="pcm">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(float).</param>
-            <param name="frame_size">Number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=1), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
-            <param name="decode_fec">Flag (0 or 1) to request that any in-band forward error correction data be decoded. If no such data is available the frame is decoded as if it were lost.</param>
-            <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_ctl(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,System.Int32)">
-            <summary>
-            Perform a CTL function on an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle"/>.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.DecoderCTL"/>.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_ctl(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,System.Int32,System.Int32)">
-            <summary>
-            Perform a CTL function on an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle"/>.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.DecoderCTL"/>.</param>
-            <param name="data">The data to input.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_ctl(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,System.Int32,System.Void*)">
-            <summary>
-            Perform a CTL function on an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle"/>.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.DecoderCTL"/>.</param>
-            <param name="data">The data to input or output.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_destroy(System.IntPtr)">
-            <summary>
-            Frees an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle"/> allocated by <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_create(System.Int32,System.Int32,System.Int32*)"/>.
-            </summary>
-            <param name="st">State to be freed.</param>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_decoder_get_size">
-            <summary>
-            Gets the size of an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle"/> structure.
-            </summary>
-            <returns>The size in bytes.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_decoder_create(System.Int32*)">
-            <summary>
-            Allocates and initializes an <see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusDREDDecoderSafeHandle"/> state.
-            </summary>
-            <param name="error"><see cref="F:OpusSharp.Core.OpusErrorCodes.OPUS_OK"/> Success or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</param>
-            <returns><see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusDREDDecoderSafeHandle"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_decoder_init(OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle)">
-            <summary>
-            Initializes an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle"/> state.
-            </summary>
-            <param name="dec">State to be initialized.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_decoder_destroy(System.IntPtr)">
-            <summary>
-            Frees an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle"/> allocated by <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_dred_decoder_create(System.Int32*)"/>.
-            </summary>
-            <param name="dec">State to be freed.</param>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_decoder_ctl(OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle,System.Int32)">
-            <summary>
-            Perform a CTL function on an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle"/>.
-            </summary>
-            <param name="dred_dec">DRED Decoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.DecoderCTL"/>.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_decoder_ctl(OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle,System.Int32,System.Void*)">
-            <summary>
-            Perform a CTL function on an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle"/>.
-            </summary>
-            <param name="dred_dec">DRED Decoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/> or <see cref="T:OpusSharp.Core.DecoderCTL"/>.</param>
-            <param name="data">The data to input or output.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_get_size">
-            <summary>
-            Gets the size of an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle"/> structure.
-            </summary>
-            <returns>The size in bytes.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_alloc(System.Int32*)">
-            <summary>
-            Allocates and initializes a <see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusDREDSafeHandle"/> state.
-            </summary>
-            <param name="error"><see cref="F:OpusSharp.Core.OpusErrorCodes.OPUS_OK"/> Success or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</param>
-            <returns><see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusDREDSafeHandle"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_free(System.IntPtr)">
-            <summary>
-            Frees an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle"/> allocated by <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_dred_alloc(System.Int32*)"/>.
-            </summary>
-            <param name="dec">State to be freed.</param>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_parse(OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle,OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle,System.Byte*,System.Int32,System.Int32,System.Int32,System.Int32*,System.Int32)">
-            <summary>
-            Decode an Opus DRED packet.
-            </summary>
-            <param name="dred_dec">DRED Decoder state.</param>
-            <param name="dred">DRED state.</param>
-            <param name="data">Input payload.</param>
-            <param name="len">Number of bytes in payload.</param>
-            <param name="max_dred_samples">Maximum number of DRED samples that may be needed (if available in the packet).</param>
-            <param name="sampling_rate">Sampling rate used for max_dred_samples argument. Needs not match the actual sampling rate of the decoder.</param>
-            <param name="dred_end">Number of non-encoded (silence) samples between the DRED timestamp and the last DRED sample.</param>
-            <param name="defer_processing">Flag (0 or 1). If set to one, the CPU-intensive part of the DRED decoding is deferred until <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_dred_process(OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle,OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle,OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle)"/> is called.</param>
-            <returns>Offset (positive) of the first decoded DRED samples, zero if no DRED is present, or <see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_dred_process(OpusSharp.Core.SafeHandlers.OpusDREDDecoderSafeHandle,OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle,OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle)">
-            <summary>
-            Finish decoding an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle"/> packet.
-            </summary>
-            <param name="dred_dec">DRED Decoder state.</param>
-            <param name="src">Source DRED state to start the processing from.</param>
-            <param name="dst">Destination DRED state to store the updated state after processing.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_dred_decode(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle,System.Int32,System.Int16*,System.Int32)">
-            <summary>
-            Decode audio from an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle"/> packet with floating point output.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="dred">DRED state.</param>
-            <param name="dred_offset">position of the redundancy to decode (in samples before the beginning of the real audio data in the packet).</param>
-            <param name="pcm">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(short)</param>
-            <param name="frame_size">Number of samples per channel to decode in pcm. frame_size must be a multiple of 2.5 ms.</param>
-            <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_dred_decode24(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle,System.Int32,System.Int32*,System.Int32)">
-            <summary>
-            Decode audio from an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle"/> packet with floating point output.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="dred">DRED state.</param>
-            <param name="dred_offset">position of the redundancy to decode (in samples before the beginning of the real audio data in the packet).</param>
-            <param name="pcm">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(int)</param>
-            <param name="frame_size">Number of samples per channel to decode in pcm. frame_size must be a multiple of 2.5 ms.</param>
-            <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_dred_decode_float(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle,System.Int32,System.Single*,System.Int32)">
-            <summary>
-            Decode audio from an <see cref="T:OpusSharp.Core.SafeHandlers.OpusDREDSafeHandle"/> packet with floating point output.
-            </summary>
-            <param name="st">Decoder state.</param>
-            <param name="dred">DRED state.</param>
-            <param name="dred_offset">position of the redundancy to decode (in samples before the beginning of the real audio data in the packet).</param>
-            <param name="pcm">Output signal (interleaved if 2 channels). length is frame_size*channels*sizeof(float).</param>
-            <param name="frame_size">Number of samples per channel to decode in pcm. frame_size must be a multiple of 2.5 ms.</param>
-            <returns>Number of decoded samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_packet_parse(System.Byte*,System.Int32,System.Byte*,System.Byte*[],System.Int16[],System.Int32*)">
-            <summary>
-            Parse an opus packet into one or more frames.
-            </summary>
-            <param name="data">Opus packet to be parsed.</param>
-            <param name="len">size of data.</param>
-            <param name="out_toc">TOC pointer.</param>
-            <param name="frames">encapsulated frames.</param>
-            <param name="size">sizes of the encapsulated frames.</param>
-            <param name="payload_offset">returns the position of the payload within the packet (in bytes).</param>
-            <returns>number of frames.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_packet_get_bandwidth(System.Byte*)">
-            <summary>
-            Gets the bandwidth of an Opus packet.
-            </summary>
-            <param name="data">Opus packet.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusPredefinedValues"/> or <see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_packet_get_samples_per_frame(System.Byte*,System.Int32)">
-            <summary>
-            Gets the number of samples per frame from an Opus packet.
-            </summary>
-            <param name="data">Opus packet. This must contain at least one byte of data.</param>
-            <param name="Fs">Sampling rate in Hz. This must be a multiple of 400, or inaccurate results will be returned.</param>
-            <returns>Number of samples per frame.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_packet_get_nb_channels(System.Byte*)">
-            <summary>
-            Gets the number of channels from an Opus packet.
-            </summary>
-            <param name="data">Opus packet.</param>
-            <returns>Number of channels or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_packet_get_nb_frames(System.Byte*,System.Int32)">
-            <summary>
-            Gets the number of frames in an Opus packet.
-            </summary>
-            <param name="packet">Opus packet.</param>
-            <param name="len">Length of packet.</param>
-            <returns>Number of frames or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_packet_get_nb_samples(System.Byte*,System.Int32,System.Int32)">
-            <summary>
-            Gets the number of samples of an Opus packet.
-            </summary>
-            <param name="packet">Opus packet.</param>
-            <param name="len">Length of packet.</param>
-            <param name="Fs">Sampling rate in Hz. This must be a multiple of 400, or inaccurate results will be returned.</param>
-            <returns>Number of samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_packet_has_lbrr(System.Byte*,System.Int32)">
-            <summary>
-            Checks whether an Opus packet has LBRR.
-            </summary>
-            <param name="packet">Opus packet.</param>
-            <param name="len">Length of packet.</param>
-            <returns>1 is LBRR is present, 0 otherwise or <see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_decoder_get_nb_samples(OpusSharp.Core.SafeHandlers.OpusDecoderSafeHandle,System.Byte*,System.Int32)">
-            <summary>
-            Gets the number of samples of an Opus packet.
-            </summary>
-            <param name="dec">Decoder state.</param>
-            <param name="packet">Opus packet.</param>
-            <param name="len">Length of packet.</param>
-            <returns>Number of samples or <see cref="T:OpusSharp.Core.OpusErrorCodes"/>.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_pcm_soft_clip(System.Single*,System.Int32,System.Int32,System.Single*)">
-            <summary>
-            Applies soft-clipping to bring a float signal within the [-1,1] range.
-            </summary>
-            <param name="pcm">Input PCM and modified PCM.</param>
-            <param name="frame_size">Number of samples per channel to process.</param>
-            <param name="channels">Number of channels.</param>
-            <param name="softclip_mem">State memory for the soft clipping process (one float per channel, initialized to zero).</param>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_get_size">
-            <summary>
-            Gets the size of an <see cref="T:OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle"/> structure.
-            </summary>
-            <returns>The size in bytes.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_init(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle)">
-            <summary>
-            (Re)initializes a previously allocated <see cref="T:OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle"/> state.
-            </summary>
-            <param name="rp">The <see cref="T:OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle"/> state to (re)initialize.</param>
-            <returns><see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusRepacketizerSafeHandle"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_create">
-            <summary>
-            Allocates memory and initializes the new <see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusRepacketizerSafeHandle"/> with <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_init(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle)"/>.
-            </summary>
-            <returns><see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusRepacketizerSafeHandle"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_destroy(System.IntPtr)">
-            <summary>
-            Frees an <see cref="T:OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle"/> allocated by <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_create"/>.
-            </summary>
-            <param name="rp">State to be freed.</param>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_cat(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle,System.Byte*,System.Int32)">
-            <summary>
-            Add a packet to the current <see cref="T:OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle"/> state.
-            </summary>
-            <param name="rp">The repacketizer state to which to add the packet.</param>
-            <param name="data">The packet data. The application must ensure this pointer remains valid until the next call to <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_init(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle)"/> or <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_destroy(System.IntPtr)"/>.</param>
-            <param name="len">The number of bytes in the packet data.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_out_range(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle,System.Int32,System.Int32,System.Byte*,System.Int32)">
-            <summary>
-            Construct a new packet from data previously submitted to the <see cref="T:OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle"/> state via <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_cat(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle,System.Byte*,System.Int32)"/>.
-            </summary>
-            <param name="rp">The repacketizer state from which to construct the new packet.</param>
-            <param name="begin">The index of the first frame in the current repacketizer state to include in the output.</param>
-            <param name="end">One past the index of the last frame in the current repacketizer state to include in the output.</param>
-            <param name="data">The buffer in which to store the output packet.</param>
-            <param name="maxlen">The maximum number of bytes to store in the output buffer. In order to guarantee success, this should be at least 1276 for a single frame, or for multiple frames, 1277*(end-begin). However, 1*(end-begin) plus the size of all packet data submitted to the repacketizer since the last call to <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_init(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle)"/> or <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_create"/> is also sufficient, and possibly much smaller.</param>
-            <returns>The total size of the output packet on success, or an <see cref="T:OpusSharp.Core.OpusErrorCodes"/> on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_get_nb_frames(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle)">
-            <summary>
-            Return the total number of frames contained in packet data submitted to the <see cref="T:OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle"/> state so far via <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_cat(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle,System.Byte*,System.Int32)"/> since the last call to <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_init(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle)"/> or <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_create"/>.
-            </summary>
-            <param name="rp">The repacketizer state containing the frames.</param>
-            <returns>The total number of frames contained in the packet data submitted to the repacketizer state.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_out(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle,System.Byte*,System.Int32)">
-            <summary>
-            Construct a new packet from data previously submitted to the <see cref="T:OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle"/> state via <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_repacketizer_cat(OpusSharp.Core.SafeHandlers.OpusRepacketizerSafeHandle,System.Byte*,System.Int32)"/>.
-            </summary>
-            <param name="rp">The repacketizer state from which to construct the new packet.</param>
-            <param name="data">The buffer in which to store the output packet.</param>
-            <param name="maxlen">The maximum number of bytes to store in the output buffer. In order to guarantee success, this should be at least 1277*opus_repacketizer_get_nb_frames(rp). However, 1*opus_repacketizer_get_nb_frames(rp) plus the size of all packet data submitted to the repacketizer since the last call to opus_repacketizer_init() or opus_repacketizer_create() is also sufficient, and possibly much smaller.</param>
-            <returns>The total size of the output packet on success, or an <see cref="T:OpusSharp.Core.OpusErrorCodes"/> on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_packet_pad(System.Byte*,System.Int32,System.Int32)">
-            <summary>
-            Pads a given Opus packet to a larger size (possibly changing the TOC sequence).
-            </summary>
-            <param name="data">The buffer containing the packet to pad.</param>
-            <param name="len">The size of the packet. This must be at least 1.</param>
-            <param name="new_len">The desired size of the packet after padding. This must be at least as large as len.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_packet_unpad(System.Byte*,System.Int32)">
-            <summary>
-            Remove all padding from a given Opus packet and rewrite the TOC sequence to minimize space usage.
-            </summary>
-            <param name="data">The buffer containing the packet to strip.</param>
-            <param name="len">The size of the packet. This must be at least 1.</param>
-            <returns>The new size of the output packet on success, or an <see cref="T:OpusSharp.Core.OpusErrorCodes"/> on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_packet_pad(System.Byte*,System.Int32,System.Int32,System.Int32)">
-            <summary>
-            Pads a given Opus multi-stream packet to a larger size (possibly changing the TOC sequence).
-            </summary>
-            <param name="data">The buffer containing the packet to pad.</param>
-            <param name="len">The size of the packet. This must be at least 1.</param>
-            <param name="new_len">The desired size of the packet after padding. This must be at least 1.</param>
-            <param name="nb_streams">The number of streams (not channels) in the packet. This must be at least as large as len.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_packet_unpad(System.Byte*,System.Int32,System.Int32)">
-            <summary>
-            Remove all padding from a given Opus multi-stream packet and rewrite the TOC sequence to minimize space usage.
-            </summary>
-            <param name="data">The buffer containing the packet to strip.</param>
-            <param name="len">The size of the packet. This must be at least 1.</param>
-            <param name="nb_streams">The number of streams (not channels) in the packet. This must be at least 1.</param>
-            <returns>The new size of the output packet on success, or an <see cref="T:OpusSharp.Core.OpusErrorCodes"/> on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_get_size(System.Int32,System.Int32)">
-            <summary>
-            Gets the size of an <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/> structure.
-            </summary>
-            <param name="streams">The total number of streams to encode from the input. This must be no more than 255.</param>
-            <param name="coupled_streams">Number of coupled (2 channel) streams to encode. This must be no larger than the total number of streams. Additionally, The total number of encoded channels (streams + coupled_streams) must be no more than 255.</param>
-            <returns>The size in bytes on success, or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on error.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_surround_encoder_get_size(System.Int32,System.Int32)">
-            <summary>
-            N.A.
-            </summary>
-            <param name="channels"></param>
-            <param name="mapping_family"></param>
-            <returns></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_create(System.Int32,System.Int32,System.Int32,System.Int32,System.Byte*,System.Int32,System.Int32*)">
-            <summary>
-            Allocates and initializes a <see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusMSEncoderSafeHandle"/> state.
-            </summary>
-            <param name="Fs">Sampling rate of the input signal (in Hz). This must be one of 8000, 12000, 16000, 24000, or 48000.</param>
-            <param name="channels">Number of channels in the input signal. This must be at most 255. It may be greater than the number of coded channels (streams + coupled_streams).</param>
-            <param name="streams">The total number of streams to encode from the input. This must be no more than the number of channels.</param>
-            <param name="coupled_streams">Number of coupled (2 channel) streams to encode. This must be no larger than the total number of streams. Additionally, The total number of encoded channels (streams + coupled_streams) must be no more than the number of input channels.</param>
-            <param name="mapping">Mapping from encoded channels to input channels, as described in Opus Multistream API. As an extra constraint, the multistream encoder does not allow encoding coupled streams for which one channel is unused since this is never a good idea.</param>
-            <param name="application">The target encoder application. This must be one of the following: <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_VOIP"/>, <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_AUDIO"/> or <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_RESTRICTED_LOWDELAY"/>.</param>
-            <param name="error">Returns <see cref="F:OpusSharp.Core.OpusErrorCodes.OPUS_OK"/> on success, or an error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</param>
-            <returns><see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusMSEncoderSafeHandle"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_surround_encoder_create(System.Int32,System.Int32,System.Int32,System.Int32*,System.Int32*,System.Byte*,System.Int32,System.Int32*)">
-            <summary>
-            N.A.
-            </summary>
-            <param name="Fs"></param>
-            <param name="channels"></param>
-            <param name="mapping_family"></param>
-            <param name="streams"></param>
-            <param name="coupled_streams"></param>
-            <param name="mapping"></param>
-            <param name="application"></param>
-            <param name="error"></param>
-            <returns></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_init(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int32,System.Int32,System.Int32,System.Int32,System.Byte*,System.Int32)">
-            <summary>
-            Initialize a previously allocated <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/> state.
-            </summary>
-            <param name="st">Multistream encoder state to initialize.</param>
-            <param name="Fs">Sampling rate of the input signal (in Hz). This must be one of 8000, 12000, 16000, 24000, or 48000.</param>
-            <param name="channels">Number of channels in the input signal. This must be at most 255. It may be greater than the number of coded channels (streams + coupled_streams).</param>
-            <param name="streams">The total number of streams to encode from the input. This must be no more than the number of channels.</param>
-            <param name="coupled_streams">Number of coupled (2 channel) streams to encode. This must be no larger than the total number of streams. Additionally, The total number of encoded channels (streams + coupled_streams) must be no more than the number of input channels.</param>
-            <param name="mapping">Mapping from encoded channels to input channels, as described in Opus Multistream API. As an extra constraint, the multistream encoder does not allow encoding coupled streams for which one channel is unused since this is never a good idea.</param>
-            <param name="application">The target encoder application. This must be one of the following: <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_VOIP"/>, <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_AUDIO"/> or <see cref="F:OpusSharp.Core.OpusPredefinedValues.OPUS_APPLICATION_RESTRICTED_LOWDELAY"/>.</param>
-            <returns><see cref="F:OpusSharp.Core.OpusErrorCodes.OPUS_OK"/> on success, or an error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_surround_encoder_init(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int32,System.Int32,System.Int32,System.Int32*,System.Int32*,System.Byte*,System.Int32)">
-            <summary>
-            N.A.
-            </summary>
-            <param name="st"></param>
-            <param name="Fs"></param>
-            <param name="channels"></param>
-            <param name="mapping_family"></param>
-            <param name="streams"></param>
-            <param name="coupled_streams"></param>
-            <param name="mapping"></param>
-            <param name="application"></param>
-            <returns></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encode(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int16*,System.Int32,System.Byte*,System.Int32)">
-            <summary>
-            Encodes a multistream Opus frame.
-            </summary>
-            <param name="st">Multistream encoder state.</param>
-            <param name="pcm">The input signal as interleaved samples. This must contain frame_size*channels samples.</param>
-            <param name="frame_size">Number of samples per channel in the input signal. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
-            <param name="data">Output payload. This must contain storage for at least max_data_bytes.</param>
-            <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
-            <returns>The length of the encoded packet (in bytes) on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encode24(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int32*,System.Int32,System.Byte*,System.Int32)">
-            <summary>
-            Encodes a multistream Opus frame.
-            </summary>
-            <param name="st">Multistream encoder state.</param>
-            <param name="pcm">The input signal as interleaved samples. This must contain frame_size*channels samples.</param>
-            <param name="frame_size">Number of samples per channel in the input signal. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
-            <param name="data">Output payload. This must contain storage for at least max_data_bytes.</param>
-            <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
-            <returns>The length of the encoded packet (in bytes) on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encode_float(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Single*,System.Int32,System.Byte*,System.Int32)">
-            <summary>
-            Encodes a multistream Opus frame from floating point input.
-            </summary>
-            <param name="st">Multistream encoder state.</param>
-            <param name="pcm">The input signal as interleaved samples with a normal range of +/-1.0. Samples with a range beyond +/-1.0 are supported but will be clipped by decoders using the integer API and should only be used if it is known that the far end supports extended dynamic range. This must contain frame_size*channels samples.</param>
-            <param name="frame_size">Number of samples per channel in the input signal. This must be an Opus frame size for the encoder's sampling rate. For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz) will prevent the encoder from using the LPC or hybrid modes.</param>
-            <param name="data">Output payload. This must contain storage for at least max_data_bytes.</param>
-            <param name="max_data_bytes">Size of the allocated memory for the output payload. This may be used to impose an upper limit on the instant bitrate, but should not be used as the only bitrate control. Use <see cref="F:OpusSharp.Core.EncoderCTL.OPUS_SET_BITRATE"/> to control the bitrate.</param>
-            <returns>The length of the encoded packet (in bytes) on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_destroy(System.IntPtr)">
-            <summary>
-            Frees an <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/> allocated by <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_create(System.Int32,System.Int32,System.Int32,System.Int32,System.Byte*,System.Int32,System.Int32*)"/>.
-            </summary>
-            <param name="st">Multistream encoder state to be freed.</param>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int32)">
-            <summary>
-            Perform a CTL function on a <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Multistream encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/>, <see cref="T:OpusSharp.Core.EncoderCTL"/>, or <see cref="T:OpusSharp.Core.MultistreamCTL"/> specific encoder and decoder CTLs.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int32,System.Int32)">
-            <summary>
-            Perform a CTL function on a <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Multistream encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/>, <see cref="T:OpusSharp.Core.EncoderCTL"/>, or <see cref="T:OpusSharp.Core.MultistreamCTL"/> specific encoder and decoder CTLs.</param>
-            <param name="data">The input data.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int32,System.Void*)">
-            <summary>
-            Perform a CTL function on a <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Multistream encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/>, <see cref="T:OpusSharp.Core.EncoderCTL"/>, or <see cref="T:OpusSharp.Core.MultistreamCTL"/> specific encoder and decoder CTLs.</param>
-            <param name="data">The input/output data.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int32,System.Void*,System.Int32)">
-            <summary>
-            Perform a CTL function on a <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Multistream encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/>, <see cref="T:OpusSharp.Core.EncoderCTL"/>, or <see cref="T:OpusSharp.Core.MultistreamCTL"/> specific encoder and decoder CTLs.</param>
-            <param name="data">The input/output data.</param>
-            <param name="data2">The input data.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int32,System.Int32,System.Void*)">
-            <summary>
-            Perform a CTL function on a <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Multistream encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/>, <see cref="T:OpusSharp.Core.EncoderCTL"/>, or <see cref="T:OpusSharp.Core.MultistreamCTL"/> specific encoder and decoder CTLs.</param>
-            <param name="data">The input data.</param>
-            <param name="data2">The input/output data.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_encoder_ctl(OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle,System.Int32,System.Void*,System.Void*)">
-            <summary>
-            Perform a CTL function on a <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Multistream encoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/>, <see cref="T:OpusSharp.Core.EncoderCTL"/>, or <see cref="T:OpusSharp.Core.MultistreamCTL"/> specific encoder and decoder CTLs.</param>
-            <param name="data">The input/output data.</param>
-            <param name="data2">The input/output data.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decoder_get_size(System.Int32,System.Int32)">
-            <summary>
-            Gets the size of an <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle"/> structure.
-            </summary>
-            <param name="streams">The total number of streams coded in the input. This must be no more than 255.</param>
-            <param name="coupled_streams">Number streams to decode as coupled (2 channel) streams. This must be no larger than the total number of streams. Additionally, The total number of coded channels (streams + coupled_streams) must be no more than 255.</param>
-            <returns>The size in bytes on success, or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on error.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decoder_create(System.Int32,System.Int32,System.Int32,System.Int32,System.Byte*,System.Int32*)">
-            <summary>
-            Allocates and initializes a <see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusMSDecoderSafeHandle"/> state.
-            </summary>
-            <param name="Fs">Sampling rate to decode at (in Hz). This must be one of 8000, 12000, 16000, 24000, or 48000.</param>
-            <param name="channels">Number of channels to output. This must be at most 255. It may be different from the number of coded channels (streams + coupled_streams).</param>
-            <param name="streams">The total number of streams coded in the input. This must be no more than 255.</param>
-            <param name="coupled_streams">Number of streams to decode as coupled (2 channel) streams. This must be no larger than the total number of streams. Additionally, The total number of coded channels (streams + coupled_streams) must be no more than 255.</param>
-            <param name="mapping">Mapping from coded channels to output channels, as described in Opus Multistream API.</param>
-            <param name="error">Returns <see cref="F:OpusSharp.Core.OpusErrorCodes.OPUS_OK"/> on success, or an error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</param>
-            <returns><see cref="T:OpusSharp.Core.SafeHandlers.StaticOpusMSDecoderSafeHandle"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decoder_init(OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle,System.Int32,System.Int32,System.Int32,System.Int32,System.Byte*)">
-            <summary>
-            Initialize a previously allocated <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle"/> state object.
-            </summary>
-            <param name="st">Multistream encoder state to initialize.</param>
-            <param name="Fs">Sampling rate to decode at (in Hz). This must be one of 8000, 12000, 16000, 24000, or 48000.</param>
-            <param name="channels">Number of channels to output. This must be at most 255. It may be different from the number of coded channels (streams + coupled_streams).</param>
-            <param name="streams">The total number of streams coded in the input. This must be no more than 255.</param>
-            <param name="coupled_streams">Number of streams to decode as coupled (2 channel) streams. This must be no larger than the total number of streams. Additionally, The total number of coded channels (streams + coupled_streams) must be no more than 255.</param>
-            <param name="mapping">Mapping from coded channels to output channels, as described in Opus Multistream API.</param>
-            <returns><see cref="F:OpusSharp.Core.OpusErrorCodes.OPUS_OK"/> on success, or an error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decode(OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle,System.Byte*,System.Int32,System.Int16*,System.Int32,System.Int32)">
-            <summary>
-            Decode a multistream Opus packet.
-            </summary>
-            <param name="st">Multistream decoder state.</param>
-            <param name="data">Input payload. Use a NULL pointer to indicate packet loss.</param>
-            <param name="len">Number of bytes in payload.</param>
-            <param name="pcm">Output signal, with interleaved samples. This must contain room for frame_size*channels samples.</param>
-            <param name="frame_size">The number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120 ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=1), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
-            <param name="decode_fec">Flag (0 or 1) to request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
-            <returns>Number of samples decoded on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decode24(OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle,System.Int32*,System.Int32,System.Int16*,System.Int32,System.Int32)">
-            <summary>
-            Decode a multistream Opus packet.
-            </summary>
-            <param name="st">Multistream decoder state.</param>
-            <param name="data">Input payload. Use a NULL pointer to indicate packet loss.</param>
-            <param name="len">Number of bytes in payload.</param>
-            <param name="pcm">Output signal, with interleaved samples. This must contain room for frame_size*channels samples.</param>
-            <param name="frame_size">The number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120 ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=1), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
-            <param name="decode_fec">Flag (0 or 1) to request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
-            <returns>Number of samples decoded on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decode_float(OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle,System.Byte*,System.Int32,System.Single*,System.Int32,System.Int32)">
-            <summary>
-            Decode a multistream Opus packet with floating point output.
-            </summary>
-            <param name="st">Multistream decoder state.</param>
-            <param name="data">Input payload. Use a NULL pointer to indicate packet loss.</param>
-            <param name="len">Number of bytes in payload.</param>
-            <param name="pcm">Output signal, with interleaved samples. This must contain room for frame_size*channels samples.</param>
-            <param name="frame_size">The number of samples per channel of available space in pcm. If this is less than the maximum packet duration (120 ms; 5760 for 48kHz), this function will not be capable of decoding some packets. In the case of PLC (data==NULL) or FEC (decode_fec=1), then frame_size needs to be exactly the duration of audio that is missing, otherwise the decoder will not be in the optimal state to decode the next incoming packet. For the PLC and FEC cases, frame_size must be a multiple of 2.5 ms.</param>
-            <param name="decode_fec">Flag (0 or 1) to request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.</param>
-            <returns>Number of samples decoded on success or a negative error code (see <see cref="T:OpusSharp.Core.OpusErrorCodes"/>) on failure.</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decoder_ctl(OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle,System.Int32)">
-            <summary>
-            Perform a CTL function on a <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Multistream decoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/>, <see cref="T:OpusSharp.Core.DecoderCTL"/>, or <see cref="T:OpusSharp.Core.MultistreamCTL"/> specific encoder and decoder CTLs.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decoder_ctl(OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle,System.Int32,System.Int32)">
-            <summary>
-            Perform a CTL function on a <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Multistream decoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/>, <see cref="T:OpusSharp.Core.DecoderCTL"/>, or <see cref="T:OpusSharp.Core.MultistreamCTL"/> specific encoder and decoder CTLs.</param>
-            <param name="data">The input data.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decoder_ctl(OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle,System.Int32,System.Void*)">
-            <summary>
-            Perform a CTL function on a <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSEncoderSafeHandle"/>.
-            </summary>
-            <param name="st">Multistream decoder state.</param>
-            <param name="request">This and all remaining parameters should be replaced by one of the convenience macros in <see cref="T:OpusSharp.Core.GenericCTL"/>, <see cref="T:OpusSharp.Core.DecoderCTL"/>, or <see cref="T:OpusSharp.Core.MultistreamCTL"/> specific encoder and decoder CTLs.</param>
-            <param name="data">The input/output data.</param>
-            <returns><see cref="T:OpusSharp.Core.OpusErrorCodes"/></returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decoder_destroy(System.IntPtr)">
-            <summary>
-            Frees an <see cref="T:OpusSharp.Core.SafeHandlers.OpusMSDecoderSafeHandle"/> allocated by <see cref="M:OpusSharp.Core.StaticNativeOpus.opus_multistream_decoder_create(System.Int32,System.Int32,System.Int32,System.Int32,System.Byte*,System.Int32*)"/>.
-            </summary>
-            <param name="st">Multistream decoder state to be freed.</param>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_get_version_string">
-            <summary>
-            Gets the libopus version string.
-            </summary>
-            <returns>Version string</returns>
-        </member>
-        <member name="M:OpusSharp.Core.StaticNativeOpus.opus_strerror(System.Int32)">
-            <summary>
-            Converts an opus error code into a human-readable string.
-            </summary>
-            <param name="error">Error number.</param>
-            <returns>Error string.</returns>
         </member>
     </members>
 </doc>

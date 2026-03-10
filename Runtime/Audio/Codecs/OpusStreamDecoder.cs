@@ -140,12 +140,7 @@ namespace Tsc.AIBridge.Audio.Codecs
                 }
 
                 // Create decoder from parsed header info
-                // iOS uses statically linked libopus.a, requiring __Internal P/Invoke instead of "opus"
-#if UNITY_IOS && !UNITY_EDITOR
-                _opusDecoder = new OpusDecoder(_oggParser.SampleRate, _oggParser.Channels, use_static: true);
-#else
                 _opusDecoder = new OpusDecoder(_oggParser.SampleRate, _oggParser.Channels);
-#endif
                 _channels = _oggParser.Channels;
                 _sampleRate = _oggParser.SampleRate;
 

@@ -52,12 +52,7 @@ namespace Tsc.AIBridge.Audio.Codecs
             try
             {
                 // Create encoder with OpusSharp
-                // iOS uses statically linked libopus.a, requiring __Internal P/Invoke instead of "opus"
-#if UNITY_IOS && !UNITY_EDITOR
-                _encoder = new OpusEncoder(sampleRate, channels, OpusPredefinedValues.OPUS_APPLICATION_VOIP, use_static: true);
-#else
                 _encoder = new OpusEncoder(sampleRate, channels, OpusPredefinedValues.OPUS_APPLICATION_VOIP);
-#endif
 
                 // Initialize buffers
                 _sampleBuffer = new float[_frameSize * channels];

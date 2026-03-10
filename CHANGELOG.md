@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-03-10
+
+### Fixed
+- **Android & iOS Cloud Build failure**: OpusSharp.Core v1.6.0.1 contained `StaticNativeOpus` with `DllImport("__Internal")` which IL2CPP compiled for all platforms, causing unresolved symbol linker errors on Android
+  - Reverted OpusSharp.Core.dll back to v1.5.2.1 (no `StaticNativeOpus`)
+  - Removed `use_static: true` conditionals from OpusAudioEncoder and OpusStreamDecoder
+  - On iOS, `DllImport("opus")` resolves correctly against `libopus.a` when properly configured via PluginImporter
+- **iOS simulator library linked into device build**: Package `.meta` files for iOS native libraries (ios-arm64, ios-simulator, osx-arm64) were missing PluginImporter settings, causing Unity to include them in builds alongside the correctly configured copies in Assets/Plugins/
+  - Added proper PluginImporter configuration to all package native library `.meta` files (disabled for all platforms)
+  - The canonical native libraries in `Assets/Plugins/OpusSharp/` (installed by OpusPluginInstaller) are the only ones used in builds
+  - Xcode error was: "building for 'iOS', but linking in object file built for 'iOS-simulator'"
+
 ## [1.6.3] - 2026-03-10
 
 ### Fixed
@@ -13,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated OpusSharp.Core from v1.5.2.1 to v1.6.0.1 which includes `StaticNativeOpus` with `DllImport("__Internal")`
   - Added `use_static: true` flag for iOS builds in OpusAudioEncoder and OpusStreamDecoder
   - Error was: "Unable to load DLL 'opus'" causing NPC audio to be completely silent on iOS
+  - **NOTE**: This approach was reverted in v1.6.4 because IL2CPP compiles all DLL code regardless of runtime conditionals
 
 ## [1.6.2] - 2026-03-09
 
