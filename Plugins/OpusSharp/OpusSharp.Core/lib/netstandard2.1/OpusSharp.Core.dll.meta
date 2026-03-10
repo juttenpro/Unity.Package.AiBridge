@@ -15,7 +15,8 @@ PluginImporter:
   platformData:
     Any:
       enabled: 1
-      settings: {}
+      settings:
+        Exclude iOS: 1
     Editor:
       enabled: 0
       settings:
@@ -24,6 +25,6 @@ PluginImporter:
       enabled: 0
       settings:
         CPU: AnyCPU
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+  userData:
+  assetBundleName:
+  assetBundleVariant:

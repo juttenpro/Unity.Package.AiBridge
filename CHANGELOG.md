@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-03-10
+
+### Fixed
+- **iOS Opus audio**: Added source-code replacement for OpusSharp.Core on iOS builds
+  - `DllImport("opus")` generates `dlopen()` on iOS which always fails (no dynamic library loading)
+  - `DllImport("__Internal")` is the only way to call statically linked `libopus.a` on iOS
+  - New `OpusCoreIOS.cs` provides `OpusEncoder`/`OpusDecoder` with `__Internal` P/Invoke, guarded by `#if UNITY_IOS && !UNITY_EDITOR`
+  - `OpusSharp.Core.dll` excluded from iOS builds via `.meta` (source code provides the same types)
+  - Zero changes needed in OpusAudioEncoder or OpusStreamDecoder — same namespace and API
+
 ## [1.6.4] - 2026-03-10
 
 ### Fixed
