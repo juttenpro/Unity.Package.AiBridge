@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-03-10
+
+### Fixed
+- **iOS Opus codec not loading**: `DllImport("opus")` fails on iOS because static libraries require `__Internal` P/Invoke
+  - Updated OpusSharp.Core from v1.5.2.1 to v1.6.0.1 which includes `StaticNativeOpus` with `DllImport("__Internal")`
+  - Added `use_static: true` flag for iOS builds in OpusAudioEncoder and OpusStreamDecoder
+  - Error was: "Unable to load DLL 'opus'" causing NPC audio to be completely silent on iOS
+
 ## [1.6.2] - 2026-03-09
 
 ### Fixed
