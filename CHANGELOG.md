@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.6] - 2026-03-10
+
+### Fixed
+- **Android Opus audio**: Replaced libopus.so with a 16kb aligned version.
+
 ## [1.6.5] - 2026-03-10
 
 ### Fixed
