@@ -6,6 +6,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-03-10
+
+### Fixed
+- **iOS Opus audio**: Added source-code replacement for OpusSharp.Core on iOS builds
+  - `DllImport("opus")` generates `dlopen()` on iOS which always fails (no dynamic library loading)
+  - `DllImport("__Internal")` is the only way to call statically linked `libopus.a` on iOS
+  - New `OpusCoreIOS.cs` provides `OpusEncoder`/`OpusDecoder` with `__Internal` P/Invoke, guarded by `#if UNITY_IOS && !UNITY_EDITOR`
+  - `OpusSharp.Core.dll` excluded from iOS builds via `.meta` (source code provides the same types)
+  - Zero changes needed in OpusAudioEncoder or OpusStreamDecoder — same namespace and API
+
+## [1.6.4] - 2026-03-10
+
+### Fixed
+- **Android & iOS Cloud Build failure**: OpusSharp.Core v1.6.0.1 contained `StaticNativeOpus` with `DllImport("__Internal")` which IL2CPP compiled for all platforms, causing unresolved symbol linker errors on Android
+  - Reverted OpusSharp.Core.dll back to v1.5.2.1 (no `StaticNativeOpus`)
+  - Removed `use_static: true` conditionals from OpusAudioEncoder and OpusStreamDecoder
+  - On iOS, `DllImport("opus")` resolves correctly against `libopus.a` when properly configured via PluginImporter
+- **iOS simulator library linked into device build**: Package `.meta` files for iOS native libraries (ios-arm64, ios-simulator, osx-arm64) were missing PluginImporter settings, causing Unity to include them in builds alongside the correctly configured copies in Assets/Plugins/
+  - Added proper PluginImporter configuration to all package native library `.meta` files (disabled for all platforms)
+  - The canonical native libraries in `Assets/Plugins/OpusSharp/` (installed by OpusPluginInstaller) are the only ones used in builds
+  - Xcode error was: "building for 'iOS', but linking in object file built for 'iOS-simulator'"
+
+## [1.6.3] - 2026-03-10
+
+### Fixed
+- **iOS Opus codec not loading**: `DllImport("opus")` fails on iOS because static libraries require `__Internal` P/Invoke
+  - Updated OpusSharp.Core from v1.5.2.1 to v1.6.0.1 which includes `StaticNativeOpus` with `DllImport("__Internal")`
+  - Added `use_static: true` flag for iOS builds in OpusAudioEncoder and OpusStreamDecoder
+  - Error was: "Unable to load DLL 'opus'" causing NPC audio to be completely silent on iOS
+  - **NOTE**: This approach was reverted in v1.6.4 because IL2CPP compiles all DLL code regardless of runtime conditionals
+
+## [1.6.2] - 2026-03-09
+
+### Fixed
+- **iOS App Store validation still failing**: Stale `.meta` with `AddToEmbeddedBinaries` was not cleared on existing installs
+  - Installer now always reconfigures all plugins on version change (calls `ClearSettings()` to wipe stale flags)
+  - Removed early-return skip in `ConfigurePlugin` that prevented reconfiguration of already-enabled plugins
+  - Colleague action: Delete `Assets/Plugins/OpusSharp/iOS/` folder if issue persists, installer will recreate it
+
+## [1.6.1] - 2026-03-06
+
+### Fixed
+- **iOS App Store validation failure**: Removed `AddToEmbeddedBinaries` flag from iOS static library configuration
+  - Static libraries (.a) are linked at compile time and must NOT appear in Frameworks/
+  - Apple rejects apps with .a files in Frameworks/ directory (Validation error 409)
+  - Error was: "Invalid bundle structure. Your app cannot contain standalone executables or libraries"
+
 ## [1.6.0] - 2026-03-05
 
 ### Added

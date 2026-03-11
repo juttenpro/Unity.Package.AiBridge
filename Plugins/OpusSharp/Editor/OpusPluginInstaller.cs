@@ -20,7 +20,7 @@ namespace OpusSharp.Editor
         private const string PackageNativesPath = "Packages/com.simulationcrew.aibridge/Plugins/OpusSharp/OpusSharp.Natives/runtimes";
         private const string TargetPluginsPath = "Assets/Plugins/OpusSharp";
         private const string InstalledVersionKey = "OpusSharp.InstalledVersion";
-        private const string CurrentVersion = "1.2.0";
+        private const string CurrentVersion = "1.3.0";
 
         static OpusPluginInstaller()
         {
@@ -61,6 +61,8 @@ namespace OpusSharp.Editor
         {
             Debug.Log("[OpusSharp] Checking native library installation...");
 
+            string installedVersion = EditorPrefs.GetString(InstalledVersionKey, "");
+            bool versionChanged = installedVersion != CurrentVersion;
             bool anyInstalled = false;
 
             // Create base directory
@@ -119,8 +121,11 @@ namespace OpusSharp.Editor
             {
                 AssetDatabase.Refresh();
                 Debug.Log("[OpusSharp] Native libraries installed to Assets/Plugins/OpusSharp/");
+            }
 
-                // Configure the installed plugins
+            // Always reconfigure on version change to fix stale .meta settings
+            if (anyInstalled || versionChanged || forceReinstall)
+            {
                 ConfigureInstalledPlugins();
             }
 
@@ -433,13 +438,12 @@ namespace OpusSharp.Editor
                 platformCPU: "ARM64"
             );
 
-            // iOS ARM64 (device)
+            // iOS ARM64 (device) - static library, linked at compile time (NOT embedded in Frameworks)
             ConfigurePlugin(
                 $"{TargetPluginsPath}/iOS/libopus.a",
                 BuildTarget.iOS,
                 editorEnabled: false,
-                platformCPU: "ARM64",
-                addToEmbeddedFrameworks: true
+                platformCPU: "ARM64"
             );
 
             // iOS Simulator - configured separately so it doesn't end up in device builds
@@ -471,12 +475,6 @@ namespace OpusSharp.Editor
                 return;
             }
 
-            // Check if already configured
-            if (importer.GetCompatibleWithPlatform(BuildTarget.iOS))
-            {
-                return;
-            }
-
             importer.ClearSettings();
             importer.SetCompatibleWithAnyPlatform(false);
             importer.SetCompatibleWithEditor(false);
@@ -497,8 +495,7 @@ namespace OpusSharp.Editor
             bool editorEnabled,
             string editorOS = null,
             string editorCPU = null,
-            string platformCPU = null,
-            bool addToEmbeddedFrameworks = false)
+            string platformCPU = null)
         {
             if (!File.Exists(pluginPath))
             {
@@ -511,12 +508,7 @@ namespace OpusSharp.Editor
                 return;
             }
 
-            // Check if already configured
-            if (importer.GetCompatibleWithPlatform(buildTarget) == true)
-            {
-                return;
-            }
-
+            // Always clear and reconfigure to ensure stale settings (like AddToEmbeddedBinaries) are removed
             importer.ClearSettings();
             importer.SetCompatibleWithAnyPlatform(false);
             importer.SetCompatibleWithEditor(editorEnabled);
@@ -535,11 +527,6 @@ namespace OpusSharp.Editor
             {
                 importer.SetPlatformData(buildTarget, "CPU", platformCPU);
             }
-            if (addToEmbeddedFrameworks)
-            {
-                importer.SetPlatformData(buildTarget, "AddToEmbeddedBinaries", "true");
-            }
-
             // Disable for all other platforms explicitly
             var allTargets = new[] {
                 BuildTarget.StandaloneWindows64,
