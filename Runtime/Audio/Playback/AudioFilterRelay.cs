@@ -33,6 +33,7 @@ namespace Tsc.AIBridge.Audio.Playback
         private bool _isInitialized;
         private bool _isPaused;
         private bool _isPlaybackActive = true;
+        private bool _enableVerboseLogging;
 
         // Cached clip name for thread-safe access in OnAudioFilterRead
         // Updated on main thread (Update), read on audio thread (OnAudioFilterRead)
@@ -67,9 +68,10 @@ namespace Tsc.AIBridge.Audio.Playback
         /// <summary>
         /// Set the streaming player for this relay
         /// </summary>
-        public void SetStreamingPlayer(StreamingAudioPlayer streamingPlayer)
+        public void SetStreamingPlayer(StreamingAudioPlayer streamingPlayer, bool enableVerboseLogging = false)
         {
             _streamingPlayer = streamingPlayer;
+            _enableVerboseLogging = enableVerboseLogging;
 
             if (!_isInitialized)
             {
@@ -82,13 +84,8 @@ namespace Tsc.AIBridge.Audio.Playback
         /// </summary>
         private void Initialize()
         {
-            Debug.Log($"[AudioFilterRelay] Initialize() called on {gameObject.name} - _isInitialized={_isInitialized}, _audioSource={((_audioSource != null) ? "NOT NULL" : "NULL")}");
-
             if (_isInitialized)
-            {
-                Debug.Log($"[AudioFilterRelay] Already initialized on {gameObject.name}, skipping");
                 return;
-            }
 
             _isInitialized = true;
 
@@ -97,7 +94,6 @@ namespace Tsc.AIBridge.Audio.Playback
             if (_audioSource == null)
             {
                 _audioSource = GetComponent<AudioSource>();
-                Debug.Log($"[AudioFilterRelay] _audioSource was null, retrieved via GetComponent: {(_audioSource != null ? "SUCCESS" : "FAILED")}");
             }
 
             // Configure AudioSource for streaming with spatial audio support
@@ -152,7 +148,8 @@ namespace Tsc.AIBridge.Audio.Playback
                     );
                 }
 
-                Debug.Log($"[AudioFilterRelay] Initialized on {gameObject.name} - clip={(_audioSource.clip != null ? _audioSource.clip.name : "null")}, loop={_audioSource.loop}, isPlaying={_audioSource.isPlaying}");
+                if (_enableVerboseLogging)
+                    Debug.Log($"[AudioFilterRelay] Initialized on {gameObject.name} - clip={_audioSource.clip?.name ?? "null"}, loop={_audioSource.loop}, isPlaying={_audioSource.isPlaying}");
             }
             else
             {
@@ -255,21 +252,15 @@ namespace Tsc.AIBridge.Audio.Playback
                     // CRITICAL: Update cached clip name immediately for audio thread
                     _cachedClipName = streamingClip.name;
 
-                    Debug.Log($"[AudioFilterRelay] Recreated dummy clip: {streamingClip.name}");
+                    if (_enableVerboseLogging)
+                        Debug.Log($"[AudioFilterRelay] Recreated dummy clip: {streamingClip.name}");
                 }
-
-                // DEBUG: Log AudioSource and AudioListener state BEFORE unmute
-                Debug.Log($"[AudioFilterRelay] StartPlayback on {gameObject.name} - BEFORE: mute={_audioSource.mute}, volume={_audioSource.volume}, enabled={_audioSource.enabled}, isPlaying={_audioSource.isPlaying}, clip={(_audioSource.clip != null ? _audioSource.clip.name : "null")}");
-                Debug.Log($"[AudioFilterRelay] AudioListener: volume={AudioListener.volume}, pause={AudioListener.pause}");
 
                 _audioSource.mute = false; // Unmute when starting
                 if (!_audioSource.isPlaying)
                 {
                     _audioSource.Play();
                 }
-
-                // DEBUG: Log AudioSource state AFTER unmute
-                Debug.Log($"[AudioFilterRelay] StartPlayback on {gameObject.name} - AFTER: mute={_audioSource.mute}, volume={_audioSource.volume}, enabled={_audioSource.enabled}, isPlaying={_audioSource.isPlaying}, clip={(_audioSource.clip != null ? _audioSource.clip.name : "null")}");
             }
             else
             {
@@ -335,8 +326,6 @@ namespace Tsc.AIBridge.Audio.Playback
                 // This is the most important place - streaming audio will start right after StopPlayback
                 // and OnAudioFilterRead needs to see the streaming dummy clip name for spatial audio to work
                 _cachedClipName = newClip.name;
-
-                Debug.Log($"[AudioFilterRelay] StopPlayback recreated dummy clip on {gameObject.name} - clip={(_audioSource.clip != null ? _audioSource.clip.name : "null")}");
 
                 // CRITICAL: Reset AudioSource internal buffers to prevent audio bleeding
                 // Unity's DSP pipeline can retain samples in internal buffers (~100-200ms)

@@ -122,7 +122,7 @@ namespace Tsc.AIBridge.Audio.Playback
             _suppressInitializationWarnings = true; // We've set it programmatically, no need for warnings
             if (relay != null)
             {
-                relay.SetStreamingPlayer(this);
+                relay.SetStreamingPlayer(this, enableVerboseLogging);
                 UpdateBufferSizes();
                 if (enableVerboseLogging)
                     Debug.Log($"[{_cachedGameObjectName}] AudioFilterRelay set programmatically");
@@ -296,7 +296,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 if (audioFilterRelay)
                 {
                     // Success! Connect this streaming player to the relay
-                    audioFilterRelay?.SetStreamingPlayer(this);
+                    audioFilterRelay?.SetStreamingPlayer(this, enableVerboseLogging);
 
                     UpdateBufferSizes();
 

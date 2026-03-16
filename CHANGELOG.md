@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.7] - 2026-03-16
+
+### Changed
+- **AudioFilterRelay**: Debug logs now gated behind `enableVerboseLogging` flag (passed from StreamingAudioPlayer)
+  - Removed 7 always-on `Debug.Log` statements that spammed console on every init/start/stop
+  - Retained all `LogError` and `LogWarning` statements for real issues
+  - Verbose logs still available when `enableVerboseLogging` is enabled on StreamingAudioPlayer
+
 ## [1.6.6] - 2026-03-10
 
 ### Fixed
