@@ -229,11 +229,13 @@ namespace Tsc.AIBridge.Audio.Codecs
                         }
                     }
                 }
-                catch (Exception ex) when (ex.Message.Contains("OPUS_INVALID_PACKET"))
+                catch (Exception ex) when (ex.Message.Contains("Opus decode error") ||
+                                          ex.Message.Contains("OPUS_INVALID_PACKET"))
                 {
-                    // Skip invalid packets silently - they're rare and not critical
+                    // Skip invalid packets - can occur when OGG stream boundaries are parsed
+                    // iOS native wrapper throws "Opus decode error: -4", DLL throws "OPUS_INVALID_PACKET"
                     if (_isVerboseLogging)
-                        Debug.LogWarning($"[OpusStreamDecoder] Skipped invalid packet");
+                        Debug.LogWarning($"[OpusStreamDecoder] Skipped invalid packet: {ex.Message}");
                 }
             }
 

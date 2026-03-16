@@ -203,22 +203,8 @@ namespace Tsc.AIBridge.Core
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
 
-                    // CRITICAL: Stream ended - reset ALL audio state for next turn
-                    // This replaces the old AudioStreamEnd message behavior
-                    var audioProcessor = DownstreamAudioProcessor;
-                    if (audioProcessor != null)
-                    {
-                        audioProcessor.EndAudioStream();
-                        if (enableVerboseLogging)
-                            Debug.Log($"[{NpcName}] Playback complete - called EndAudioStream() to reset stream state");
-                    }
-
-                    if (_audioMessageHandler != null)
-                    {
-                        _audioMessageHandler.Reset();
-                        if (enableVerboseLogging)
-                            Debug.Log($"[{NpcName}] Playback complete - AudioMessageHandler reset");
-                    }
+                    // Reset ALL audio state for next turn
+                    ResetAudioStateForNextTurn(wasInterrupted: false);
                 });
 
                 AudioPlayer.OnPlaybackInterrupted.AddListener(() =>
@@ -226,22 +212,8 @@ namespace Tsc.AIBridge.Core
                     IsTalking = false;
                     OnAudioStopped?.Invoke();
 
-                    // CRITICAL: Stream interrupted - reset ALL audio state for next turn
-                    // This replaces the old AudioStreamEnd message behavior
-                    var audioProcessor = DownstreamAudioProcessor;
-                    if (audioProcessor != null)
-                    {
-                        audioProcessor.EndAudioStream();
-                        if (enableVerboseLogging)
-                            Debug.Log($"[{NpcName}] Playback interrupted - called EndAudioStream() to reset stream state");
-                    }
-
-                    if (_audioMessageHandler != null)
-                    {
-                        _audioMessageHandler.Reset();
-                        if (enableVerboseLogging)
-                            Debug.Log($"[{NpcName}] Playback interrupted - AudioMessageHandler reset");
-                    }
+                    // Reset ALL audio state for next turn
+                    ResetAudioStateForNextTurn(wasInterrupted: true);
                 });
 
                 if (enableVerboseLogging)
@@ -565,6 +537,46 @@ namespace Tsc.AIBridge.Core
         protected void LogError(string message)
         {
             Debug.LogError($"[{GetType().Name}:{NpcName}] {message}");
+        }
+
+        /// <summary>
+        /// Resets all audio processing state between conversation turns.
+        /// Ensures EndAudioStream and AudioMessageHandler.Reset always complete,
+        /// even if one of them throws (e.g., Opus decode error on iOS).
+        /// Without this, state corruption causes the NPC to hang on subsequent turns.
+        /// </summary>
+        private void ResetAudioStateForNextTurn(bool wasInterrupted)
+        {
+            var label = wasInterrupted ? "interrupted" : "complete";
+
+            try
+            {
+                var audioProcessor = DownstreamAudioProcessor;
+                if (audioProcessor != null)
+                {
+                    audioProcessor.EndAudioStream();
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{NpcName}] Playback {label} - called EndAudioStream() to reset stream state");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[{NpcName}] EndAudioStream failed during playback {label} (non-fatal): {ex.Message}");
+            }
+
+            try
+            {
+                if (_audioMessageHandler != null)
+                {
+                    _audioMessageHandler.Reset();
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{NpcName}] Playback {label} - AudioMessageHandler reset");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[{NpcName}] AudioMessageHandler.Reset failed during playback {label} (non-fatal): {ex.Message}");
+            }
         }
 
         #endregion

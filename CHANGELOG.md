@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.8] - 2026-03-16
+
+### Fixed
+- **iOS NPC hanging after 2nd conversation turn**: Exception filter in OpusStreamDecoder only matched `OPUS_INVALID_PACKET` but iOS native wrapper throws `Opus decode error: -4` — now catches both formats
+- **State corruption on Opus decode errors**: EndAudioStream crashed when FlushRemainingAudio threw, leaving `_isStreamingAudio=true` — next turn's StartAudioStream returned early, `_isStreamActive` never set, audio buffer never drained, NPC appeared stuck forever
+- **Incomplete cleanup in OnPlaybackComplete/OnPlaybackInterrupted**: Exception in EndAudioStream prevented AudioMessageHandler.Reset() from running — extracted to ResetAudioStateForNextTurn() with independent try-catch blocks
+
+### Changed
+- **Decoder reset between turns**: StartAudioStream now resets the OpusStreamDecoder, ensuring clean OGG parser state for each TTS response (each response is a new OGG stream with OpusHead/OpusTags)
+
 ## [1.6.7] - 2026-03-16
 
 ### Changed

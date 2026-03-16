@@ -388,14 +388,19 @@ namespace Tsc.AIBridge.Audio.Processing
                 
                 _isStreamingAudio = true;
                 _isOpusStream = isOpus;
-                
+
+                // Reset decoder for clean state - each TTS response is a new OGG stream
+                // Without this, the parser tries to decode OpusHead/OpusTags of the new stream
+                // as audio packets, causing Opus decode error -4
+                _opusStreamDecoder?.Reset();
+
                 if (_audioPlayer != null)
                 {
                     // Start streaming with appropriate sample rate
                     _audioPlayer.StartStream(sampleRate);
-                    
+
                     if (_isVerboseLogging)
-                        Debug.Log($"[AudioStreamProcessor] Started audio stream - Opus: {isOpus}, Sample rate: {sampleRate}Hz");
+                        Debug.Log($"[AudioStreamProcessor] Started audio stream - Opus: {isOpus}, Sample rate: {sampleRate}Hz, decoder reset");
                 }
             }
         }
@@ -522,33 +527,47 @@ namespace Tsc.AIBridge.Audio.Processing
                 
                 if (_isVerboseLogging)
                     Debug.Log("[AudioStreamProcessor] Ending audio stream - flushing decoder buffers");
-                
-                // CRITICAL: Flush the Opus decoder to ensure last audio is processed
-                if (_isOpusStream && _opusStreamDecoder != null)
+
+                try
                 {
-                    var remainingAudio = _opusStreamDecoder.FlushRemainingAudio();
-                    if (remainingAudio != null && remainingAudio.Length > 0)
+                    // Flush the Opus decoder to ensure last audio is processed
+                    if (_isOpusStream && _opusStreamDecoder != null)
                     {
-                        _audioPlayer?.AddAudioData(remainingAudio);
-                        
-                        if (_isVerboseLogging)
-                            Debug.Log($"[AudioStreamProcessor] Flushed {remainingAudio.Length} remaining samples to player");
-                    }
-                    else if (_isVerboseLogging)
-                    {
-                        Debug.Log("[AudioStreamProcessor] No remaining audio to flush");
+                        var remainingAudio = _opusStreamDecoder.FlushRemainingAudio();
+                        if (remainingAudio != null && remainingAudio.Length > 0)
+                        {
+                            _audioPlayer?.AddAudioData(remainingAudio);
+
+                            if (_isVerboseLogging)
+                                Debug.Log($"[AudioStreamProcessor] Flushed {remainingAudio.Length} remaining samples to player");
+                        }
+                        else if (_isVerboseLogging)
+                        {
+                            Debug.Log("[AudioStreamProcessor] No remaining audio to flush");
+                        }
                     }
                 }
-                
-                _isStreamingAudio = false;
-                
-                // Signal the real-time player that the stream is complete  
-                if (_audioPlayer != null)
+                catch (Exception ex)
                 {
-                    _audioPlayer.EndStream();
-                    
-                    if (_isVerboseLogging)
-                        Debug.Log("[AudioStreamProcessor] Audio stream ended - decoder processing complete");
+                    // FlushRemainingAudio can throw on corrupt Opus packets (e.g., iOS decode error -4)
+                    // Must not prevent stream state cleanup — otherwise next turn hangs
+                    Debug.LogWarning($"[AudioStreamProcessor] FlushRemainingAudio failed (non-fatal): {ex.Message}");
+                }
+                finally
+                {
+                    // CRITICAL: Always reset stream state regardless of flush success
+                    // Without this, _isStreamingAudio stays true → StartAudioStream returns early
+                    // → next turn's _isStreamActive never set → FillAudioBuffer outputs silence → NPC hangs
+                    _isStreamingAudio = false;
+
+                    // Signal the real-time player that the stream is complete
+                    if (_audioPlayer != null)
+                    {
+                        _audioPlayer.EndStream();
+
+                        if (_isVerboseLogging)
+                            Debug.Log("[AudioStreamProcessor] Audio stream ended - decoder processing complete");
+                    }
                 }
             }
         }
