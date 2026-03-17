@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.9] - 2026-03-17
+
+### Fixed
+- **Duplicate NoSpeechDetected in RuleSystem**: ConversationMetadataHandler fired both `OnTranscription("")` and `OnNoTranscript` on NoTranscript messages, causing AIBridgeRulesHandler to send `noSpeechDetected` twice — removed redundant `OnTranscription` invocation since the `OnNoTranscript` → `OnSttFailed` path already handles RuleSystem notification
+
 ## [1.6.8] - 2026-03-16
 
 ### Fixed

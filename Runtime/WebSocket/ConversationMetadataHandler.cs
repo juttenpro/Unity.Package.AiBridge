@@ -305,11 +305,9 @@ namespace Tsc.AIBridge.WebSocket
 
                     // No need to mark anything on latency tracker - session completion is handled by StreamingApiClient
 
-                    // CRITICAL: Fire OnTranscription with empty string so AIBridgeRulesHandler can send noSpeechDetected to RuleSystem
-                    // This ensures RuleSystem receives the "no speech" event even when STT fails
-                    OnTranscription?.Invoke("");
-
                     // Notify listeners so they can handle this (e.g., play "Pardon?" audio)
+                    // Only fire OnNoTranscript — NOT OnTranscription, to avoid duplicate noSpeechDetected in RuleSystem.
+                    // The OnSttFailed path in AIBridgeRulesHandler already handles sending the correct SystemInput.
                     OnNoTranscript?.Invoke(noTranscriptMsg);
                     break;
                     
