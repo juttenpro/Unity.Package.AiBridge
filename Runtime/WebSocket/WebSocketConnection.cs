@@ -412,7 +412,9 @@ namespace Tsc.AIBridge.WebSocket
             // Validate we have the necessary connection info
             if (string.IsNullOrEmpty(_lastWsUrl))
             {
-                Debug.LogError($"[WebSocketConnection] Cannot reconnect - missing WebSocket URL");
+                UserErrorLogger.LogError(
+                    "Connection configuration error. Please restart the session.",
+                    "[WebSocketConnection] Cannot reconnect - missing WebSocket URL");
                 return;
             }
 
@@ -438,7 +440,9 @@ namespace Tsc.AIBridge.WebSocket
                 // TODO: Add JWT refresh mechanism for long-running sessions
                 if (string.IsNullOrEmpty(_jwtToken))
                 {
-                    Debug.LogError($"[WebSocketConnection] Cannot reconnect - JWT token is null. This should not happen!");
+                    UserErrorLogger.LogError(
+                        "Your session has expired. Please restart the session.",
+                        "[WebSocketConnection] Cannot reconnect - JWT token is null. This should not happen!");
                     return;
                 }
 
@@ -467,7 +471,9 @@ namespace Tsc.AIBridge.WebSocket
                     }
                     else
                     {
-                        Debug.LogError($"[WebSocketConnection] All reconnect attempts exhausted - connection lost");
+                        UserErrorLogger.LogError(
+                            "Connection lost. Please check your internet connection and restart.",
+                            "[WebSocketConnection] All reconnect attempts exhausted - connection lost");
                     }
                 }
             }

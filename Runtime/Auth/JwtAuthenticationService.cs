@@ -82,7 +82,9 @@ namespace Tsc.AIBridge.Auth
             if (request.result != UnityWebRequest.Result.Success)
             {
                 var duration = (DateTime.Now - startTime).TotalMilliseconds;
-                Debug.LogError($"[AuthenticationService] Failed to get auth token after {duration:F0}ms: {request.error}");
+                UserErrorLogger.LogError(
+                    "Authentication failed. Please check your connection and try again.",
+                    $"[AuthenticationService] Failed to get auth token after {duration:F0}ms: {request.error}");
                 return null;
             }
             

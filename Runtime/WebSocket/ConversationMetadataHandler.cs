@@ -243,7 +243,9 @@ namespace Tsc.AIBridge.WebSocket
                     
                 case WebSocketMessageTypes.Error:
                     var errorMsg = JsonConvert.DeserializeObject<ErrorMessage>(json);
-                    Debug.LogError($"[{_personaName}] Server error [{errorMsg.Code}]: {errorMsg.Message} - {errorMsg.Details}");
+                    UserErrorLogger.LogError(
+                        errorMsg.Message,
+                        $"[{_personaName}] Server error [{errorMsg.Code}]: {errorMsg.Message} - {errorMsg.Details}");
                     OnError?.Invoke($"[{errorMsg.Code}] {errorMsg.Message}");
                     break;
                     

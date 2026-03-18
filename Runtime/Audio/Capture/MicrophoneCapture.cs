@@ -207,7 +207,9 @@ namespace Tsc.AIBridge.Audio.Capture
 
             if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
             {
-                Debug.LogError("[MicrophoneCapture] Microphone permission not granted after timeout!");
+                UserErrorLogger.LogError(
+                    "Microphone access is required. Please grant permission and try again.",
+                    "[MicrophoneCapture] Microphone permission not granted after timeout!");
                 yield break;
             }
 #else
