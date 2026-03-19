@@ -148,13 +148,19 @@ namespace Tsc.AIBridge.WebSocket
                 var finalState = ws?.State.ToString() ?? "null (cleaned up)";
                 var totalElapsed = (DateTime.UtcNow - connectionStartTime).TotalSeconds;
 
-                // DIAGNOSTIC LOGGING: Detailed failure information
-                Debug.LogError($"[WebSocketConnection] ❌ CONNECTION FAILED\n" +
+                // Log as warning when auto-reconnect will handle it, error only when all options exhausted
+                var willReconnect = _autoReconnectEnabled && _reconnectAttempts < _maxReconnectAttempts;
+                var message = $"[WebSocketConnection] Connection failed\n" +
                               $"  URL: {sanitizedUrl}\n" +
                               $"  Final State: {finalState}\n" +
                               $"  Time Elapsed: {totalElapsed:F2}s\n" +
                               $"  Reconnect Attempt: #{_reconnectAttempts}/{_maxReconnectAttempts}\n" +
-                              $"  Auto-Reconnect: {(_autoReconnectEnabled ? "Enabled" : "Disabled")}");
+                              $"  Will reconnect: {(willReconnect ? "YES" : "NO")}";
+
+                if (willReconnect)
+                    Debug.LogWarning(message);
+                else
+                    Debug.LogError(message);
 
                 // Trigger health check to diagnose if backend is reachable
                 _ = DiagnoseConnectionFailure(sanitizedUrl);
@@ -169,7 +175,11 @@ namespace Tsc.AIBridge.WebSocket
                 // Don't log errors if we're shutting down
                 if (!_isDisconnecting && _owner && _owner.gameObject)
                 {
-                    Debug.LogError($"[WebSocketConnection] Connection error: {ex.Message}");
+                    var willRetry = _autoReconnectEnabled && _reconnectAttempts < _maxReconnectAttempts;
+                    if (willRetry)
+                        Debug.LogWarning($"[WebSocketConnection] Connection error (will reconnect): {ex.Message}");
+                    else
+                        Debug.LogError($"[WebSocketConnection] Connection error: {ex.Message}");
                     OnError?.Invoke(ex.Message);
                 }
                 return false;

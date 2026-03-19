@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.10] - 2026-03-19
+
+### Changed
+- **WebSocket connection failure logging**: Connection failures that will be auto-reconnected are now logged as `LogWarning` instead of `LogError`, since reconnect handles the recovery. Only logs `LogError` when all reconnect attempts are exhausted or auto-reconnect is disabled.
+
 ## [1.6.9] - 2026-03-17
 
 ### Fixed
