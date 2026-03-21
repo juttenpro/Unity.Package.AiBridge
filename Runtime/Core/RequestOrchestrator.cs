@@ -61,7 +61,8 @@ namespace Tsc.AIBridge.Core
                         _instance = FindFirstObjectByType<RequestOrchestrator>();
                         if (_instance == null && Application.isPlaying)
                         {
-                            Debug.LogError("[RequestOrchestrator] No instance found in scene!");
+                            Debug.LogWarning("[RequestOrchestrator] No instance found in scene. " +
+                                             "This is expected after leaving a lesson scene while WebSocket is still connected.");
                         }
                     }
                 }

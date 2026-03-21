@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.11] - 2026-03-21
+
+### Fixed
+- **RequestOrchestrator missing instance**: Changed `Debug.LogError` to `Debug.LogWarning` when no RequestOrchestrator is found in scene. This is expected after leaving a lesson scene while the WebSocket connection is still active — not a showstopper, and the error popup was confusing users.
+
 ## [1.6.10] - 2026-03-19
 
 ### Changed
