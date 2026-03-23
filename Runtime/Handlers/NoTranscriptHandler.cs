@@ -66,15 +66,14 @@ namespace Tsc.AIBridge.Handlers
         /// </summary>
         private bool IsInterruptionActive()
         {
-            var orchestrator = RequestOrchestrator.Instance;
-            if (orchestrator == null)
+            if (!RequestOrchestrator.HasInstance)
             {
                 if (_enableVerboseLogging)
                     Debug.Log($"[{_personaName}] No RequestOrchestrator - assuming no interruption");
                 return false;
             }
 
-            return orchestrator.IsInterruptionActive();
+            return RequestOrchestrator.Instance.IsInterruptionActive();
         }
     }
 }

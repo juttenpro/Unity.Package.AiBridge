@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.12] - 2026-03-23
+
+### Fixed
+- **RequestOrchestrator warning spam during scene transitions**: All runtime callers (`ConversationMetadataHandler`, `InterruptionManager`, `NoTranscriptHandler`, `NpcClientBase`) now use `HasInstance` guard before accessing `RequestOrchestrator.Instance`, preventing unnecessary `FindFirstObjectByType` calls and LogWarning spam when the orchestrator is already destroyed (e.g., after leaving a lesson scene while WebSocket is still connected)
+
 ## [1.6.11] - 2026-03-21
 
 ### Fixed

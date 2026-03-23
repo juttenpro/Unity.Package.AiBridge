@@ -242,10 +242,9 @@ namespace Tsc.AIBridge.Core
             }
 
             // Forward to RequestOrchestrator if it exists
-            var orchestrator = RequestOrchestrator.Instance;
-            if (orchestrator != null)
+            if (RequestOrchestrator.HasInstance)
             {
-                orchestrator.RaiseTranscriptionReceived(transcript);
+                RequestOrchestrator.Instance.RaiseTranscriptionReceived(transcript);
             }
 
             // Fire static event for test UI (LatencyLogUI)
@@ -264,10 +263,9 @@ namespace Tsc.AIBridge.Core
                 Debug.Log($"[{NpcName}] HandleSttFailed - Reason: {message.Reason}, Duration: {message.AudioDuration}ms, Provider: {message.SttProvider}");
 
             // Forward to RequestOrchestrator if it exists
-            var orchestrator = RequestOrchestrator.Instance;
-            if (orchestrator != null)
+            if (RequestOrchestrator.HasInstance)
             {
-                orchestrator.RaiseSttFailed(message);
+                RequestOrchestrator.Instance.RaiseSttFailed(message);
             }
         }
 

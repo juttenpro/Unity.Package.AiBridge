@@ -134,8 +134,7 @@ namespace Tsc.AIBridge.Tests.Runtime
         public IEnumerator EventSubscriptions_WorkCorrectly()
         {
             // Register expected logs BEFORE activating GameObject (which triggers Start())
-            LogAssert.Expect(LogType.Warning, "[RequestOrchestrator] No instance found in scene. " +
-                "This is expected after leaving a lesson scene while WebSocket is still connected.");
+            // HasInstance guard prevents FindFirstObjectByType call, so no RequestOrchestrator warning
             LogAssert.Expect(LogType.Warning, "[InterruptionManager] RequestOrchestrator not found - interruption detection may not work");
 
             // Activate GameObject to trigger Start()

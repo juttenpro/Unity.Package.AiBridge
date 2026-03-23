@@ -266,10 +266,12 @@ namespace Tsc.AIBridge.WebSocket
                     //Debug.Log($"[{_personaName}] Conversation completed - checking if cleanup needed");
 
                     // Check if audio was received via RequestOrchestrator
-                    var orchestrator = RequestOrchestrator.Instance;
+                    // Use HasInstance to avoid FindFirstObjectByType when orchestrator is already destroyed
+                    // (e.g., after leaving a lesson scene while WebSocket is still connected)
                     var audioReceived = false;
-                    if (orchestrator != null)
+                    if (RequestOrchestrator.HasInstance)
                     {
+                        var orchestrator = RequestOrchestrator.Instance;
                         // CRITICAL: Only check/complete if this message is for the CURRENT session
                         // This prevents turn 1's conversationComplete from completing turn 2's session
                         var currentSessionId = orchestrator.GetCurrentSessionId();

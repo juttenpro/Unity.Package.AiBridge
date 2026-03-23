@@ -65,10 +65,10 @@ namespace Tsc.AIBridge.Audio.Interruption
         {
             // Subscribe to RequestOrchestrator event to track active NPC
             // This replaces reflection-based lookups with direct event-driven updates
-            var orchestrator = RequestOrchestrator.Instance;
-            if (orchestrator != null)
+            // Use HasInstance to avoid FindFirstObjectByType during scene transitions
+            if (RequestOrchestrator.HasInstance)
             {
-                orchestrator.OnActiveNpcChanged += HandleActiveNpcChanged;
+                RequestOrchestrator.Instance.OnActiveNpcChanged += HandleActiveNpcChanged;
                 if (enableVerboseLogging)
                 {
                     Debug.Log("[InterruptionManager] Subscribed to RequestOrchestrator.OnActiveNpcChanged");
@@ -486,9 +486,9 @@ namespace Tsc.AIBridge.Audio.Interruption
             _activeNpcClient.StopAudio();
 
             // Mark interruption in RequestOrchestrator and notify backend
-            var orchestrator = RequestOrchestrator.Instance;
-            if (orchestrator != null)
+            if (RequestOrchestrator.HasInstance)
             {
+                var orchestrator = RequestOrchestrator.Instance;
                 // Get the RequestId of the session being interrupted
                 string interruptedRequestId = orchestrator.GetCurrentSessionId();
 
