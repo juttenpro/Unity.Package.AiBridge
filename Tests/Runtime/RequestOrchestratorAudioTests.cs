@@ -1099,6 +1099,7 @@ namespace Tsc.AIBridge.Tests.Runtime
                 Debug.Log($"[MockWebSocketClient] SendEndOfAudioAsync called for requestId: {requestId}");
                 return System.Threading.Tasks.Task.CompletedTask;
             }
+
         }
 
         /// <summary>

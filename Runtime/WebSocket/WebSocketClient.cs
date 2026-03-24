@@ -94,8 +94,10 @@ namespace Tsc.AIBridge.WebSocket
 
         // Core WebSocket connection (reuse existing low-level implementation)
         private WebSocketConnection _webSocket;
-        private bool _isConnecting;
         private string _currentUrl;
+
+        // Prevents multiple simultaneous connection attempts (race condition guard)
+        private readonly SemaphoreSlim _connectionSemaphore = new(1, 1);
 
         // NPC message routing (RequestId -> handler)
         private readonly Dictionary<string, INpcMessageHandler> _npcHandlers = new();
@@ -156,6 +158,14 @@ namespace Tsc.AIBridge.WebSocket
         // Events for connection lifecycle
         public event Action OnConnected;
         public event Action<NativeWebSocket.WebSocketCloseCode> OnDisconnected;
+
+        /// <summary>
+        /// Allows subclasses (e.g. test mocks) to fire the OnDisconnected event.
+        /// </summary>
+        protected void RaiseDisconnected(NativeWebSocket.WebSocketCloseCode code)
+        {
+            OnDisconnected?.Invoke(code);
+        }
 
         private void Awake()
         {
@@ -636,95 +646,99 @@ namespace Tsc.AIBridge.WebSocket
         }
 
         /// <summary>
-        /// Ensure WebSocket connection is established
+        /// Ensure WebSocket connection is established.
+        /// Uses SemaphoreSlim to guarantee only one connection attempt runs at a time,
+        /// preventing duplicate WebSocket connections from concurrent callers.
         /// </summary>
         private async Task<bool> EnsureConnectionAsync(CancellationToken cancellationToken = default)
         {
-            // Already connected
+            // Fast path: already connected, no lock needed
             if (_webSocket != null && _webSocket.IsConnected)
                 return true;
 
-            // Already connecting
-            if (_isConnecting)
-            {
-                // Wait for connection to complete (with cancellation support)
-                while (_isConnecting && !cancellationToken.IsCancellationRequested)
-                {
-                    await Task.Delay(100, cancellationToken);
-                }
-
-                cancellationToken.ThrowIfCancellationRequested();
-                return _webSocket != null && _webSocket.IsConnected;
-            }
-
-            // Start new connection
-            _isConnecting = true;
-            var startTime = System.DateTime.Now;
-
+            // Serialize connection attempts — only one caller creates a connection,
+            // all others wait and then check the result
+            await _connectionSemaphore.WaitAsync(cancellationToken);
             try
             {
-                // Get JWT token
-                var jwtStartTime = System.DateTime.Now;
-                var jwtToken = await _authService.GetAuthTokenAsync(
-                    "UnifiedConnection",
-                    Constants.DefaultPlayerRole,
-                    _apiKeyProvider.GetOrchestratorApiKey());
-                var jwtDuration = (System.DateTime.Now - jwtStartTime).TotalMilliseconds;
-                if (enableVerboseLogging)
-                    Debug.Log($"[UnifiedWebSocket] JWT token generation took {jwtDuration:F0}ms");
-
-                if (string.IsNullOrEmpty(jwtToken))
-                {
-                    UserErrorLogger.LogError("Authentication failed. Please restart the application.", "[UnifiedWebSocket] Failed to get JWT token");
-                    return false;
-                }
-
-                // Build WebSocket URL
-                var wsScheme = apiBaseUrl.StartsWith("https://") ? "wss" : "ws";
-                var wsBaseUrl = apiBaseUrl.Replace("http://", "").Replace("https://", "");
-                var baseUrl = $"{wsScheme}://{wsBaseUrl.TrimEnd('/')}{webSocketEndpoint}";
-                var fullUrl = $"{baseUrl}?token={Uri.EscapeDataString(jwtToken)}";
-
-                // Create WebSocket connection
-                _webSocket = new WebSocketConnection(this, 1f, 30f, enableVerboseLogging);
-
-                // Subscribe to events
-                _webSocket.OnTextMessageReceived += HandleTextMessage;
-                _webSocket.OnBinaryMessageReceived += HandleBinaryMessage;
-                _webSocket.OnDisconnected += HandleWebSocketDisconnection;
-
-                // Connect
-                var wsStartTime = System.DateTime.Now;
-                var connected = await _webSocket.ConnectAsync(fullUrl, "UnifiedConnection", jwtToken);
-                var wsDuration = (System.DateTime.Now - wsStartTime).TotalMilliseconds;
-                if (enableVerboseLogging)
-                    Debug.Log($"[UnifiedWebSocket] WebSocket handshake took {wsDuration:F0}ms");
-
-                if (connected)
-                {
-                    _currentUrl = fullUrl;
-                    var totalDuration = (System.DateTime.Now - startTime).TotalMilliseconds;
-                    if (enableVerboseLogging)
-                        Debug.Log($"[UnifiedWebSocket] Connection established successfully (Total: {totalDuration:F0}ms, JWT: {jwtDuration:F0}ms, WS: {wsDuration:F0}ms)");
-                    OnConnected?.Invoke();
+                // Re-check after acquiring semaphore — another caller may have connected while we waited
+                if (_webSocket != null && _webSocket.IsConnected)
                     return true;
-                }
-                else
+
+                var startTime = System.DateTime.Now;
+
+                try
                 {
-                    Debug.LogError("[UnifiedWebSocket] Failed to establish connection");
+                    // Get JWT token
+                    var jwtStartTime = System.DateTime.Now;
+                    var jwtToken = await _authService.GetAuthTokenAsync(
+                        "UnifiedConnection",
+                        Constants.DefaultPlayerRole,
+                        _apiKeyProvider.GetOrchestratorApiKey());
+                    var jwtDuration = (System.DateTime.Now - jwtStartTime).TotalMilliseconds;
+                    if (enableVerboseLogging)
+                        Debug.Log($"[UnifiedWebSocket] JWT token generation took {jwtDuration:F0}ms");
+
+                    if (string.IsNullOrEmpty(jwtToken))
+                    {
+                        UserErrorLogger.LogError("Authentication failed. Please restart the application.", "[UnifiedWebSocket] Failed to get JWT token");
+                        return false;
+                    }
+
+                    // Build WebSocket URL
+                    var wsScheme = apiBaseUrl.StartsWith("https://") ? "wss" : "ws";
+                    var wsBaseUrl = apiBaseUrl.Replace("http://", "").Replace("https://", "");
+                    var baseUrl = $"{wsScheme}://{wsBaseUrl.TrimEnd('/')}{webSocketEndpoint}";
+                    var fullUrl = $"{baseUrl}?token={Uri.EscapeDataString(jwtToken)}";
+
+                    // Clean up any zombie connection before creating a new one
+                    if (_webSocket != null && !_webSocket.IsConnected)
+                    {
+                        Debug.Log("[UnifiedWebSocket] Cleaning up stale connection before reconnect");
+                        CleanupConnection();
+                    }
+
+                    // Create WebSocket connection
+                    _webSocket = new WebSocketConnection(this, 1f, 30f, enableVerboseLogging);
+
+                    // Subscribe to events
+                    _webSocket.OnTextMessageReceived += HandleTextMessage;
+                    _webSocket.OnBinaryMessageReceived += HandleBinaryMessage;
+                    _webSocket.OnDisconnected += HandleWebSocketDisconnection;
+
+                    // Connect
+                    var wsStartTime = System.DateTime.Now;
+                    var connected = await _webSocket.ConnectAsync(fullUrl, "UnifiedConnection", jwtToken);
+                    var wsDuration = (System.DateTime.Now - wsStartTime).TotalMilliseconds;
+                    if (enableVerboseLogging)
+                        Debug.Log($"[UnifiedWebSocket] WebSocket handshake took {wsDuration:F0}ms");
+
+                    if (connected)
+                    {
+                        _currentUrl = fullUrl;
+                        var totalDuration = (System.DateTime.Now - startTime).TotalMilliseconds;
+                        if (enableVerboseLogging)
+                            Debug.Log($"[UnifiedWebSocket] Connection established successfully (Total: {totalDuration:F0}ms, JWT: {jwtDuration:F0}ms, WS: {wsDuration:F0}ms)");
+                        OnConnected?.Invoke();
+                        return true;
+                    }
+                    else
+                    {
+                        Debug.LogError("[UnifiedWebSocket] Failed to establish connection");
+                        CleanupConnection();
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[UnifiedWebSocket] Connection error: {ex.Message}");
                     CleanupConnection();
                     return false;
                 }
             }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[UnifiedWebSocket] Connection error: {ex.Message}");
-                CleanupConnection();
-                return false;
-            }
             finally
             {
-                _isConnecting = false;
+                _connectionSemaphore.Release();
             }
         }
 
@@ -1217,6 +1231,7 @@ namespace Tsc.AIBridge.WebSocket
             }
 
             CleanupConnection();
+            _connectionSemaphore.Dispose();
         }
 
         private void OnApplicationQuit()

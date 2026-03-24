@@ -5,7 +5,8 @@
         "Tsc.AIBridge",
         "Tsc.AIBridge.Editor",
         "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "UnityEditor.TestRunner",
+        "endel.nativewebsocket"
     ],
     "includePlatforms": [
         "Editor"

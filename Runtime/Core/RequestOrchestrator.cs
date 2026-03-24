@@ -8,6 +8,7 @@ using Tsc.AIBridge.Messages;
 using Tsc.AIBridge.WebSocket;
 using Tsc.AIBridge.Audio.Interruption;
 using Tsc.AIBridge.Input;
+using NativeWebSocket;
 
 namespace Tsc.AIBridge.Core
 {
@@ -201,6 +202,30 @@ namespace Tsc.AIBridge.Core
                 Debug.Log("[RequestOrchestrator] Subscribed to SpeechInputHandler.OnRecordingStopped");
 
             _processQueueCoroutine = StartCoroutine(ProcessRequestQueues());
+
+            // Subscribe to WebSocket disconnect to clear stale queued requests
+            if (_webSocketClient != null)
+            {
+                _webSocketClient.OnDisconnected += HandleWebSocketDisconnected;
+            }
+        }
+
+        /// <summary>
+        /// Clears stale audio/text requests from the queue on WebSocket disconnect.
+        /// Queued requests only contain config references (not audio data), so clearing is safe.
+        /// Active audio chunks are preserved in the reconnection buffer.
+        /// </summary>
+        private void HandleWebSocketDisconnected(WebSocketCloseCode code)
+        {
+            var audioCount = _audioRequestQueue.Count;
+            var textCount = _textRequestQueue.Count;
+
+            if (audioCount > 0 || textCount > 0)
+            {
+                Debug.Log($"[RequestOrchestrator] WebSocket disconnected ({code}) — clearing {audioCount} audio and {textCount} text queued requests to prevent session mismatches");
+                _audioRequestQueue.Clear();
+                _textRequestQueue.Clear();
+            }
         }
 
         private void OnDestroy()
@@ -215,6 +240,12 @@ namespace Tsc.AIBridge.Core
             if (speechInputHandler != null)
             {
                 speechInputHandler.OnRecordingStopped -= HandleRecordingStopped;
+            }
+
+            // Unsubscribe from WebSocket disconnect
+            if (_webSocketClient != null)
+            {
+                _webSocketClient.OnDisconnected -= HandleWebSocketDisconnected;
             }
 
             if (_processQueueCoroutine != null)

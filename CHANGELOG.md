@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.13] - 2026-03-24
+
+### Fixed
+- **Duplicate WebSocket connections after reconnect**: Added `SemaphoreSlim` guard to `WebSocketClient.EnsureConnectionAsync()` preventing multiple simultaneous connection attempts that caused zombie connections and session mismatches
+- **Session mismatch errors after reconnect**: Audio and text request queues are now cleared on WebSocket disconnect, preventing stale requests with outdated session IDs from being processed after reconnection (fixes "Session mismatch!" errors and STT failure floods)
+- **Zombie connection cleanup**: Stale WebSocket connections are cleaned up before creating new ones during reconnect
+
+### Changed
+- **WebSocketConnection error severity**: Recoverable connection errors (during active auto-reconnect) downgraded from `LogError` to `LogWarning` to avoid user-facing error popups during transient network issues
+
+### Added
+- 5 EditMode tests for disconnect queue cleanup behavior (`DisconnectQueueCleanupTests`)
+
 ## [1.6.12] - 2026-03-23
 
 ### Fixed

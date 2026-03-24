@@ -4,7 +4,8 @@
     "references": [
         "Tsc.AIBridge",
         "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "UnityEditor.TestRunner",
+        "endel.nativewebsocket"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -226,11 +226,7 @@ namespace Tsc.AIBridge.WebSocket
                 }
                 catch (Exception ex)
                 {
-                    // Only log if not already disconnecting (avoid spurious errors)
-                    if (!_isDisconnecting)
-                    {
-                        Debug.LogError($"[WebSocketConnection] Error during disconnect: {ex.Message}");
-                    }
+                    Debug.LogWarning($"[WebSocketConnection] Error during disconnect: {ex.Message}");
                 }
             }
 
@@ -346,14 +342,21 @@ namespace Tsc.AIBridge.WebSocket
             // Don't log errors during shutdown
             if (!_owner || !_owner.gameObject || _isDisconnecting) return;
 
-            Debug.LogError($"[WebSocketConnection] Connection error: {error}");
+            // Only escalate to LogError when reconnection cannot save us.
+            // LogError triggers the ErrorHandler popup — users should not see transient network hiccups.
+            var canRecover = _autoReconnectEnabled && _reconnectAttempts < _maxReconnectAttempts;
+            if (canRecover)
+                Debug.LogWarning($"[WebSocketConnection] Connection error (reconnecting): {error}");
+            else
+                Debug.LogError($"[WebSocketConnection] Connection error: {error}");
+
             try
             {
                 OnError?.Invoke(error);
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[WebSocketConnection] Error in error handler: {ex.Message}");
+                Debug.LogWarning($"[WebSocketConnection] Error in error handler: {ex.Message}");
             }
         }
 
@@ -489,7 +492,7 @@ namespace Tsc.AIBridge.WebSocket
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[WebSocketConnection] Error during reconnect attempt: {ex.Message}");
+                Debug.LogWarning($"[WebSocketConnection] Error during reconnect attempt: {ex.Message}");
             }
             finally
             {
@@ -565,13 +568,13 @@ namespace Tsc.AIBridge.WebSocket
                     }
                     else
                     {
-                        Debug.LogError($"[WebSocketConnection] ❌ DNS resolution returned no addresses");
+                        Debug.LogWarning($"[WebSocketConnection] ❌ DNS resolution returned no addresses");
                     }
                 }
                 catch (Exception dnsEx)
                 {
-                    Debug.LogError($"[WebSocketConnection] ❌ DNS resolution failed: {dnsEx.Message}");
-                    Debug.LogError($"[WebSocketConnection] This could indicate: No internet connection, DNS server issues, or invalid hostname");
+                    Debug.LogWarning($"[WebSocketConnection] ❌ DNS resolution failed: {dnsEx.Message}");
+                    Debug.LogWarning($"[WebSocketConnection] This could indicate: No internet connection, DNS server issues, or invalid hostname");
                 }
 
                 // Check if owner still exists (might be shutting down)
@@ -587,7 +590,7 @@ namespace Tsc.AIBridge.WebSocket
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[WebSocketConnection] Diagnostics failed: {ex.Message}");
+                Debug.LogWarning($"[WebSocketConnection] Diagnostics failed: {ex.Message}");
             }
         }
 
@@ -613,7 +616,7 @@ namespace Tsc.AIBridge.WebSocket
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[WebSocketConnection] Error during cleanup: {ex.Message}");
+                    Debug.LogWarning($"[WebSocketConnection] Error during cleanup: {ex.Message}");
                 }
                 finally
                 {

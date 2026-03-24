@@ -1,6 +1,6 @@
 {
   "name": "com.simulationcrew.aibridge",
-  "version": "1.6.12",
+  "version": "1.6.13",
   "displayName": "TSC AI Bridge",
   "description": "Core AI conversation and analysis system for Unity. Provides WebSocket-based communication with LLM services, audio streaming, and real-time conversation capabilities.",
   "unity": "2022.3",
