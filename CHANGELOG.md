@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.14] - 2026-04-01
+
+### Fixed
+- **SessionCancel fails on second coach opening**: `SendSessionCancelAsync()` was the only send method missing `EnsureConnectionAsync()`, causing "Cannot send SessionCancel - not connected!" errors when the WebSocket hadn't reconnected yet after scene reload
+
 ## [1.6.13] - 2026-03-24
 
 ### Fixed

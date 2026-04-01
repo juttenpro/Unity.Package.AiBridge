@@ -474,11 +474,18 @@ namespace Tsc.AIBridge.WebSocket
         /// </summary>
         public async Task SendSessionCancelAsync(SessionCancelMessage message)
         {
-            // Capture local reference to prevent race condition
+            // Ensure connection before sending (follows WebSocketClient pattern)
+            if (!await EnsureConnectionAsync())
+            {
+                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Failed to establish connection for SessionCancel");
+                return;
+            }
+
+            // Capture local reference to prevent race condition (connection could be lost between check and send)
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Cannot send SessionCancel - not connected!");
+                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for SessionCancel");
                 return;
             }
 
