@@ -333,9 +333,10 @@ namespace Tsc.AIBridge.Audio.Playback
                 // IMPORTANT: Must be called AFTER clip is created, otherwise Unity throws warning
                 _audioSource.time = 0f;
 
-                // Unmute now that buffers are cleared - AudioSource is ready for next audio
-                // We only muted temporarily to prevent audio bleeding during the transition
-                _audioSource.mute = false;
+                // Stay muted — only StartPlayback() should unmute.
+                // Previously this unmuted here, causing audio to leak after shutdown
+                // because event handlers (RestoreStreamingMode) called StopPlayback+StartPlayback
+                // and the unmute in StopPlayback happened before the shutdown mute could take effect.
             }
         }
 

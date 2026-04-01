@@ -75,7 +75,7 @@ namespace Tsc.AIBridge.Core
             if (!_npcsByName.ContainsKey(npcName))
             {
                 _npcsByName[npcName] = npcClient;
-                Debug.Log($"[NpcMessageRouter] Registered NPC: {npcName}");
+                // Registration is expected at startup - only log at verbose level for debugging
             }
         }
 

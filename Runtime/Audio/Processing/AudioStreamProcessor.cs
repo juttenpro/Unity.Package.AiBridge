@@ -377,6 +377,14 @@ namespace Tsc.AIBridge.Audio.Processing
         /// </summary>
         public void StartAudioStream(bool isOpus, int sampleRate = 48000)
         {
+            // Block new streams if the audio player is shut down
+            if (_audioPlayer != null && _audioPlayer.PipelineState == AudioPipelineState.ShuttingDown)
+            {
+                if (_isVerboseLogging)
+                    Debug.Log("[AudioStreamProcessor] StartAudioStream blocked - player pipeline is shut down");
+                return;
+            }
+
             lock (_streamLock)
             {
                 if (_isStreamingAudio)
@@ -417,6 +425,10 @@ namespace Tsc.AIBridge.Audio.Processing
                     Debug.LogWarning("[AudioStreamProcessor] ProcessReceivedAudio called with null/empty data");
                 return;
             }
+
+            // Discard audio data if player pipeline is shut down
+            if (_audioPlayer != null && _audioPlayer.PipelineState == AudioPipelineState.ShuttingDown)
+                return;
 
             // Check if buffering for queue (waiting for other audio to finish)
             // Queue Opus data until NpcAudioPlayer releases the stream

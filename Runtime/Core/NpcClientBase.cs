@@ -107,6 +107,31 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
+        /// Full audio pipeline stop: stops decoder, clears buffer, resets talking state.
+        /// Unlike StopAudio() which only stops playback, this also stops the AudioStreamProcessor
+        /// so new audio data from WebSocket doesn't restart playback.
+        /// Does NOT unregister from router — the NPC remains addressable for future conversations.
+        /// Use for temporary stops (e.g., closing coach orb). For permanent deactivation, use
+        /// SetActive(false) which triggers OnDisable and also unregisters from router.
+        /// Callable via BroadcastMessage from systems without AIBridge assembly reference.
+        /// </summary>
+        public void ShutdownAudioPipeline()
+        {
+            // Set ShuttingDown state on the audio player — blocks all new audio
+            AudioPlayer?.RequestShutdown();
+
+            // Stop the AudioStreamProcessor (decoder, encoder, WebSocket audio processing)
+            var audioProcessor = DownstreamAudioProcessor;
+            audioProcessor?.StopAllAudio();
+
+            IsTalking = false;
+
+            // NOTE: NpcAudioPlayer also has ShutdownAudioPipeline() which handles
+            // queue coroutine, scripted audio, and AudioSource muting.
+            // Both are called via BroadcastMessage.
+        }
+
+        /// <summary>
         /// Pause audio playback
         /// </summary>
         public virtual void PauseAudio()
@@ -131,6 +156,60 @@ namespace Tsc.AIBridge.Core
         {
             ValidateConfiguration();
             InitializeMessageHandlers();
+        }
+
+        /// <summary>
+        /// Cleanup when NPC is deactivated (SetActive(false)).
+        /// Stops all audio processing and unregisters from message router to prevent
+        /// orphaned audio buffers from accumulating while the AudioFilterRelay is disabled.
+        ///
+        /// Without this, audio data keeps arriving via WebSocket and buffering in
+        /// StreamingAudioPlayer, but OnAudioFilterRead no longer fires to consume it.
+        /// This causes unbounded buffer growth (60s+) which blocks PTT triggers
+        /// for ALL NPCs via IsAnyNpcTalkingWithSignificantBuffer().
+        /// </summary>
+        protected virtual void OnDisable()
+        {
+            bool hadActiveAudio = IsTalking || (AudioPlayer != null && AudioPlayer.HasBufferedAudio);
+
+            if (hadActiveAudio)
+            {
+                // Use RequestShutdown for full pipeline shutdown
+                AudioPlayer?.RequestShutdown();
+                DownstreamAudioProcessor?.StopAllAudio();
+            }
+
+            IsTalking = false;
+
+            // Unregister from message router so incoming WebSocket messages are ignored
+            if (NpcMessageRouter.HasInstance)
+            {
+                NpcMessageRouter.Instance.UnregisterNpc(this);
+            }
+
+            if (enableVerboseLogging)
+                Debug.Log($"[{NpcName}] OnDisable - shutdown: {hadActiveAudio}, unregistered from router");
+        }
+
+        /// <summary>
+        /// Re-register when NPC is reactivated (SetActive(true)).
+        /// </summary>
+        protected virtual void OnEnable()
+        {
+            // Only re-register if already initialized (Start has been called)
+            if (_metadataHandler == null)
+                return;
+
+            // Reset pipeline so audio can play again after re-activation
+            AudioPlayer?.ResetPipeline();
+
+            if (NpcMessageRouter.HasInstance)
+            {
+                NpcMessageRouter.Instance.RegisterNpc(this);
+            }
+
+            if (enableVerboseLogging)
+                Debug.Log($"[{NpcName}] OnEnable - re-registered with router");
         }
 
         /// <summary>
@@ -545,6 +624,15 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         private void ResetAudioStateForNextTurn(bool wasInterrupted)
         {
+            // Don't reset state if pipeline is shutting down — prevents event cascade from
+            // undoing the shutdown (StopPlayback → OnPlaybackInterrupted → ResetAudioState → EndAudioStream)
+            if (AudioPlayer != null && AudioPlayer.PipelineState == Audio.Playback.AudioPipelineState.ShuttingDown)
+            {
+                if (enableVerboseLogging)
+                    Debug.Log($"[{NpcName}] Skipping ResetAudioStateForNextTurn - pipeline is shut down");
+                return;
+            }
+
             var label = wasInterrupted ? "interrupted" : "complete";
 
             try

@@ -7,6 +7,27 @@ using Tsc.AIBridge.Audio.VAD;
 namespace Tsc.AIBridge.Audio.Playback
 {
     /// <summary>
+    /// Unified audio pipeline state. Single source of truth for all audio components.
+    /// ShuttingDown is the key state: it blocks ALL new audio until explicitly reset via ResetPipeline().
+    /// </summary>
+    public enum AudioPipelineState
+    {
+        /// <summary>No audio active, ready for new streams or scripted clips.</summary>
+        Idle,
+        /// <summary>Receiving and playing streaming AI audio via WebSocket.</summary>
+        Streaming,
+        /// <summary>Playing a scripted Addressable AudioClip.</summary>
+        PlayingScripted,
+        /// <summary>Playback paused (PauseManager, VR headset off). Can resume.</summary>
+        Paused,
+        /// <summary>Terminal state: all audio forcibly stopped, rejects all new audio.
+        /// Only transitions to Idle via explicit ResetPipeline() call.</summary>
+        ShuttingDown,
+        /// <summary>OnDestroy called — everything cleaned up.</summary>
+        Destroyed
+    }
+
+    /// <summary>
     /// Real-time streaming audio player optimized for low-latency AI voice playback.
     /// Uses Unity's OnAudioFilterRead callback for true streaming without pre-buffering entire clips.
     /// Key features:
@@ -58,6 +79,17 @@ namespace Tsc.AIBridge.Audio.Playback
         // Ring buffer for audio samples - no size limit, grows as needed
         private readonly ConcurrentQueue<float> _audioBuffer = new();
 
+        // Unified pipeline state — single source of truth for all audio components.
+        // volatile because audio thread reads in FillAudioBuffer, main thread writes.
+        private volatile AudioPipelineState _pipelineState = AudioPipelineState.Idle;
+        private AudioPipelineState _stateBeforePause;
+
+        /// <summary>
+        /// Current pipeline state. Used by NpcAudioPlayer, NpcClientBase, and AudioStreamProcessor
+        /// to guard operations against ShuttingDown state.
+        /// </summary>
+        public AudioPipelineState PipelineState => _pipelineState;
+
         // State
         // IMPORTANT: This receives DOWNSTREAM audio from TTS at 48kHz
         // (Different from UPSTREAM microphone capture at 16kHz)
@@ -100,6 +132,80 @@ namespace Tsc.AIBridge.Audio.Playback
         public bool IsPlaybackActive => _isStreamActive && _cachedIsPlaying;
         public bool HasBufferedAudio => _audioBuffer.Count > 0;
         public float BufferLevel => _audioBuffer.Count / (float)_sampleRate; // In seconds
+
+        #region Pipeline State Machine
+
+        /// <summary>
+        /// Attempt a state transition. Returns false if blocked (e.g., ShuttingDown blocks all
+        /// transitions except → Idle via ResetPipeline and → Destroyed).
+        /// </summary>
+        protected bool TryTransitionTo(AudioPipelineState newState)
+        {
+            if (_pipelineState == AudioPipelineState.ShuttingDown
+                && newState != AudioPipelineState.Idle
+                && newState != AudioPipelineState.Destroyed)
+            {
+                if (enableVerboseLogging)
+                    Debug.Log($"[{_cachedGameObjectName}] BLOCKED transition {_pipelineState} → {newState} (pipeline is shut down)");
+                return false;
+            }
+
+            if (_pipelineState == AudioPipelineState.Destroyed)
+                return false;
+
+            if (enableVerboseLogging)
+                Debug.Log($"[{_cachedGameObjectName}] Pipeline: {_pipelineState} → {newState}");
+            _pipelineState = newState;
+            return true;
+        }
+
+        /// <summary>
+        /// Forcefully shut down the audio pipeline. Sets ShuttingDown state which blocks all
+        /// new audio (StartStream, AddAudioData, ProcessAudioQueue, RestoreStreamingMode).
+        /// Only ResetPipeline() can bring it back to Idle.
+        /// Use for: orb close, NPC deactivation (SetActive(false)).
+        /// Do NOT use for interruptions — use StopPlayback() instead (transitions to Idle).
+        /// </summary>
+        public void RequestShutdown()
+        {
+            _pipelineState = AudioPipelineState.ShuttingDown; // Direct set, bypass guard
+            _forceStop = true;
+
+            lock (_stateLock)
+            {
+                StopPlaybackInternal(wasInterrupted: true);
+            }
+
+            // Mute AudioSource as final action — nothing can undo this while ShuttingDown
+            if (audioFilterRelay != null && audioFilterRelay.AudioSource != null)
+            {
+                audioFilterRelay.AudioSource.mute = true;
+            }
+        }
+
+        /// <summary>
+        /// Re-enable the pipeline after shutdown. Transitions from ShuttingDown → Idle.
+        /// Called by OnEnable() when NPC is reactivated, or when coach orb opens again.
+        /// </summary>
+        public void ResetPipeline()
+        {
+            if (_pipelineState == AudioPipelineState.ShuttingDown)
+            {
+                _pipelineState = AudioPipelineState.Idle;
+                _forceStop = false;
+
+                // Unmute AudioSource so it's ready for next audio
+                if (audioFilterRelay != null && audioFilterRelay.AudioSource != null)
+                {
+                    audioFilterRelay.AudioSource.mute = false;
+                }
+
+                if (enableVerboseLogging)
+                    Debug.Log($"[{_cachedGameObjectName}] Pipeline reset: ShuttingDown → Idle");
+            }
+        }
+
+        #endregion
 
         // Get buffer settings from centralized manager (if it exists)
         public float MinBufferDuration => AdaptiveBufferManager.HasInstance
@@ -416,6 +522,10 @@ namespace Tsc.AIBridge.Audio.Playback
         /// </summary>
         public void StartStream(int sampleRate)
         {
+            // Guard: block new streams if pipeline is shut down
+            if (!TryTransitionTo(AudioPipelineState.Streaming))
+                return;
+
             lock (_stateLock)
             {
                 // IMPORTANT: Always stop and clear any previous stream first
@@ -610,6 +720,12 @@ namespace Tsc.AIBridge.Audio.Playback
         /// </summary>
         private void StopPlaybackInternal(bool wasInterrupted = false)
         {
+            // Transition to Idle unless we're in ShuttingDown (which must stay ShuttingDown)
+            if (_pipelineState != AudioPipelineState.ShuttingDown)
+            {
+                _pipelineState = AudioPipelineState.Idle;
+            }
+
             _isStreamActive = false;
             _isPlaybackStarted = false; // CRITICAL: Reset to allow StartPlayback() for next turn
             _streamComplete = true;
@@ -739,6 +855,10 @@ namespace Tsc.AIBridge.Audio.Playback
         /// </summary>
         public virtual void PausePlayback()
         {
+            // Don't pause if already shut down
+            if (_pipelineState == AudioPipelineState.ShuttingDown || _pipelineState == AudioPipelineState.Destroyed)
+                return;
+
             lock (_stateLock)
             {
                 if (_isPaused)
@@ -748,6 +868,8 @@ namespace Tsc.AIBridge.Audio.Playback
                     return;
                 }
 
+                _stateBeforePause = _pipelineState;
+                _pipelineState = AudioPipelineState.Paused;
                 _isPaused = true;
 
                 // Pause the AudioSource via relay
@@ -772,10 +894,15 @@ namespace Tsc.AIBridge.Audio.Playback
         /// </summary>
         public virtual void ResumePlayback()
         {
+            // Don't resume if shut down
+            if (_pipelineState == AudioPipelineState.ShuttingDown || _pipelineState == AudioPipelineState.Destroyed)
+                return;
+
             lock (_stateLock)
             {
                 if (!_isPaused) return;
 
+                _pipelineState = _stateBeforePause;
                 _isPaused = false;
 
                 // Resume the AudioSource via relay
@@ -833,8 +960,8 @@ namespace Tsc.AIBridge.Audio.Playback
         /// </summary>
         public void FillAudioBuffer(float[] data, int channels)
         {
-            // CRITICAL: Check force stop flag FIRST
-            if (_forceStop)
+            // CRITICAL: Check force stop and shutdown state FIRST (audio thread safety)
+            if (_forceStop || _pipelineState == AudioPipelineState.ShuttingDown || _pipelineState == AudioPipelineState.Destroyed)
             {
                 Array.Clear(data, 0, data.Length);
                 _lastPlayedAudioFrame = null; // Clear when stopped
@@ -1094,6 +1221,7 @@ namespace Tsc.AIBridge.Audio.Playback
 
         protected virtual void OnDestroy()
         {
+            _pipelineState = AudioPipelineState.Destroyed;
             StopPlayback();
 
             // Unsubscribe from buffer updates (only if instance exists, don't create during cleanup)
