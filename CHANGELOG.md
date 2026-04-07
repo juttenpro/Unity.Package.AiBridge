@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.15] - 2026-04-07
+
+### Fixed
+- **NPC permanently unresponsive after WebSocket disconnect**: When the backend instance was replaced (OOM, scaling), all WebSocket connections dropped simultaneously. After reconnection, `IsReactionBusy` stayed permanently `true` because neither `HandleWebSocketDisconnected` nor the failure paths in `HandleRecordingStopped` notified the RuleSystem that the request failed. Now fires `RaiseSttFailed(ConnectionLost)` on disconnect, which triggers the `sttFailed`/`noSpeechDetected` SystemInput to reset `IsReactionBusy`. Includes double-fire guard via `_isRequestActive` flag.
+
+### Added
+- 4 EditMode tests for disconnect active-request abort behavior (`DisconnectActiveRequestTests`)
+
 ## [1.6.14] - 2026-04-01
 
 ### Fixed

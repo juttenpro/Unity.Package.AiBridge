@@ -226,6 +226,21 @@ namespace Tsc.AIBridge.Core
                 _audioRequestQueue.Clear();
                 _textRequestQueue.Clear();
             }
+
+            // Abort active request so the RuleSystem can reset IsReactionBusy.
+            // Without this, no STT result ever arrives and the NPC stays permanently unresponsive.
+            // HandleRecordingStopped() checks _isRequestActive first, so only one path fires the event.
+            if (_isRequestActive)
+            {
+                Debug.LogWarning($"[RequestOrchestrator] Active request aborted due to WebSocket disconnect ({code})");
+                _isRequestActive = false;
+                RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage
+                {
+                    Reason = "ConnectionLost",
+                    AudioDuration = 0,
+                    SttProvider = "none"
+                });
+            }
         }
 
         private void OnDestroy()
@@ -1017,6 +1032,9 @@ namespace Tsc.AIBridge.Core
                             Debug.LogWarning($"[RequestOrchestrator] {_reconnectionAudioBuffer.Count} audio chunks were buffered but connection did not recover in time");
                         }
 
+                        // Notify RuleSystem so IsReactionBusy resets (prevents permanent NPC freeze)
+                        _isRequestActive = false;
+                        RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage { Reason = "ConnectionLost" });
                         return;
                     }
                 }
@@ -1030,6 +1048,10 @@ namespace Tsc.AIBridge.Core
                     {
                         Debug.LogError($"[RequestOrchestrator] Recording session lost: {_droppedAudioChunks} audio chunks could not be sent due to disconnection");
                     }
+
+                    // Notify RuleSystem so IsReactionBusy resets (prevents permanent NPC freeze)
+                    _isRequestActive = false;
+                    RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage { Reason = "ConnectionLost" });
 
                     return;
                 }
