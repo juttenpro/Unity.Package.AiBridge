@@ -120,19 +120,22 @@ namespace Tsc.AIBridge.Input
         private bool useAdaptiveVAD = true;
 
         [SerializeField]
-        [Range(0.005f, 0.05f)]
-        [Tooltip("Fixed threshold for speech detection when adaptive is off")]
-        private float fixedVadThreshold = 0.02f;
+        [Range(0.003f, 0.05f)]
+        [Tooltip("Fixed threshold for speech detection when adaptive is off. " +
+                 "Defaults tuned for close-talk headsets; lower for quieter voices.")]
+        private float fixedVadThreshold = 0.015f;
 
         [SerializeField]
-        [Range(0.005f, 0.03f)]
-        [Tooltip("How much above noise floor to set threshold (adaptive mode)")]
-        private float adaptiveMargin = 0.015f;
+        [Range(0.003f, 0.03f)]
+        [Tooltip("How much above noise floor to set threshold (adaptive mode). " +
+                 "Smaller = more sensitive to quiet voices.")]
+        private float adaptiveMargin = 0.010f;
 
         [SerializeField]
-        [Range(0.005f, 0.02f)]
-        [Tooltip("Minimum threshold even in silent environments")]
-        private float minimumThreshold = 0.01f;
+        [Range(0.003f, 0.02f)]
+        [Tooltip("Minimum threshold even in silent environments. " +
+                 "Lower this to allow close-talk headsets in silent rooms to trigger detection.")]
+        private float minimumThreshold = 0.006f;
 
         [Header("Voice Activation")]
         [SerializeField]
@@ -255,21 +258,7 @@ namespace Tsc.AIBridge.Input
 
             // CRITICAL FIX: Initialize VADManager (was missing!)
             // This was causing VAD to always return false
-            _vadManager = new VADManager(enableVerboseLogging);
-
-            // Apply VAD settings from Inspector
-            if (useAdaptiveVAD)
-            {
-                _vadManager.SetAdaptiveSettings(adaptiveMargin, minimumThreshold);
-                if (enableVerboseLogging)
-                    Debug.Log($"[SpeechInputHandler] VADManager initialized with ADAPTIVE settings - margin: {adaptiveMargin}, min: {minimumThreshold}");
-            }
-            else
-            {
-                _vadManager.SetFixedThreshold(fixedVadThreshold);
-                if (enableVerboseLogging)
-                    Debug.Log($"[SpeechInputHandler] VADManager initialized with FIXED threshold: {fixedVadThreshold}");
-            }
+            _vadManager = CreateConfiguredVadManager();
 
             // Setup pre-buffer for voice activation
             if (useVoiceActivation)
@@ -478,21 +467,36 @@ namespace Tsc.AIBridge.Input
 
             if (_vadManager == null)
             {
-                _vadManager = new VADManager(enableVerboseLogging);
-
-                // Apply VAD settings from Inspector
-                if (useAdaptiveVAD)
-                {
-                    _vadManager.SetAdaptiveSettings(adaptiveMargin, minimumThreshold);
-                }
-                else
-                {
-                    _vadManager.SetFixedThreshold(fixedVadThreshold);
-                }
+                _vadManager = CreateConfiguredVadManager();
             }
 
             if (enableVerboseLogging)
                 Debug.Log("[SpeechInputHandler] Initialized for testing");
+        }
+
+        /// <summary>
+        /// Create a VADManager and apply the Inspector-configured adaptive or fixed settings.
+        /// Extracted in v1.6.16 so that Awake() and InitializeForTesting() share one
+        /// implementation — previously duplicated code meant fixes had to be applied twice.
+        /// </summary>
+        private VADManager CreateConfiguredVadManager()
+        {
+            var manager = new VADManager(enableVerboseLogging);
+
+            if (useAdaptiveVAD)
+            {
+                manager.SetAdaptiveSettings(adaptiveMargin, minimumThreshold);
+                if (enableVerboseLogging)
+                    Debug.Log($"[SpeechInputHandler] VADManager initialized with ADAPTIVE settings - margin: {adaptiveMargin:F4}, min: {minimumThreshold:F4}");
+            }
+            else
+            {
+                manager.SetFixedThreshold(fixedVadThreshold);
+                if (enableVerboseLogging)
+                    Debug.Log($"[SpeechInputHandler] VADManager initialized with FIXED threshold: {fixedVadThreshold:F4}");
+            }
+
+            return manager;
         }
 
         /// <summary>

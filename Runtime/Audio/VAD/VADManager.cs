@@ -112,36 +112,46 @@ namespace Tsc.AIBridge.Audio.VAD
         }
 
         /// <summary>
-        /// Set adaptive VAD settings (for adaptive mode)
+        /// Set adaptive VAD settings (for adaptive mode).
+        /// Before v1.6.16 this method was a stub that only logged. It now actually propagates
+        /// the settings to the underlying DynamicRangeVADProcessor.
         /// </summary>
-        /// <param name="margin">How much above noise floor to set threshold</param>
-        /// <param name="minThreshold">Minimum threshold even in silent environments</param>
+        /// <param name="margin">Additive margin above noise floor. Quiet-environment margin is
+        /// set to this value; noisy-environment margin is derived as 80% of it so noisy rooms
+        /// keep a slightly smaller margin (users don't have to raise their voice).</param>
+        /// <param name="minThreshold">Minimum threshold floor even in silent environments.
+        /// Lower this to allow close-talk headsets in very quiet rooms to trigger detection at
+        /// realistic speaking volumes (~0.015-0.025 RMS).</param>
         public void SetAdaptiveSettings(float margin, float minThreshold)
         {
             if (_vadProcessor is DynamicRangeVADProcessor dynamicVad)
             {
-                // Store settings for use during calibration
-                // Note: DynamicRangeVADProcessor uses these internally
+                dynamicVad.SetAdaptiveMode();
+                dynamicVad.SetMargins(margin, margin * 0.8f);
+                dynamicVad.SetMinimumThreshold(minThreshold);
+
                 if (_enableLogging)
                 {
-                    Debug.Log($"[VADManager] Adaptive settings: margin={margin}, min={minThreshold}");
+                    Debug.Log($"[VADManager] Adaptive settings applied: margin={margin:F4}, min={minThreshold:F4}");
                 }
             }
         }
 
         /// <summary>
-        /// Set a fixed VAD threshold (disables adaptive mode)
+        /// Set a fixed VAD threshold (disables adaptive mode).
+        /// Before v1.6.16 this method was a stub that only logged. It now actually pins the
+        /// threshold on the underlying processor.
         /// </summary>
-        /// <param name="threshold">Fixed threshold value</param>
+        /// <param name="threshold">Fixed threshold value. Adaptive calibration is disabled.</param>
         public void SetFixedThreshold(float threshold)
         {
-            if (_vadProcessor != null)
+            if (_vadProcessor is DynamicRangeVADProcessor dynamicVad)
             {
-                // Set fixed threshold mode
-                // Note: This disables adaptive calibration
+                dynamicVad.SetFixedThreshold(threshold);
+
                 if (_enableLogging)
                 {
-                    Debug.Log($"[VADManager] Fixed threshold mode: {threshold}");
+                    Debug.Log($"[VADManager] Fixed threshold applied: {threshold:F4}");
                 }
             }
         }

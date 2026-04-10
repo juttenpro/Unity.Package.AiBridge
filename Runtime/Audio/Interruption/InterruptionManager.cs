@@ -15,6 +15,13 @@ namespace Tsc.AIBridge.Audio.Interruption
     /// </summary>
     public class InterruptionManager : MonoBehaviour
     {
+        /// <summary>
+        /// Fallback persistence time used when no active NPC configuration is available.
+        /// Matches the PersonaSO.persistenceTime default of 0.4s. Before v1.6.16 the fallback
+        /// was 1.5s which silently made interruption 3.75x harder in edge cases.
+        /// </summary>
+        public const float DefaultPersistenceTimeFallback = 0.4f;
+
         [Header("Required Components")]
         [SerializeField] private SpeechInputHandler speechInputHandler;
 
@@ -24,10 +31,31 @@ namespace Tsc.AIBridge.Audio.Interruption
         [Tooltip("Buffer threshold for near-end detection. When stream is complete and buffer < this value, near-end is triggered.")]
         private float nearEndThresholdSeconds = 1.0f;
 
+        [SerializeField]
+        [Range(0.1f, 1.0f)]
+        [Tooltip("Persistence multiplier applied to persistenceTime during near-end. " +
+                 "0.25 means near-end interrupts at 25% of normal persistence, e.g. 100ms " +
+                 "instead of 400ms. Rationale: if the NPC is almost finished, holding the " +
+                 "user back adds friction without preventing real conflicts.")]
+        private float nearEndPersistenceMultiplier = 0.25f;
+
+        [Header("NPC Pause Tolerance")]
+        [SerializeField]
+        [Range(0.0f, 1.0f)]
+        [Tooltip("How long an NPC can be silent within an active response before the overlap " +
+                 "timer resets. Without this tolerance, natural NPC pauses (breaths, commas) " +
+                 "reset the timer and make interruption extremely difficult.")]
+        private float npcPauseTolerance = 0.3f;
+
         [Header("Debug")]
         [SerializeField]
         [Tooltip("Enable detailed console logging for troubleshooting VAD calibration and interruption detection.")]
         private bool enableVerboseLogging = false;
+
+        [SerializeField]
+        [Tooltip("Always log a one-line production diagnostic when an interruption fires or " +
+                 "when overlap accumulates but never reaches persistence. Safe for production.")]
+        private bool enableProductionDiagnostics = true;
 
         // Events for backwards compatibility with tests
         // Using object to avoid PersonaSO dependency in Core package
@@ -265,20 +293,136 @@ namespace Tsc.AIBridge.Audio.Interruption
         }
 
         /// <summary>
+        /// Pure helper: decide whether overlap is long enough to trigger interruption.
+        /// Extracted in v1.6.16 so the decision logic is unit-testable without spinning up
+        /// a coroutine, Unity scene, NPC client, or WebSocket connection. This is where the
+        /// bug-2 fix lives: near-end now uses a reduced persistence time instead of copying
+        /// the normal path.
+        /// </summary>
+        /// <param name="overlapTimer">Accumulated overlap duration in seconds.</param>
+        /// <param name="persistenceTime">Normal persistence threshold from PersonaSO.</param>
+        /// <param name="isNearEnd">True when NPC stream is complete and buffer is near-drained.</param>
+        /// <param name="allowInterruption">Whether the active persona allows normal interruption.</param>
+        /// <param name="nearEndPersistenceMultiplier">Fraction of persistenceTime to require when near-end.</param>
+        /// <returns>True if an interruption should fire.</returns>
+        public static bool ShouldInterrupt(
+            float overlapTimer,
+            float persistenceTime,
+            bool isNearEnd,
+            bool allowInterruption,
+            float nearEndPersistenceMultiplier)
+        {
+            if (isNearEnd)
+            {
+                // Near-end overrides allowInterruption: if the NPC is nearly done anyway,
+                // blocking the user adds friction without preventing real conflicts.
+                var reducedPersistence = persistenceTime * nearEndPersistenceMultiplier;
+                return overlapTimer >= reducedPersistence;
+            }
+
+            if (!allowInterruption)
+                return false;
+
+            return overlapTimer >= persistenceTime;
+        }
+
+        /// <summary>
+        /// Result of one <see cref="UpdateOverlapTimer"/> tick: the new overlap timer value
+        /// and the new NPC pause accumulator.
+        /// </summary>
+        public readonly struct OverlapTickResult
+        {
+            public readonly float OverlapTimer;
+            public readonly float NpcPauseAccumulator;
+
+            public OverlapTickResult(float overlapTimer, float npcPauseAccumulator)
+            {
+                OverlapTimer = overlapTimer;
+                NpcPauseAccumulator = npcPauseAccumulator;
+            }
+        }
+
+        /// <summary>
+        /// Pure helper: compute the next overlap-timer state given the current state and
+        /// this frame's speaking states. Extracted in v1.6.16 to fix bug 3 (NPC micro-pauses
+        /// resetting the timer) and to make the logic unit-testable.
+        ///
+        /// Rules:
+        /// - If user AND NPC are both producing speech: accumulate overlap, reset pause accumulator.
+        /// - If user is still speaking and the NPC response is still active but the NPC is
+        ///   briefly silent (breathing, commas): keep accumulating overlap until the pause
+        ///   accumulator exceeds <paramref name="npcPauseTolerance"/>. This allows users to
+        ///   interrupt through natural NPC pauses.
+        /// - If the pause exceeds tolerance, user stops speaking, or NPC response ends:
+        ///   reset both overlap and pause accumulator.
+        /// </summary>
+        public static OverlapTickResult UpdateOverlapTimer(
+            float currentOverlap,
+            float currentNpcPauseAccumulator,
+            bool userSpeaking,
+            bool npcActuallySpeaking,
+            bool npcResponding,
+            float deltaTime,
+            float npcPauseTolerance)
+        {
+            if (userSpeaking && npcActuallySpeaking)
+            {
+                return new OverlapTickResult(currentOverlap + deltaTime, 0f);
+            }
+
+            if (userSpeaking && npcResponding && !npcActuallySpeaking)
+            {
+                // User still talking, NPC in a momentary pause within an active response.
+                var newPauseAccum = currentNpcPauseAccumulator + deltaTime;
+                if (newPauseAccum < npcPauseTolerance)
+                {
+                    return new OverlapTickResult(currentOverlap + deltaTime, newPauseAccum);
+                }
+                // Pause exceeded tolerance — treat this as real silence and reset.
+                return new OverlapTickResult(0f, 0f);
+            }
+
+            // User stopped speaking OR NPC response ended — reset both.
+            return new OverlapTickResult(0f, 0f);
+        }
+
+        /// <summary>
         /// Coroutine: Monitor for interruption while user and NPC are both potentially talking
         /// This replaces the Update() loop with event-driven + coroutine approach
         /// </summary>
         private IEnumerator MonitorOverlapCoroutine()
         {
             float overlapTimer = 0f;
+            float npcPauseAccumulator = 0f;
+            float maxOverlapReached = 0f; // Tracked for production diagnostics on failure.
 
-            // Get interruption settings from cached config
-            bool allowInterruption = _activeNpcConfig?.AllowInterruption ?? true;
-            float persistenceTime = _activeNpcConfig?.InterruptionPersistenceTime ?? 1.5f;
+            // Get interruption settings from cached config.
+            // Before v1.6.16 the fallback was 1.5f, which silently made interruption 3.75x
+            // harder when config was unavailable. Now it matches the PersonaSO default and
+            // logs a warning so the fallback is visible instead of silent.
+            bool allowInterruption;
+            float persistenceTime;
+            if (_activeNpcConfig != null)
+            {
+                allowInterruption = _activeNpcConfig.AllowInterruption;
+                persistenceTime = _activeNpcConfig.InterruptionPersistenceTime;
+            }
+            else
+            {
+                allowInterruption = true;
+                persistenceTime = DefaultPersistenceTimeFallback;
+                Debug.LogWarning(
+                    $"[InterruptionManager] No active NPC configuration — using fallback " +
+                    $"persistence {DefaultPersistenceTimeFallback:F2}s. " +
+                    $"This usually indicates a timing issue during scene load.");
+            }
 
             if (enableVerboseLogging)
             {
-                Debug.Log($"[InterruptionManager] Overlap monitoring started - allowInterruption: {allowInterruption}, persistence: {persistenceTime}s");
+                Debug.Log($"[InterruptionManager] Overlap monitoring started - " +
+                          $"allowInterruption: {allowInterruption}, persistence: {persistenceTime:F2}s, " +
+                          $"nearEndMultiplier: {nearEndPersistenceMultiplier:F2}, " +
+                          $"npcPauseTolerance: {npcPauseTolerance:F2}s");
             }
 
             while (_activeNpcClient != null && speechInputHandler != null && speechInputHandler.IsUserInputActive)
@@ -319,59 +463,50 @@ namespace Tsc.AIBridge.Audio.Interruption
                 // Check for near-end condition
                 bool isNearEnd = CheckNearEndCondition(npcResponding);
 
-                // Detect interruption: user and NPC both producing speech
-                if (userSpeaking && npcActuallySpeaking)
+                // Update the overlap timer state via the pure helper (testable logic).
+                var tickResult = UpdateOverlapTimer(
+                    currentOverlap: overlapTimer,
+                    currentNpcPauseAccumulator: npcPauseAccumulator,
+                    userSpeaking: userSpeaking,
+                    npcActuallySpeaking: npcActuallySpeaking,
+                    npcResponding: npcResponding,
+                    deltaTime: Time.deltaTime,
+                    npcPauseTolerance: npcPauseTolerance);
+
+                overlapTimer = tickResult.OverlapTimer;
+                npcPauseAccumulator = tickResult.NpcPauseAccumulator;
+
+                if (overlapTimer > maxOverlapReached)
+                    maxOverlapReached = overlapTimer;
+
+                if (enableVerboseLogging && overlapTimer > 0f)
                 {
-                    overlapTimer += Time.deltaTime;
-
-                    if (enableVerboseLogging && overlapTimer > 0 && Mathf.Approximately(overlapTimer % 0.5f, 0f))
-                    {
-                        Debug.Log($"[InterruptionManager] Overlap timer: {overlapTimer:F2}s / {persistenceTime:F2}s");
-                    }
-
-                    // Check if persistence threshold reached
-                    bool shouldInterrupt = false;
-
-                    if (isNearEnd)
-                    {
-                        // Near-end: still requires full persistence time
-                        shouldInterrupt = overlapTimer >= persistenceTime;
-                        if (shouldInterrupt && enableVerboseLogging)
-                        {
-                            Debug.Log($"[InterruptionManager] Near-end interruption threshold reached");
-                        }
-                    }
-                    else if (allowInterruption)
-                    {
-                        // Normal interruption: must be allowed + persistence threshold
-                        shouldInterrupt = overlapTimer >= persistenceTime;
-                        if (shouldInterrupt && enableVerboseLogging)
-                        {
-                            Debug.Log($"[InterruptionManager] Normal interruption threshold reached");
-                        }
-                    }
-
-                    if (shouldInterrupt && !_hasValidInterruption)
-                    {
-                        _hasValidInterruption = true;
-                        OnInterruptionDetected();
-                        yield break; // Stop monitoring after interruption detected
-                    }
+                    Debug.Log($"[InterruptionManager] Overlap: {overlapTimer:F2}s / {persistenceTime:F2}s " +
+                              $"(pauseAccum: {npcPauseAccumulator:F2}s, near-end: {isNearEnd})");
                 }
-                else
+
+                if (ShouldInterrupt(overlapTimer, persistenceTime, isNearEnd, allowInterruption,
+                        nearEndPersistenceMultiplier) && !_hasValidInterruption)
                 {
-                    // Reset overlap timer if not both speaking
-                    if (overlapTimer > 0)
+                    _hasValidInterruption = true;
+                    if (enableProductionDiagnostics)
                     {
-                        if (enableVerboseLogging)
-                        {
-                            Debug.Log($"[InterruptionManager] Overlap ended - resetting timer (user: {userSpeaking}, npc: {npcActuallySpeaking})");
-                        }
-                        overlapTimer = 0f;
+                        var vadInfo = speechInputHandler?.VadManager?.GetDiagnosticInfo() ?? "n/a";
+                        Debug.Log($"[InterruptionManager] INTERRUPT fired after {overlapTimer:F2}s overlap " +
+                                  $"(persistence {persistenceTime:F2}s, near-end {isNearEnd}, VAD {vadInfo})");
                     }
+                    OnInterruptionDetected();
+                    yield break; // Stop monitoring after interruption detected
                 }
 
                 yield return null; // Check every frame
+            }
+
+            if (enableProductionDiagnostics && maxOverlapReached > 0f && !_hasValidInterruption)
+            {
+                var vadInfo = speechInputHandler?.VadManager?.GetDiagnosticInfo() ?? "n/a";
+                Debug.Log($"[InterruptionManager] Overlap session ended WITHOUT interrupt. " +
+                          $"Max overlap: {maxOverlapReached:F2}s / required {persistenceTime:F2}s. VAD {vadInfo}");
             }
 
             if (enableVerboseLogging)

@@ -10,17 +10,26 @@ namespace Tsc.AIBridge.Audio.VAD
     /// </summary>
     public class DynamicRangeVADProcessor : VADProcessorBase
     {
-        // Configuration
-        private const float DefaultThreshold = 0.03f; // Lowered for better sensitivity
-        private const float MinThreshold = 0.015f; // Original value - production doesn't need safety net
+        // Defaults — lowered in v1.6.16 to support close-talk headsets in quiet environments.
+        // Production reports showed the old 0.03 / 0.015 values required users to almost shout
+        // because typical headset RMS at normal speaking volume sits around 0.015-0.025.
+        private const float DefaultThreshold = 0.018f;
+        private const float DefaultMinThresholdFloor = 0.008f;
         private const float MaxThreshold = 0.10f; // Cap for noisy environments (prevents VAD from becoming deaf)
-        private const float DefaultAdditiveMarginQuiet = 0.02f; // Default additive margin for quiet environments
-        private const float DefaultAdditiveMarginNoisy = 0.015f; // Default additive margin for noisy environments
+        private const float DefaultAdditiveMarginQuiet = 0.010f;
+        private const float DefaultAdditiveMarginNoisy = 0.008f;
         private const float NoisyEnvironment = 0.04f; // Above this = noisy environment
 
-        // Configurable margins
+        // Configurable margins and floor (configurable via constructor and public setters
+        // so that VADManager.SetAdaptiveSettings() can actually apply Inspector values —
+        // before v1.6.16 those setters were stubs).
         private float _additiveMarginQuiet;
         private float _additiveMarginNoisy;
+        private float _minThresholdFloor;
+
+        // Fixed-threshold mode — when enabled, skips adaptation entirely and pins _currentThreshold.
+        private bool _fixedThresholdMode;
+        private float _fixedThreshold;
 
         // Adaptive calibration settings
         private bool _useAdaptiveCalibration = true;
@@ -51,12 +60,58 @@ namespace Tsc.AIBridge.Audio.VAD
         private const int SmoothingWindow = 5; // ~100ms at 50Hz
 
         public DynamicRangeVADProcessor(string name, bool enableVerboseLogging = false, bool useAdaptiveCalibration = true,
-            float? additiveMarginQuiet = null, float? additiveMarginNoisy = null)
+            float? additiveMarginQuiet = null, float? additiveMarginNoisy = null, float? minThresholdFloor = null)
             : base(name, enableVerboseLogging)
         {
             _useAdaptiveCalibration = useAdaptiveCalibration;
             _additiveMarginQuiet = additiveMarginQuiet ?? DefaultAdditiveMarginQuiet;
             _additiveMarginNoisy = additiveMarginNoisy ?? DefaultAdditiveMarginNoisy;
+            _minThresholdFloor = minThresholdFloor ?? DefaultMinThresholdFloor;
+        }
+
+        /// <summary>
+        /// Update the adaptive margins after construction. Called by VADManager.SetAdaptiveSettings()
+        /// so that SpeechInputHandler Inspector values reach the processor without recreating it.
+        /// </summary>
+        public void SetMargins(float quietMargin, float noisyMargin)
+        {
+            _additiveMarginQuiet = quietMargin;
+            _additiveMarginNoisy = noisyMargin;
+            // Invalidate learned margin so defaults take effect immediately.
+            _currentAdaptiveMargin = -1f;
+        }
+
+        /// <summary>
+        /// Update the minimum threshold floor. Allows adaptation to drive the threshold lower
+        /// than the previous hardcoded 0.015 floor, which was too high for close-talk headsets
+        /// in quiet environments.
+        /// </summary>
+        public void SetMinimumThreshold(float minThreshold)
+        {
+            _minThresholdFloor = Mathf.Max(0f, minThreshold);
+            // Clamp current threshold down if it was above the old floor.
+            _currentThreshold = Mathf.Clamp(_currentThreshold, _minThresholdFloor, MaxThreshold);
+        }
+
+        /// <summary>
+        /// Enable fixed-threshold mode. Adaptation is skipped and the threshold is pinned to
+        /// the supplied value. Useful for predictable deployments (classrooms, fixed mic setups).
+        /// </summary>
+        public void SetFixedThreshold(float threshold)
+        {
+            _fixedThresholdMode = true;
+            _fixedThreshold = Mathf.Clamp(threshold, 0f, MaxThreshold);
+            _currentThreshold = _fixedThreshold;
+            _useAdaptiveCalibration = false;
+        }
+
+        /// <summary>
+        /// Re-enable adaptive calibration after fixed-threshold mode was set.
+        /// </summary>
+        public void SetAdaptiveMode()
+        {
+            _fixedThresholdMode = false;
+            _useAdaptiveCalibration = true;
         }
 
         /// <summary>
@@ -81,6 +136,26 @@ namespace Tsc.AIBridge.Audio.VAD
             LastAudioFrame = audioData;
 
             var deltaTime = 0.02f; // ~50Hz
+
+            // Fixed-threshold mode bypass — skip adaptation entirely and evaluate against the pinned value.
+            if (_fixedThresholdMode)
+            {
+                var rms = CalculateRMS(audioData);
+                _recentVolumes.Enqueue(rms);
+                if (_recentVolumes.Count > SmoothingWindow)
+                    _recentVolumes.Dequeue();
+                var smoothed = _recentVolumes.Average();
+
+                var aboveFixed = smoothed > _fixedThreshold;
+                if (aboveFixed)
+                {
+                    _volumeAboveThresholdTime += deltaTime;
+                    var sustainedEnough = _volumeAboveThresholdTime >= SustainedSpeechTime;
+                    return ProcessSpeechDetection(sustainedEnough, deltaTime);
+                }
+                _volumeAboveThresholdTime = 0f;
+                return ProcessSpeechDetection(false, deltaTime);
+            }
 
             // Calculate RMS volume
             var currentVolume = CalculateRMS(audioData);
@@ -372,8 +447,9 @@ namespace Tsc.AIBridge.Audio.VAD
                 }
             }
 
-            // Apply limits and smooth the change
-            newThreshold = Mathf.Clamp(newThreshold, MinThreshold, MaxThreshold);
+            // Apply limits and smooth the change (uses configurable _minThresholdFloor
+            // instead of the old hardcoded 0.015 so Inspector-driven sensitivity actually takes effect).
+            newThreshold = Mathf.Clamp(newThreshold, _minThresholdFloor, MaxThreshold);
 
             // Store old threshold for logging
             var oldThreshold = _currentThreshold;
@@ -400,7 +476,8 @@ namespace Tsc.AIBridge.Audio.VAD
             }
 
             base.Reset();
-            _currentThreshold = DefaultThreshold;
+            // In fixed-threshold mode, keep the pinned value across Resets so behavior is predictable.
+            _currentThreshold = _fixedThresholdMode ? _fixedThreshold : DefaultThreshold;
             _quietSamples.Clear();
             _loudSamples.Clear();
             _recentVolumes.Clear();
@@ -424,16 +501,21 @@ namespace Tsc.AIBridge.Audio.VAD
         public override float CurrentThreshold => _currentThreshold;
 
         /// <summary>
-        /// Get info for debugging
+        /// Get info for debugging — used by production diagnostic logging so support staff
+        /// can see the actual threshold and recent signal levels when a user reports
+        /// "interruption doesn't work".
         /// </summary>
         public string GetRangeInfo()
         {
             var noiseLevel = _quietSamples.Count > 0 ? _quietSamples.Average() : 0f;
             var speechLevel = _loudSamples.Count > 0 ? _loudSamples.Average() : 0f;
 
-            return $"Threshold: {_currentThreshold:F4}, Noise: {noiseLevel:F4}, Speech: {speechLevel:F4}, " +
-                   $"Samples: {_quietSamples.Count} quiet, {_loudSamples.Count} loud" +
-                   (_currentAdaptiveMargin > 0 ? $", Learned margin: {_currentAdaptiveMargin:F4}" : "");
+            return $"Threshold: {_currentThreshold:F4} (floor {_minThresholdFloor:F4}), " +
+                   $"Noise: {noiseLevel:F4}, Speech: {speechLevel:F4}, " +
+                   $"Samples: {_quietSamples.Count} quiet, {_loudSamples.Count} loud, " +
+                   $"Mode: {(_fixedThresholdMode ? "fixed" : "adaptive")}, " +
+                   $"Margins(q/n): {_additiveMarginQuiet:F4}/{_additiveMarginNoisy:F4}" +
+                   (_currentAdaptiveMargin > 0 ? $", Learned: {_currentAdaptiveMargin:F4}" : "");
         }
 
         /// <summary>
@@ -520,7 +602,7 @@ namespace Tsc.AIBridge.Audio.VAD
 
                 // Set threshold at 70% of the quietest speech volume
                 var newThreshold = quietestLoud * 0.7f;
-                newThreshold = Mathf.Clamp(newThreshold, MinThreshold, MaxThreshold);
+                newThreshold = Mathf.Clamp(newThreshold, _minThresholdFloor, MaxThreshold);
 
                 var oldThreshold = _currentThreshold;
                 _currentThreshold = newThreshold;
@@ -530,9 +612,11 @@ namespace Tsc.AIBridge.Audio.VAD
             }
             else
             {
-                // Not enough samples - lower threshold by 20% to be more sensitive
+                // Not enough samples - lower threshold by 20% to be more sensitive.
+                // When adaptation has no signal to learn from, we still want to drift toward the
+                // configured floor so quiet headsets eventually converge to a usable threshold.
                 var oldThreshold = _currentThreshold;
-                _currentThreshold = Mathf.Max(_currentThreshold * 0.8f, MinThreshold);
+                _currentThreshold = Mathf.Max(_currentThreshold * 0.8f, _minThresholdFloor);
 
                 //Debug.Log($"[{_name}VAD-ADAPTED] Forced lower (insufficient samples): {oldThreshold:F4} → {_currentThreshold:F4}");
             }

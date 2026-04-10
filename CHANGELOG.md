@@ -6,6 +6,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.16] - 2026-04-10
+
+### Fixed
+- **Users must almost shout to interrupt NPCs**: A chain of five bugs in the VAD and
+  interruption pipeline made it extremely difficult to interrupt an NPC, even with a
+  close-talk headset in a silent office.
+
+  1. **VADManager configuration was entirely placebo**: `SetAdaptiveSettings()` and
+     `SetFixedThreshold()` were stubs that only wrote a log line and never propagated
+     their values to the underlying `DynamicRangeVADProcessor`. The Inspector fields
+     `useAdaptiveVAD`, `adaptiveMargin`, `minimumThreshold`, and `fixedVadThreshold`
+     on `SpeechInputHandler` had no effect. Production always ran on hardcoded defaults
+     (threshold 0.03, quiet margin 0.02, floor 0.015) which were too high for typical
+     headset RMS (~0.015-0.025). `DynamicRangeVADProcessor` now exposes `SetMargins()`,
+     `SetMinimumThreshold()`, `SetFixedThreshold()`, and `SetAdaptiveMode()` which the
+     manager actually calls.
+  2. **Near-end detection was dead code**: `InterruptionManager.MonitorOverlapCoroutine`
+     detected when the NPC stream was nearly drained (buffer below
+     `nearEndThresholdSeconds`) but then used the full persistence time to decide
+     whether to interrupt — identical to the normal path. A new
+     `nearEndPersistenceMultiplier` (default 0.25) makes near-end interrupt at 25% of
+     the normal persistence, so users can interrupt faster when the NPC is about to
+     finish. Near-end now also overrides `allowInterruption=false`.
+  3. **NPC micro-pauses reset the overlap timer**: When the NPC took a natural pause
+     (breath, comma) the `npcActuallySpeaking` flag flipped to false and the overlap
+     timer reset to zero, making interruption extremely difficult because the user had
+     to catch a full `persistenceTime` overlap inside a single NPC phrase. A new
+     `npcPauseTolerance` (default 0.3s, parallel to `SpeechPauseThreshold`) lets the
+     overlap timer keep accumulating through brief NPC pauses while the NPC response
+     is still active.
+  4. **Missing-config fallback was 3.75x the default**: When `_activeNpcConfig` was
+     null (edge case during scene load), `InterruptionManager` silently fell back to
+     a 1.5s persistence time, versus the PersonaSO default of 0.4s. Fallback now
+     matches the PersonaSO default (`DefaultPersistenceTimeFallback = 0.4f`) and logs
+     a visible warning.
+  5. **Duplicate VADManager initialization**: `SpeechInputHandler.Awake()` and
+     `InitializeForTesting()` each contained their own VAD-manager init block, so any
+     fix had to be applied twice and drift was inevitable. Extracted a single
+     `CreateConfiguredVadManager()` helper used by both paths.
+
+- **Default VAD thresholds tuned for close-talk headsets**:
+  `DefaultThreshold` 0.03 → 0.018, `DefaultMinThresholdFloor` 0.015 → 0.008,
+  `DefaultAdditiveMarginQuiet` 0.02 → 0.010, `DefaultAdditiveMarginNoisy` 0.015 → 0.008.
+  `SpeechInputHandler` Inspector defaults now `adaptiveMargin=0.010`,
+  `minimumThreshold=0.006`, `fixedVadThreshold=0.015`. These match typical headset
+  RMS at normal speaking volume.
+
+### Changed
+- **Refactored `InterruptionManager` for testability**: The interruption decision and
+  overlap-timer update logic are now pure static helpers (`ShouldInterrupt`,
+  `UpdateOverlapTimer`) that can be unit-tested without instantiating a scene,
+  WebSocket connection, or NPC client. The coroutine orchestrates but no longer owns
+  the logic.
+- **Added production diagnostic logging** to `InterruptionManager`: One-line log on
+  successful interruption (overlap reached, persistence, near-end state, VAD info)
+  and on failed overlap sessions (max overlap reached, required persistence, VAD
+  info). Always on by default via `enableProductionDiagnostics`. Replaces the previous
+  verbose-only logging which was useless when debugging user reports.
+
+### Added
+- **14 EditMode tests** locking in VAD configuration behavior
+  (`VadConfigurationTests`) — constructor accepts custom margins, `SetMargins` and
+  `SetMinimumThreshold` actually propagate, `SetFixedThreshold` pins threshold and
+  disables adaptation, default settings detect typical headset speech, diagnostic
+  info is non-empty.
+- **12 EditMode tests** locking in interruption-logic behavior
+  (`InterruptionLogicTests`) — `ShouldInterrupt` respects normal/near-end paths,
+  near-end overrides `allowInterruption=false`, `UpdateOverlapTimer` accumulates
+  through brief NPC pauses, resets on prolonged silence or when user stops or NPC
+  response ends, and fallback persistence matches PersonaSO default.
+
+### Business Impact
+- **Users can now interrupt NPCs at normal speaking volume** on close-talk headsets
+  in quiet environments — the primary production complaint that kicked off this
+  investigation.
+- **Natural conversation flow restored**: brief NPC pauses no longer reset the
+  interruption timer, so users can speak through natural NPC rhythm.
+- **Inspector configuration is no longer a lie**: developers and per-scenario
+  configuration can actually tune sensitivity, unlocking per-persona adjustments and
+  user-facing sensitivity sliders in future work.
+- **Regression protection**: 26 new tests cover the exact bugs that shipped to
+  production, so they cannot silently return.
+- **Diagnostic logs**: support staff can now read the actual VAD state and overlap
+  behavior from production logs without requiring verbose mode.
+
 ## [1.6.15] - 2026-04-07
 
 ### Fixed
