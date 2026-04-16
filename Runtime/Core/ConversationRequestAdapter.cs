@@ -76,6 +76,11 @@ namespace Tsc.AIBridge.Core
         public string SttProvider => _request.SttProvider;
 
         /// <summary>
+        /// TTS provider to use
+        /// </summary>
+        public string TtsProvider => _request.TtsProvider;
+
+        /// <summary>
         /// LLM provider to use
         /// </summary>
         public string LlmProvider => _request.LlmProvider;

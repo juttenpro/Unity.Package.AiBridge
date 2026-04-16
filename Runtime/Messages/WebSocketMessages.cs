@@ -86,6 +86,12 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("sttProvider")]
         public string SttProvider { get; set; }
 
+        /// <summary>
+        /// TTS provider ("elevenlabs", "voxtral", "cartesia")
+        /// </summary>
+        [JsonProperty("ttsProvider")]
+        public string TtsProvider { get; set; } = "elevenlabs";
+
         // REMOVED: Interruptable field - managed locally via PersonaSO
 
         /// <summary>

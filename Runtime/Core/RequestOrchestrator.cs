@@ -1257,6 +1257,7 @@ namespace Tsc.AIBridge.Core
                     SampleRate = parameters.SampleRate,
                     OpusBitrate = parameters.Bitrate,
                     // TTS settings
+                    TtsProvider = parameters.TtsProvider,
                     VoiceId = parameters.VoiceId,
                     TtsModel = parameters.Model,
                     TtsOutputFormat = parameters.AudioFormat,
@@ -1427,6 +1428,7 @@ namespace Tsc.AIBridge.Core
                         maxTokens = request.NpcConfig?.MaxTokens ?? 0,
                         ttsModel = request.NpcConfig?.TtsModel,
                         sttProvider = request.NpcConfig?.SttProvider,
+                        ttsProvider = request.NpcConfig?.TtsProvider,
                         // ElevenLabs voice settings (from ConversationRequest, set by RuleSystem)
                         voiceStability = _currentConversationRequest?.TtsStability,
                         voiceSimilarityBoost = _currentConversationRequest?.TtsSimilarityBoost,
@@ -1479,6 +1481,7 @@ namespace Tsc.AIBridge.Core
                 Model = npcConfig.TtsModel,
                 Language = npcConfig.Language,
                 SttProvider = npcConfig.SttProvider,  // STT provider from NPC configuration
+                TtsProvider = npcConfig.TtsProvider,  // TTS provider from NPC configuration
                 LlmProvider = npcConfig.LlmProvider,  // LLM provider from NPC configuration
                 LlmModel = npcConfig.LlmModel,        // LLM model from NPC configuration
                 Temperature = npcConfig.Temperature,   // Temperature from NPC configuration

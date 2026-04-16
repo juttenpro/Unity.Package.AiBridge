@@ -82,6 +82,12 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("sttProvider")]
         public string sttProvider;
 
+        /// <summary>
+        /// TTS provider ("elevenlabs", "voxtral", "cartesia")
+        /// </summary>
+        [JsonProperty("ttsProvider")]
+        public string ttsProvider;
+
         #region ElevenLabs Voice Settings
 
         /// <summary>

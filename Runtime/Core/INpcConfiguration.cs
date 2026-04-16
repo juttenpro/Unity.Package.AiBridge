@@ -55,6 +55,11 @@ namespace Tsc.AIBridge.Core
         string SttProvider { get; }
 
         /// <summary>
+        /// TTS provider to use (e.g., "elevenlabs", "voxtral", "cartesia")
+        /// </summary>
+        string TtsProvider { get; }
+
+        /// <summary>
         /// LLM provider to use (e.g., "vertexai", "openai", "azure-openai")
         /// </summary>
         string LlmProvider { get; }

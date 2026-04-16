@@ -83,6 +83,7 @@ namespace Tsc.AIBridge.Core
         string INpcConfiguration.VoiceId => voiceId;
         string INpcConfiguration.Language => language;
         string INpcConfiguration.SttProvider => sttProvider;
+        string INpcConfiguration.TtsProvider => "elevenlabs";
         string INpcConfiguration.LlmProvider => llmProvider;
         string INpcConfiguration.LlmModel => llmModel;
         float INpcConfiguration.Temperature => temperature;

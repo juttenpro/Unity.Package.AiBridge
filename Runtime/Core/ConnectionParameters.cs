@@ -34,6 +34,11 @@ namespace Tsc.AIBridge.Core
         public string SttProvider { get; set; }
 
         /// <summary>
+        /// TTS provider (e.g., "elevenlabs", "voxtral", "cartesia")
+        /// </summary>
+        public string TtsProvider { get; set; } = "elevenlabs";
+
+        /// <summary>
         /// LLM provider (e.g., "openai", "vertexai", "azure-openai")
         /// </summary>
         public string LlmProvider { get; set; }

@@ -1166,6 +1166,7 @@ namespace Tsc.AIBridge.Tests.Runtime
             public string VoiceId => "test-voice";
             public string Language => "nl-NL";
             public string SttProvider => "google";
+            public string TtsProvider => "elevenlabs";
             public string LlmProvider => "openai";
             public string LlmModel => "gpt-4";
             public float Temperature => 0.7f;

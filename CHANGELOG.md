@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-04-16
+
+### Added
+- **TTS provider selection**: Added `ttsProvider` field to `SessionStartMessage`,
+  `ConversationContext`, `ConversationRequest`, `ConnectionParameters`, and
+  `INpcConfiguration`. Supports `"elevenlabs"` (default), `"voxtral"`, and `"cartesia"`.
+  The field is sent to the backend in both audio (SessionStart) and text (TextInput)
+  request paths. Backward compatible — omitting the field defaults to ElevenLabs.
+
 ## [1.6.16] - 2026-04-10
 
 ### Fixed

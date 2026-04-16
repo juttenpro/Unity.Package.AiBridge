@@ -50,6 +50,7 @@ namespace Tsc.AIBridge.Core
         public string VoiceId => ttsVoice;
         public string Language => language;
         public string SttProvider => sttProvider;
+        public string TtsProvider => "elevenlabs";
         public string LlmProvider => llmProvider;
         public string LlmModel => llmModel;
         public float Temperature => temperature;
