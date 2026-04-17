@@ -373,7 +373,8 @@ Self-contained NPC client with all AI provider settings configurable from the In
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `voiceId` | `string` | `"default"` | ElevenLabs voice ID |
+| `ttsProvider` | `string` | `"elevenlabs"` | TTS provider: `elevenlabs`, `voxtral`, `cartesia` |
+| `voiceId` | `string` | `"default"` | Voice ID (provider-specific) |
 | `ttsModel` | `string` | `"eleven_turbo_v2_5"` | TTS model variant |
 | `ttsStreamingMode` | `string` | `"batch"` | `batch` or `sentence` |
 | `ttsSpeed` | `float` | `1.0` | Voice speed (0.7 - 1.2) |
@@ -610,6 +611,7 @@ public interface INpcConfiguration
     List<ChatMessage> Messages { get; }
 
     // Voice settings
+    string TtsProvider { get; }  // "elevenlabs" (default), "voxtral", "cartesia"
     string VoiceId { get; }
     string TtsModel { get; }
     string TtsStreamingMode { get; }
@@ -763,6 +765,7 @@ public class ConversationRequest
     public List<ChatMessage> Messages { get; set; }
 
     // Voice settings
+    public string TtsProvider { get; set; } = "elevenlabs"; // "elevenlabs", "voxtral", "cartesia"
     public string TtsVoice { get; set; }
     public string TtsModel { get; set; }
     public string TtsStreamingMode { get; set; }
@@ -839,6 +842,7 @@ public class SessionStartMessage
     public int maxTokens;
 
     // TTS settings
+    public string ttsProvider;  // "elevenlabs" (default), "voxtral", "cartesia"
     public string ttsVoice;
     public string ttsModel;
     public string ttsStreamingMode;
@@ -1020,6 +1024,7 @@ var request = new ConversationRequest
     LlmModel = "gemini-1.5-flash",
     SttProvider = "google",
     Language = "nl-NL",
+    TtsProvider = "elevenlabs",  // or "voxtral", "cartesia"
     TtsModel = "eleven_turbo_v2_5",
     VoiceId = "your-elevenlabs-voice-id",
     Temperature = 0.7f,
@@ -1050,6 +1055,7 @@ public class CustomNpc : NpcClientBase, INpcConfiguration
     string INpcConfiguration.SystemPrompt => config.systemPrompt;
     List<ChatMessage> INpcConfiguration.Messages => null;
     string INpcConfiguration.VoiceId => config.voiceId;
+    string INpcConfiguration.TtsProvider => "elevenlabs";  // or "voxtral", "cartesia"
     string INpcConfiguration.TtsModel => "eleven_turbo_v2_5";
     string INpcConfiguration.TtsStreamingMode => "batch";
     float INpcConfiguration.TtsSpeed => 1.0f;
