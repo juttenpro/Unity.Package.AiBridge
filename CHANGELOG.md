@@ -6,6 +6,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-04-20
+
+### Added
+- **`PauseReason` enum** (`Tsc.AIBridge.Audio.Playback.PauseReason`) with values
+  `External`, `OsFocusLoss`, `OsApplicationPause`, `EditorPause`. Identifies which
+  subsystem requested a pause so multiple sources can pause/resume independently.
+- **`StreamingAudioPlayer.PausePlayback(PauseReason)`** / `ResumePlayback(PauseReason)`
+  overloads. Default argument is `External`, so existing callers keep their semantics.
+- **`StreamingAudioPlayer.IsPausedForReason(PauseReason)`** query for tests and derived
+  classes that need to branch on pause ownership.
+- **HashSet-based pause tracking**: the player now records every active pause source
+  and only un-pauses when all of them release, fixing the fragile single-boolean flag.
+
+### Fixed
+- **NPC audio freezes after Quest Home button press** (production regression):
+  Pressing the Quest Home button briefly paused the audio correctly but the NPC went
+  permanently silent on return — the "praten" body animation kept playing, but no
+  audio ever came back and the WebSocket pipeline stayed frozen because
+  `ResumeStream` was never sent to the backend.
+
+  - **Root cause**: `NpcAudioPlayer.PausePlayback()` override unconditionally set
+    `_isPausedByExternalSource = true`, even when the caller was `OnApplicationFocus`
+    (an OS event, not an external training pause). On focus return,
+    `OnApplicationFocus(true)` checked `_isPaused && !_isPausedByExternalSource` and
+    refused to resume, leaving the pipeline stuck.
+  - **Solution**: Replaced the single boolean with a `HashSet<PauseReason>`.
+    `OnApplicationFocus` pauses with `OsFocusLoss`, `OnApplicationPause` with
+    `OsApplicationPause`, Editor pause with `EditorPause`, and external training
+    pauses default to `External`. Each reason resumes independently without
+    affecting the others.
+  - **Backend notification**: The override now only sends `PauseStream`/`ResumeStream`
+    to the backend for `External` reason. OS-level pauses let the stream continue to
+    arrive and buffer via the Opus decoder queue, so the NPC catches up naturally on
+    focus return.
+
+### Changed
+- **Removed** `_isPausedByExternalSource` field and `SetExternalPauseFlag()` method
+  from `StreamingAudioPlayer`. Derived classes no longer need to manage an external
+  flag — they pass the reason through the virtual `PausePlayback`/`ResumePlayback`
+  methods instead.
+- **Editor pause detection** in `StreamingAudioPlayer.Update()` now uses
+  `PauseReason.EditorPause`, so it stacks correctly with other pause sources instead
+  of being gated by the old external-flag check.
+
 ## [1.7.1] - 2026-04-16
 
 ### Changed

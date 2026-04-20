@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using Tsc.AIBridge.Audio.VAD;
@@ -99,7 +100,12 @@ namespace Tsc.AIBridge.Audio.Playback
         private bool _streamComplete;
         private bool _shouldStop;
         private bool _isPaused;
-        private bool _isPausedByExternalSource; // Track if paused by external system (PauseManager, TrainingPause) vs Editor pause
+        // Tracks WHICH sources have paused the pipeline (e.g., External=PauseManager,
+        // OsFocusLoss=Quest Home, OsApplicationPause=headset off, EditorPause=Unity Editor).
+        // Audio only resumes when this set is empty. Replaces the single "_isPausedByExternalSource"
+        // flag that couldn't distinguish OS pauses from training pauses and caused the
+        // Quest Home-button stuck-audio regression.
+        private readonly HashSet<PauseReason> _activePauseReasons = new();
         private bool _isReceivingResponse; // NEW: Track if we're still receiving response from backend
         private bool _forceStop; // CRITICAL: Force audio to stop immediately for interruptions
         private bool _isPrimingBuffer; // PRIMING BUFFER: Use larger buffer for first chunks to prevent "catching up"
@@ -353,11 +359,11 @@ namespace Tsc.AIBridge.Audio.Playback
 
             if (state == UnityEditor.PauseState.Paused)
             {
-                PausePlayback();
+                PausePlayback(PauseReason.EditorPause);
             }
             else if (state == UnityEditor.PauseState.Unpaused)
             {
-                ResumePlayback();
+                ResumePlayback(PauseReason.EditorPause);
             }
         }
         #endif
@@ -542,10 +548,11 @@ namespace Tsc.AIBridge.Audio.Playback
                 }
 
                 // Reset force stop and pause flags when starting new stream
-                // CRITICAL: Reset _isPaused to prevent stale pause state from OnApplicationPause
-                // (e.g., VR headset power off/on cycle leaves _isPaused=true without proper resume)
+                // CRITICAL: Clear any stale pause state to prevent stuck audio
+                // (e.g., VR headset power off/on cycle leaving a pause reason set without a matching resume)
                 _forceStop = false;
                 _isPaused = false;
+                _activePauseReasons.Clear();
 
                 _sampleRate = sampleRate;
                 _isStreamActive = true;
@@ -851,9 +858,12 @@ namespace Tsc.AIBridge.Audio.Playback
         }
 
         /// <summary>
-        /// Pause audio playback (keeps buffer intact)
+        /// Pause audio playback (keeps buffer intact). Multiple pause sources can stack —
+        /// audio only actually resumes when every source has released its pause.
         /// </summary>
-        public virtual void PausePlayback()
+        /// <param name="reason">Which subsystem is requesting the pause. Defaults to External
+        /// (training-level pause) so existing callers without a parameter keep their semantics.</param>
+        public virtual void PausePlayback(PauseReason reason = PauseReason.External)
         {
             // Don't pause if already shut down
             if (_pipelineState == AudioPipelineState.ShuttingDown || _pipelineState == AudioPipelineState.Destroyed)
@@ -861,10 +871,17 @@ namespace Tsc.AIBridge.Audio.Playback
 
             lock (_stateLock)
             {
-                if (_isPaused)
+                bool alreadyPaused = _activePauseReasons.Count > 0;
+
+                if (!_activePauseReasons.Add(reason) && enableVerboseLogging)
                 {
-                    if (enableVerboseLogging)
-                        Debug.Log($"[{_cachedGameObjectName}] PausePlayback called but already paused - ignoring");
+                    Debug.Log($"[{_cachedGameObjectName}] PausePlayback({reason}) ignored — already paused by same reason");
+                }
+
+                if (alreadyPaused)
+                {
+                    // Different source asking to pause an already-paused player: record the
+                    // reason (done above) but the AudioSource is already paused, so stop here.
                     return;
                 }
 
@@ -878,21 +895,24 @@ namespace Tsc.AIBridge.Audio.Playback
                     audioFilterRelay.AudioSource.Pause();
                     if(enableVerboseLogging)
                     {
-                        // CRITICAL DEBUG: Always log pause with stack trace to track the flow
-                        Debug.Log($"[{_cachedGameObjectName}] Audio playback paused - Stack trace:\n{System.Environment.StackTrace}");
+                        Debug.Log($"[{_cachedGameObjectName}] Audio playback paused ({reason}) - Stack trace:\n{System.Environment.StackTrace}");
                     }
                 }
                 else if (enableVerboseLogging)
                 {
-                    Debug.Log($"[{_cachedGameObjectName}] PausePlayback called but AudioSource not playing (relay:{audioFilterRelay != null}, source:{audioFilterRelay?.AudioSource != null}, playing:{audioFilterRelay?.AudioSource?.isPlaying})");
+                    Debug.Log($"[{_cachedGameObjectName}] PausePlayback({reason}) called but AudioSource not playing (relay:{audioFilterRelay != null}, source:{audioFilterRelay?.AudioSource != null}, playing:{audioFilterRelay?.AudioSource?.isPlaying})");
                 }
             }
         }
 
         /// <summary>
-        /// Resume audio playback
+        /// Resume audio playback for the specified pause source. If other pause sources are
+        /// still active, the AudioSource stays paused but this source is removed from the
+        /// active set.
         /// </summary>
-        public virtual void ResumePlayback()
+        /// <param name="reason">Which subsystem is requesting the resume. Must match the reason
+        /// that paused this source (External is the default for legacy callers).</param>
+        public virtual void ResumePlayback(PauseReason reason = PauseReason.External)
         {
             // Don't resume if shut down
             if (_pipelineState == AudioPipelineState.ShuttingDown || _pipelineState == AudioPipelineState.Destroyed)
@@ -900,7 +920,20 @@ namespace Tsc.AIBridge.Audio.Playback
 
             lock (_stateLock)
             {
-                if (!_isPaused) return;
+                if (!_activePauseReasons.Remove(reason))
+                {
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{_cachedGameObjectName}] ResumePlayback({reason}) ignored — not paused by this reason");
+                    return;
+                }
+
+                if (_activePauseReasons.Count > 0)
+                {
+                    // Other sources still have us paused — clear this one but stay paused.
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{_cachedGameObjectName}] ResumePlayback({reason}) removed — still paused by {_activePauseReasons.Count} other source(s)");
+                    return;
+                }
 
                 _pipelineState = _stateBeforePause;
                 _isPaused = false;
@@ -911,22 +944,22 @@ namespace Tsc.AIBridge.Audio.Playback
                     audioFilterRelay?.AudioSource?.UnPause();
                     if(enableVerboseLogging)
                     {
-                        // CRITICAL DEBUG: Always log resume with stack trace to find the caller
-                        Debug.Log($"[{_cachedGameObjectName}] Audio playback resumed - Stack trace:\n{System.Environment.StackTrace}");
+                        Debug.Log($"[{_cachedGameObjectName}] Audio playback resumed ({reason}) - Stack trace:\n{System.Environment.StackTrace}");
                     }
                 }
             }
         }
 
         /// <summary>
-        /// Set external pause flag (for derived classes like NpcAudioPlayer).
-        /// When true, Editor pause detection will not interfere with external pause state.
+        /// True if the player is currently paused by the given reason. Useful for tests and
+        /// for derived classes that need to branch on pause ownership.
         /// </summary>
-        protected void SetExternalPauseFlag(bool isPausedByExternal)
+        public bool IsPausedForReason(PauseReason reason)
         {
-            _isPausedByExternalSource = isPausedByExternal;
-            if (enableVerboseLogging)
-                Debug.Log($"[{_cachedGameObjectName}] External pause flag set to: {isPausedByExternal}");
+            lock (_stateLock)
+            {
+                return _activePauseReasons.Contains(reason);
+            }
         }
 
         /// <summary>
@@ -1155,27 +1188,20 @@ namespace Tsc.AIBridge.Audio.Playback
             // CRITICAL: Editor pause detection
             // Unity's OnAudioFilterRead continues running even when Editor is paused!
             // Without this check, audio buffer would continue to fill during Editor pause.
-            // IMPORTANT: Do NOT interfere with external pause sources (PauseManager, TrainingPause)
+            // The Editor pause is tracked as its own PauseReason so it stacks correctly with
+            // any External/OS pauses that may already be active.
 #if UNITY_EDITOR
-            // Only manage Editor pause if not paused by external source (e.g., PauseManager, TrainingPause)
-            // External sources have priority over Editor pause detection
-            if (!_isPausedByExternalSource)
             {
-                bool shouldBePaused = UnityEditor.EditorApplication.isPaused;
+                bool editorIsPaused = UnityEditor.EditorApplication.isPaused;
+                bool weThinkEditorIsPaused = IsPausedForReason(PauseReason.EditorPause);
 
-                lock (_stateLock)
+                if (editorIsPaused && !weThinkEditorIsPaused)
                 {
-                    if (shouldBePaused != _isPaused)
-                    {
-                        if (shouldBePaused)
-                        {
-                            PausePlayback();
-                        }
-                        else
-                        {
-                            ResumePlayback();
-                        }
-                    }
+                    PausePlayback(PauseReason.EditorPause);
+                }
+                else if (!editorIsPaused && weThinkEditorIsPaused)
+                {
+                    ResumePlayback(PauseReason.EditorPause);
                 }
             }
 #endif
@@ -1248,43 +1274,35 @@ namespace Tsc.AIBridge.Audio.Playback
 
         private void OnApplicationPause(bool pauseStatus)
         {
-            // Handle application pause (mainly for mobile platforms and VR headset power off/on)
-            // CRITICAL: Always reset pause state on resume, even if no stream is active
-            // This prevents stale _isPaused=true from blocking future audio streams
+            // Application pause fires for Quest Home long-press, VR headset power off, Android
+            // backgrounding. Tracked as OsApplicationPause so it doesn't conflict with a
+            // training-level External pause that may also be active.
             if (pauseStatus)
             {
-                PausePlayback();
+                PausePlayback(PauseReason.OsApplicationPause);
             }
             else
             {
-                // Always resume - ResumePlayback() is safe to call (checks _isPaused internally)
-                // This ensures _isPaused is reset even if current stream completed while paused
-                ResumePlayback();
+                ResumePlayback(PauseReason.OsApplicationPause);
             }
         }
 
         private void OnApplicationFocus(bool hasFocus)
         {
-            // Handle application focus loss
-            // DISABLED in Unity Editor to allow developers to check logs/console during testing
-            // Audio continues playing when switching editor windows
+            // Focus loss fires for Quest Home short-press (Navigator overlay), Alt-Tab in a
+            // windowed build. The pause is tracked as OsFocusLoss. It stacks safely with an
+            // External (PauseManager) pause — resume here removes only this source, so the
+            // audio stays paused until PauseManager also resumes.
+            // DISABLED in Unity Editor so developers can click other editor windows without
+            // cutting off their debugging audio.
             #if !UNITY_EDITOR
-            // In builds: pause audio when window loses focus (standalone/mobile)
             if (!hasFocus && _isStreamActive)
             {
-                // Only pause if not already paused by external systems (e.g., PauseManager)
-                if (!_isPaused)
-                {
-                    PausePlayback();
-                }
+                PausePlayback(PauseReason.OsFocusLoss);
             }
-            else if (hasFocus && _isStreamActive)
+            else if (hasFocus)
             {
-                // Resume when window regains focus
-                if (_isPaused && !_isPausedByExternalSource)
-                {
-                    ResumePlayback();
-                }
+                ResumePlayback(PauseReason.OsFocusLoss);
             }
             #endif
         }
