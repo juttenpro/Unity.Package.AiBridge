@@ -121,6 +121,68 @@ namespace Tsc.AIBridge.Tests.Editor
                 "OnSttFailed should fire exactly once — second call finds _isRequestActive=false and skips");
         }
 
+        /// <summary>
+        /// BUSINESS REQUIREMENT: After a WebSocket disconnect, a subsequent PTT on the same NPC
+        /// must start cleanly — user should not need to switch to a different NPC to recover.
+        ///
+        /// WHY: Reported in the field: "I talk to NPC, get no response, try again with same NPC,
+        /// still nothing. Only switching coaches makes it work again." StartAudioRequest only
+        /// calls CancelCurrentSession when the npcConfig.Id differs from the previously active
+        /// one, so a lingering _currentSession / _isProcessingRequest after a disconnect leaves
+        /// IsProcessingRequest() returning true and downstream state inconsistent for same-NPC
+        /// retries.
+        ///
+        /// WHAT: Tests that HandleWebSocketDisconnected clears _currentSession and
+        /// _isProcessingRequest so that IsProcessingRequest() returns false after cleanup.
+        ///
+        /// SUCCESS CRITERIA:
+        /// - _currentSession is null after disconnect
+        /// - _isProcessingRequest is false after disconnect
+        /// - IsProcessingRequest() returns false (allowing new PTT on same NPC to proceed)
+        ///
+        /// BUSINESS IMPACT:
+        /// - Failure = students/coaches have to switch NPC or restart to recover from any drop
+        /// - Especially visible during live HvA classes and the AI coach prototype
+        /// </summary>
+        [Test]
+        public void HandleWebSocketDisconnected_ClearsCurrentSessionAndProcessingFlag()
+        {
+            // Arrange: simulate an active request tied to a live session.
+            SetField("_isRequestActive", true);
+            SetField("_isProcessingRequest", true);
+            SetField("_currentSession", new ConversationSession("TestNpc", "test-request-id"));
+
+            // Act
+            InvokeDisconnectHandler(WebSocketCloseCode.Abnormal);
+
+            // Assert
+            Assert.IsNull(GetField<ConversationSession>("_currentSession"),
+                "_currentSession must be cleared so the next PTT on the same NPC starts clean");
+            Assert.IsFalse(GetField<bool>("_isProcessingRequest"),
+                "_isProcessingRequest must be cleared so IsProcessingRequest() returns false after disconnect");
+            Assert.IsFalse(_orchestrator.IsProcessingRequest(),
+                "IsProcessingRequest() must return false after disconnect so UI/RuleSystem unblocks new PTT");
+        }
+
+        [Test]
+        public void HandleWebSocketDisconnected_WithoutActiveRequest_StillClearsStaleSession()
+        {
+            // Arrange: _isRequestActive is false but a stale _currentSession lingers
+            // (e.g. ProcessAudioRequest completed, but ConversationComplete never arrived
+            // because the socket died right after). We should still recover.
+            SetField("_currentSession", new ConversationSession("TestNpc", "stale-request-id"));
+            SetField("_isProcessingRequest", true);
+
+            // Act
+            InvokeDisconnectHandler(WebSocketCloseCode.Normal);
+
+            // Assert
+            Assert.IsNull(GetField<ConversationSession>("_currentSession"),
+                "Stale session must be cleared even when _isRequestActive was already false");
+            Assert.IsFalse(_orchestrator.IsProcessingRequest(),
+                "IsProcessingRequest() must return false so next PTT on same NPC can start");
+        }
+
         #region Helpers
 
         private void SetField(string fieldName, object value)

@@ -241,6 +241,15 @@ namespace Tsc.AIBridge.Core
                     SttProvider = "none"
                 });
             }
+
+            // Clear stale session state so the next PTT on the SAME NPC starts clean.
+            // Without this, _currentSession references the aborted session and StartAudioRequest's
+            // same-NPC path (line ~449) silently overwrites it without resetting downstream state —
+            // symptom: user tries again with the same NPC and nothing happens, only switching to a
+            // different NPC (which triggers CancelCurrentSession) recovers. _isProcessingRequest is
+            // cleared defensively in case a ProcessXxxRequest coroutine did not reach its finally.
+            _currentSession = null;
+            _isProcessingRequest = false;
         }
 
         private void OnDestroy()
