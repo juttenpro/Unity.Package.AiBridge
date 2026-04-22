@@ -410,11 +410,6 @@ namespace Tsc.AIBridge.WebSocket
                     }
                     break;
 
-                case WebSocketMessageTypes.Pong:
-                    // Backend reply to our keep-alive PingMessage. Nothing to dispatch — the
-                    // act of receiving any frame already keeps NAT/load-balancer state warm.
-                    break;
-
                 default:
                     Debug.LogWarning($"[{_personaName}] Unhandled message type: {messageType}");
                     break;

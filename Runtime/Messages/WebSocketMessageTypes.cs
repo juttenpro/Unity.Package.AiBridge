@@ -13,7 +13,6 @@ namespace Tsc.AIBridge.Messages
         public const string StartSpeaking = "StartSpeaking";
         public const string StopSpeaking = "StopSpeaking";
         public const string UpdateParameters = "UpdateParameters";
-        public const string Ping = "Ping";
         public const string PauseState = "PauseState";
         public const string InterruptionOccurred = "InterruptionOccurred"; // User interrupted NPC - stop TTS but keep LLM for metadata
         public const string SessionCancel = "SessionCancel"; // Emergency cancel - stop everything (crash, scene switch)
@@ -35,7 +34,6 @@ namespace Tsc.AIBridge.Messages
         public const string AudioStreamEnd = "AudioStreamEnd";
         public const string QualityChanged = "QualityChanged";
         public const string ParametersUpdated = "ParametersUpdated";
-        public const string Pong = "Pong";
         public const string Error = "Error";
         public const string NoTranscript = "NoTranscript";
         public const string BufferHint = "BufferHint";

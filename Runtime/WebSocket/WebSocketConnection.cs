@@ -60,12 +60,6 @@ namespace Tsc.AIBridge.WebSocket
         private int _binaryMessageCount;
         private DateTime _connectionStartTime;
 
-        // Keep-alive ping: prevents server-side idle timeout (default 300s) and intermediary
-        // NAT/load-balancer timeouts during long user pauses (thinking, reading, etc.).
-        // Interval must be well below the server IdleTimeoutSeconds.
-        private const float PingIntervalSeconds = 20f;
-        private CancellationTokenSource _pingCts;
-
         public WebSocketConnection(MonoBehaviour owner, /*string apiBaseUrl,*/ float reconnectBaseDelay = 1f, float reconnectMaxDelay = 30f, bool isVerboseLogging = false, int maxReconnectAttempts = 10)
         {
             _isVerboseLogging = isVerboseLogging;
@@ -320,49 +314,7 @@ namespace Tsc.AIBridge.WebSocket
             _isReconnecting = false; // Clear reconnecting flag
             _binaryMessageCount = 0; // Reset counter for new connection
             _connectionStartTime = DateTime.UtcNow; // Track connection start for diagnostics
-            StartPingLoop();
             OnConnected?.Invoke();
-        }
-
-        /// <summary>
-        /// Starts the periodic keep-alive ping loop that fires while the connection is open.
-        /// Any send activity resets the server's idle timer, so a lightweight PingMessage
-        /// keeps the socket alive during long user pauses.
-        /// </summary>
-        private void StartPingLoop()
-        {
-            _pingCts?.Cancel();
-            _pingCts?.Dispose();
-            _pingCts = new CancellationTokenSource();
-            _ = RunPingLoopAsync(_pingCts.Token);
-        }
-
-        private async Task RunPingLoopAsync(CancellationToken token)
-        {
-            try
-            {
-                while (!token.IsCancellationRequested && IsConnected)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(PingIntervalSeconds), token);
-                    if (token.IsCancellationRequested || !IsConnected) return;
-
-                    try
-                    {
-                        await SendJsonAsync(new PingMessage());
-                    }
-                    catch (Exception ex)
-                    {
-                        // Send failure on a ping should not cascade — HandleClose/HandleError will
-                        // cover real disconnects. Drop to verbose to avoid noise.
-                        if (_isVerboseLogging)
-                            Debug.LogWarning($"[WebSocketConnection] Ping send failed: {ex.Message}");
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected on disconnect/cleanup
-            }
         }
 
         private void HandleTextMessage(string json)
@@ -645,14 +597,6 @@ namespace Tsc.AIBridge.WebSocket
 
         private void Cleanup()
         {
-            try
-            {
-                _pingCts?.Cancel();
-                _pingCts?.Dispose();
-                _pingCts = null;
-            }
-            catch { /* Ignore cleanup errors */ }
-
             try
             {
                 _cancellationTokenSource?.Cancel();

@@ -263,19 +263,6 @@ namespace Tsc.AIBridge.Messages
     }
 
     /// <summary>
-    /// Keepalive message to maintain WebSocket connection.
-    /// Prevents connection timeout during periods of inactivity.
-    /// </summary>
-    [Serializable]
-    public class PingMessage : WebSocketMessageBase
-    {
-        public PingMessage()
-        {
-            Type = WebSocketMessageTypes.Ping;
-        }
-    }
-
-    /// <summary>
     /// Message to notify the server of Unity's pause state.
     /// Used to suspend/resume audio processing when the application is paused.
     /// </summary>

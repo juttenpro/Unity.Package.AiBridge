@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-04-22
+
+### Removed
+- **Application-level WebSocket keep-alive** (`PingMessage` loop, `PingMessage`
+  class, and the `Ping`/`Pong` constants in `WebSocketMessageTypes`). The
+  briefly-introduced loop from v1.9.0 plus its v1.9.1 Pong-handler workaround
+  are gone entirely. After auditing both sides we concluded the loop duplicated
+  what Kestrel's native `KeepAliveInterval=30s` already does at the WebSocket
+  protocol layer (control-frame Ping, transparent to app code), and added no
+  defence against any failure mode that the existing auto-reconnect did not
+  already handle.
+
+### Notes
+- Connection lifecycle is now fully owned by:
+  - **Kestrel** native WS Ping control frames every 30s (server-side, transparent)
+  - **`WebSocketConnection.AttemptReconnectAsync`** with exponential backoff for
+    real disconnects
+- The matching backend follow-up commit removes the incoming `ping → Pong`
+  reply handler so neither side carries dead code.
+
 ## [1.9.1] - 2026-04-22
 
 ### Fixed
