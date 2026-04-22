@@ -404,12 +404,17 @@ namespace Tsc.AIBridge.WebSocket
                     {
                         //Debug.Log($"[{_personaName}] Animation Metadata - Sentence {sentenceMetadata.SentenceIndex}: " +
                         //         $"\"{sentenceMetadata.SentenceText}\" ({sentenceMetadata.Markers.Count} markers, {sentenceMetadata.EstimatedDurationMs}ms)");
-                        
+
                         // Fire event for animation handlers to process
                         OnSentenceMetadata?.Invoke(sentenceMetadata);
                     }
                     break;
-                    
+
+                case WebSocketMessageTypes.Pong:
+                    // Backend reply to our keep-alive PingMessage. Nothing to dispatch — the
+                    // act of receiving any frame already keeps NAT/load-balancer state warm.
+                    break;
+
                 default:
                     Debug.LogWarning($"[{_personaName}] Unhandled message type: {messageType}");
                     break;

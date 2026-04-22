@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-04-22
+
+### Fixed
+- **Spammy `Unhandled message type: Pong` warning** in
+  `ConversationMetadataHandler`. The v1.9.0 keep-alive ping loop sends a
+  `PingMessage` every 20s; the backend replies with `Pong`, but the message
+  switch had no case for it and fell through to the unhandled-default warning.
+  Added an explicit no-op case so Pong replies are silently consumed (the act
+  of receiving the frame is what keeps NAT/load-balancer state warm — there is
+  no further work for the client to do).
+
 ## [1.9.0] - 2026-04-22
 
 ### Added
