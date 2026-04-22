@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-04-22
+
+### Added
+- **Client-side keep-alive ping** in `WebSocketConnection`. A background loop
+  sends `PingMessage` every 20 seconds while the WebSocket is open, well below
+  the typical NAT/load-balancer idle thresholds. The backend replies with
+  `Pong`. This is now the only application-level keep-alive: the backend's
+  redundant `PingScheduler` and `IdleConnectionMonitor` were removed, so this
+  loop owns "do not let the connection drop during long user pauses".
+  - Configured via `PingIntervalSeconds = 20f` constant in
+    `WebSocketConnection.cs`.
+  - Send failures on a ping are swallowed; real disconnects remain handled by
+    `HandleClose` / `HandleError` and trigger auto-reconnect.
+
+### Fixed
+- **NPC unresponsive after WebSocket drop on the same NPC** (production field
+  report): after a connection drop and auto-reconnect, the next PTT on the
+  *same* NPC produced no response. Switching to a different NPC recovered
+  because that path called `CancelCurrentSession`. Same-NPC retries only
+  overwrote `_currentSession` and skipped the cleanup, leaving
+  `IsProcessingRequest()` permanently `true`.
+  - **Fix**: `HandleWebSocketDisconnected` now also nulls `_currentSession`
+    and clears `_isProcessingRequest`, so the next PTT (same or different NPC)
+    starts from a clean slate.
+  - 2 EditMode regression tests in `DisconnectActiveRequestTests`.
+
 ## [1.8.0] - 2026-04-20
 
 ### Added
