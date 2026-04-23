@@ -1278,6 +1278,8 @@ namespace Tsc.AIBridge.Core
                     VoiceUseSpeakerBoost = _currentConversationRequest?.TtsSpeakerBoost ?? true,
                     VoiceSpeed = _currentConversationRequest?.TtsSpeed ?? 1.0f,
                     TtsLanguageCode = _currentConversationRequest?.TtsLanguageCode, // Force TTS language (e.g., "nl" to prevent Flemish)
+                    // Cartesia base emotion (ignored by ElevenLabs/Voxtral backend-side)
+                    BaseEmotion = _currentConversationRequest?.BaseEmotion,
                     // LLM settings
                     LlmProvider = parameters.LlmProvider,
                     LlmModel = parameters.LlmModel,
@@ -1445,6 +1447,8 @@ namespace Tsc.AIBridge.Core
                         voiceUseSpeakerBoost = _currentConversationRequest?.TtsSpeakerBoost,
                         voiceSpeed = _currentConversationRequest?.TtsSpeed,
                         ttsLanguageCode = _currentConversationRequest?.TtsLanguageCode, // Force TTS language
+                        // Cartesia base emotion (ignored by ElevenLabs/Voxtral backend-side)
+                        baseEmotion = _currentConversationRequest?.BaseEmotion,
                         // Context caching (Gemini cost optimization)
                         contextCacheName = _currentConversationRequest?.ContextCacheName,
                     }

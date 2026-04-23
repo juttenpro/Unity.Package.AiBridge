@@ -50,6 +50,15 @@ namespace Tsc.AIBridge.Core
         public bool AllowInterruption { get; set; } = true;
         public float InterruptionPersistenceTime { get; set; } = 1.5f;
 
+        /// <summary>
+        /// Optional per-character base emotion (grondtoon) for TTS voice modulation.
+        /// Cartesia-only; silently ignored by ElevenLabs and Voxtral. The per-sentence
+        /// [EMOTION:x] marker from the LLM overrides this value, except when the LLM
+        /// emits "neutral" (treated as a non-signal so BaseEmotion keeps flowing).
+        /// Null = no base emotion; Cartesia falls back to its own default.
+        /// </summary>
+        public string BaseEmotion { get; set; }
+
         #region Context Caching (Gemini Cost Optimization)
 
         /// <summary>

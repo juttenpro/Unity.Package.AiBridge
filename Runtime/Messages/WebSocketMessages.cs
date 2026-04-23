@@ -230,6 +230,16 @@ namespace Tsc.AIBridge.Messages
 
         #endregion
 
+        /// <summary>
+        /// Optional per-character base emotion (grondtoon) for TTS voice modulation.
+        /// Cartesia-only; silently ignored by ElevenLabs and Voxtral. The per-sentence
+        /// [EMOTION:x] marker from the LLM overrides this value, except when the LLM
+        /// emits "neutral" (treated as a non-signal so BaseEmotion keeps flowing).
+        /// Null = no base emotion; Cartesia falls back to its own default.
+        /// </summary>
+        [JsonProperty("baseEmotion")]
+        public string BaseEmotion { get; set; }
+
         public SessionStartMessage()
         {
             Type = WebSocketMessageTypes.SessionStart;

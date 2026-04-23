@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-04-23
+
+### Added
+- **`BaseEmotion` field on `ConversationRequest`, `SessionStartMessage`, and
+  `ConversationContext`.** Carries a Cartesia TTS grondtoon (e.g. "anxious",
+  "calm") set per-persona in the RuleSystem API template. ElevenLabs and Voxtral
+  ignore the field silently — no behavior change for existing flows.
+  Wire key is lowerCamelCase `baseEmotion`; null/omitted = no base emotion.
+- Round-trip serialization tests in
+  `Tests/Editor/BaseEmotionSerializationTests.cs` pin the wire shape so the
+  field cannot drift away from the backend contract
+  (`ApiOrchestrator.Tests/Contracts/Unity/BaseEmotionUnityContractTests.cs`).
+
+### Notes
+- Backwards compatible: older ApiOrchestrator builds that predate the emotion
+  plumbing simply ignore the new JSON key. Unity apps on this version keep
+  working against any backend version.
+- Resolution rule (backend-side): per-sentence `[EMOTION:x]` from the LLM
+  overrides `BaseEmotion`, except "neutral" which is treated as a non-signal so
+  the grondtoon keeps flowing.
+
 ## [1.10.0] - 2026-04-22
 
 ### Removed

@@ -169,6 +169,16 @@ namespace Tsc.AIBridge.Messages
 
         #endregion
 
+        /// <summary>
+        /// Optional per-character base emotion (grondtoon) for TTS voice modulation.
+        /// Cartesia-only; silently ignored by ElevenLabs and Voxtral. The per-sentence
+        /// [EMOTION:x] marker from the LLM overrides this value, except when the LLM
+        /// emits "neutral" (treated as a non-signal so BaseEmotion keeps flowing).
+        /// Null = no base emotion; Cartesia falls back to its own default.
+        /// </summary>
+        [JsonProperty("baseEmotion")]
+        public string baseEmotion;
+
         // REMOVED: audioFormat, sampleRate, opusBitrate
         // These are misleading - API always uses opus_48000_64 hardcoded
         // ElevenLabs supports different bitrates but API doesn't expose this
