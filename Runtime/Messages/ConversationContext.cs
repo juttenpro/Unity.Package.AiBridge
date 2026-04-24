@@ -179,6 +179,13 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("baseEmotion")]
         public string baseEmotion;
 
+        /// <summary>
+        /// Anonymous observability correlation IDs, carried by TextInputMessage and
+        /// AnalysisRequestMessage via this context object. See <see cref="ObservabilityContext"/>.
+        /// </summary>
+        [JsonProperty("observability")]
+        public ObservabilityContext observability;
+
         // REMOVED: audioFormat, sampleRate, opusBitrate
         // These are misleading - API always uses opus_48000_64 hardcoded
         // ElevenLabs supports different bitrates but API doesn't expose this

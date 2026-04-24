@@ -240,6 +240,14 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("baseEmotion")]
         public string BaseEmotion { get; set; }
 
+        /// <summary>
+        /// Anonymous observability correlation IDs (AppLogId, LessonId, CourseId,
+        /// OrganizationId, AppMode). Null when the client has no context to supply.
+        /// Never contains UserId — see <see cref="ObservabilityContext"/> for the privacy gate.
+        /// </summary>
+        [JsonProperty("observability")]
+        public ObservabilityContext Observability;
+
         public SessionStartMessage()
         {
             Type = WebSocketMessageTypes.SessionStart;
@@ -382,6 +390,12 @@ namespace Tsc.AIBridge.Messages
         /// </summary>
         [JsonProperty("model")]
         public string Model;
+
+        /// <summary>
+        /// Anonymous observability correlation IDs. See <see cref="ObservabilityContext"/>.
+        /// </summary>
+        [JsonProperty("observability")]
+        public ObservabilityContext Observability;
 
         public DirectTTSMessage()
         {

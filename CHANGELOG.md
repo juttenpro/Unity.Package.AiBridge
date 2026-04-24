@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-04-24
+
+### Added
+- **`ObservabilityContext` message class** carrying anonymous correlation IDs
+  for the observability dashboard: `AppLogId`, `LessonId`, `CourseId`,
+  `OrganizationId` (int), and `AppMode`. Wire key is lowerCamelCase
+  `observability`; the whole object is optional so older clients and anonymous
+  pre-login sessions keep working.
+- **`Observability` field on `SessionStartMessage`, `DirectTTSMessage`, and
+  `ConversationContext`.** `ConversationContext` covers `TextInputMessage` and
+  `AnalysisRequestMessage` transitively. Callers may populate any subset of
+  IDs; missing values are omitted from the wire payload.
+
+### Privacy
+- `ObservabilityContext` intentionally has **no** `UserId` field. UserId is a
+  personal identifier (GDPR) and must never enter the observability pipeline.
+  The Unity integration that populates the context (separate change in the
+  main project) must not copy `UserId` into any observability field.
+
+### Notes
+- Backwards compatible: older ApiOrchestrator builds that predate the
+  observability plumbing silently ignore the new JSON key. Unity apps on this
+  version keep working against any backend version. The population of the
+  context from `TrainingGlobals` / `LoginController` happens in the main
+  project and is not part of this package.
+
 ## [1.11.0] - 2026-04-23
 
 ### Added
