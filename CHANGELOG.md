@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-04-24
+
+### Added
+- **`Tsc.AIBridge.Observability` namespace** with `IObservabilityContextProvider`
+  interface and `AIBridgeObservability` static registry. Host projects register
+  their implementation once at startup (e.g. from `TrainingInitializer`), and
+  AIBridge pulls the current context from the registry when building outbound
+  WebSocket messages. AIBridge itself stays agnostic of host-project types.
+- **Automatic Observability population** on every outbound message:
+  - `SessionStartMessage` (player-initiated audio turns) in
+    `RequestOrchestrator.ProcessAudioRequest`.
+  - `TextInputMessage.Context.observability` (NPC-initiated / text turns) in
+    `RequestOrchestrator.ProcessTextRequest`.
+  - `AnalysisRequestMessage.Context.observability` in `AnalysisService`.
+  - `DirectTTSMessage` in `NpcClientBase`.
+- **Fail-safe design**: `AIBridgeObservability.TryGetContext` swallows provider
+  exceptions and logs a warning so a broken provider implementation can never
+  kill a live conversation. Covered by
+  `AIBridgeObservabilityTests.TryGetContext_WhenProviderThrows_...`.
+
+### Notes
+- Backwards compatible: when no provider is registered, `TryGetContext` returns
+  null and outbound messages omit the `observability` JSON key — older backends
+  keep working unchanged.
+- Host projects that want per-lesson / per-organization observability must
+  register a provider via `AIBridgeObservability.Provider = myProvider;`.
+- The returned `ObservabilityContext` must never contain UserId (GDPR gate
+  enforced at the model level — the type has no UserId field).
+
 ## [1.12.0] - 2026-04-24
 
 ### Added

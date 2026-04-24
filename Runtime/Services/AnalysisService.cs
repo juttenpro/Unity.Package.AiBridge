@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using Tsc.AIBridge.Messages;
+using Tsc.AIBridge.Observability;
 using Tsc.AIBridge.WebSocket;
 
 namespace Tsc.AIBridge.Services
@@ -118,7 +119,10 @@ namespace Tsc.AIBridge.Services
                     systemPrompt = null,
                     ttsStreamingMode = null,
                     ttsModel = null,
-                    sttProvider = null
+                    sttProvider = null,
+                    // Anonymous observability correlation IDs; null when host project
+                    // hasn't registered a provider yet.
+                    observability = AIBridgeObservability.TryGetContext()
                 }
             };
 

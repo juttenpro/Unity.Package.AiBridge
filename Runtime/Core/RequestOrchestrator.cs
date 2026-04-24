@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Tsc.AIBridge.Audio.Capture;
+using Tsc.AIBridge.Observability;
 using UnityEngine;
 using Tsc.AIBridge.Messages;
 using Tsc.AIBridge.WebSocket;
@@ -1294,7 +1295,11 @@ namespace Tsc.AIBridge.Core
                     // Enable metrics if configured
                     EnableMetrics = enableMetrics,
                     // Context caching (Gemini cost optimization)
-                    ContextCacheName = _currentConversationRequest?.ContextCacheName
+                    ContextCacheName = _currentConversationRequest?.ContextCacheName,
+                    // Anonymous observability correlation IDs (null when host project
+                    // hasn't registered a provider or no IDs are available yet).
+                    // Never contains UserId — GDPR gate enforced at model level.
+                    Observability = AIBridgeObservability.TryGetContext()
                 };
 
                 // CRITICAL FIX: Subscribe to SessionStarted BEFORE sending SessionStart
@@ -1451,6 +1456,9 @@ namespace Tsc.AIBridge.Core
                         baseEmotion = _currentConversationRequest?.BaseEmotion,
                         // Context caching (Gemini cost optimization)
                         contextCacheName = _currentConversationRequest?.ContextCacheName,
+                        // Anonymous observability correlation IDs; null when host project
+                        // hasn't registered a provider yet or no IDs are available.
+                        observability = AIBridgeObservability.TryGetContext(),
                     }
                 };
 

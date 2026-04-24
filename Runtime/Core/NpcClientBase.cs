@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using Tsc.AIBridge.Messages;
+using Tsc.AIBridge.Observability;
 using Tsc.AIBridge.WebSocket;
 using Tsc.AIBridge.Audio.Playback;
 
@@ -462,7 +463,10 @@ namespace Tsc.AIBridge.Core
                 RequestId = Guid.NewGuid().ToString(),
                 Text = text,
                 Voice = voice,
-                Model = model
+                Model = model,
+                // Anonymous observability correlation IDs; null when host project
+                // hasn't registered a provider yet.
+                Observability = AIBridgeObservability.TryGetContext()
             };
 
             // Get the WebSocket client
