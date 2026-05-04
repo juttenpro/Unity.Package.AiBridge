@@ -716,6 +716,14 @@ namespace Tsc.AIBridge.Messages
         /// </summary>
         [JsonProperty("totalStreamsSent")]
         public int TotalStreamsSent;
+
+        /// <summary>
+        /// True when the audio stream ended due to cancellation or interruption rather than
+        /// natural completion. Unity uses this to distinguish "all expected audio arrived" from
+        /// "stream cut short" — both end the stream, only the metrics interpretation differs.
+        /// </summary>
+        [JsonProperty("wasCancelled")]
+        public bool WasCancelled;
     }
 
     /// <summary>

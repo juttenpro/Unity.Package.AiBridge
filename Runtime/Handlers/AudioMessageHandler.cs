@@ -219,6 +219,28 @@ namespace Tsc.AIBridge.Handlers
         }
 
         /// <summary>
+        /// Handle the orchestrator's explicit end-of-audio-stream control message. Drives
+        /// playback completion deterministically — the player no longer has to guess based
+        /// on the buffer-drain timeout (which fired during normal multi-sentence streaming
+        /// under network jitter and produced the "Invalid OpusHead signature" parse errors).
+        /// </summary>
+        public void OnAudioStreamEnd(Tsc.AIBridge.Messages.AudioStreamEndMessage message)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            if (_enableVerboseLogging)
+            {
+                Debug.Log($"[{_personaName}] AudioStreamEnd received - sentences: {message.SentenceCount}, " +
+                          $"chunks: {message.TotalChunksSent}, bytes: {message.TotalBytesSent}, cancelled: {message.WasCancelled}");
+            }
+
+            _audioProcessor?.MarkServerStreamEnd();
+        }
+
+        /// <summary>
         /// Mark that an interruption has occurred in this session
         /// </summary>
         public void MarkInterruption()

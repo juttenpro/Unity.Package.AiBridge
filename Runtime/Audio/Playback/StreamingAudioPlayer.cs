@@ -61,9 +61,9 @@ namespace Tsc.AIBridge.Audio.Playback
 
         [Header("Playback Detection")]
         [SerializeField]
-        [Tooltip("Time in seconds to wait after buffer is empty before considering playback complete. Lower = faster response, but may cause premature completion on slow networks.")]
-        [Range(0.05f, 2.0f)]
-        private float playbackCompleteTimeout = 0.15f;
+        [Tooltip("Safety-net timeout: complete playback if the orchestrator never sends an AudioStreamEnd message AND the buffer stays empty this long. Primary completion is driven by the explicit AudioStreamEnd signal — this is only a fallback for server crashes.")]
+        [Range(1.0f, 10.0f)]
+        private float playbackCompleteTimeout = 3.0f;
 
         [Header("Debug Settings")]
         [SerializeField]
@@ -117,6 +117,58 @@ namespace Tsc.AIBridge.Audio.Playback
 
         // Auto-detect playback completion without backend messages
         private float _lastDataReceivedTime;
+
+        // Set by the orchestrator's AudioStreamEnd control message (via AudioMessageHandler →
+        // AudioStreamProcessor). Primary trigger for playback completion: when this flips true
+        // AND the buffer is empty, finalize immediately. Cleared on every StartStream so a stale
+        // signal from turn N never leaks into turn N+1.
+        private volatile bool _serverStreamEnd;
+
+        /// <summary>True once the orchestrator has signalled end-of-audio for the current turn.</summary>
+        public bool IsServerStreamEnd => _serverStreamEnd;
+
+        /// <summary>
+        /// Safety-net timeout (seconds): how long to keep the stream open after the buffer empties
+        /// when no AudioStreamEnd has arrived. Set deliberately high so normal inter-sentence
+        /// network jitter cannot trip it; only a server crash should reach this fallback.
+        /// </summary>
+        public float SafetyNetCompletionTimeoutSeconds => playbackCompleteTimeout;
+
+        /// <summary>
+        /// Marks the audio stream as ended by an explicit server signal (AudioStreamEnd message).
+        /// Combined with an empty buffer, this triggers immediate playback completion in the next
+        /// Update tick.
+        /// </summary>
+        public void MarkServerStreamEnd()
+        {
+            _serverStreamEnd = true;
+            if (enableVerboseLogging)
+            {
+                Debug.Log($"[{_cachedGameObjectName}] Server signalled end-of-audio-stream");
+            }
+        }
+
+        /// <summary>
+        /// Pure decision function for "should playback finalize now?". All inputs are passed in
+        /// so the function is testable without driving the Update loop or mutating private state.
+        /// Primary path: server signalled end + buffer drained → complete.
+        /// Fallback path: no signal but buffer has been empty longer than the safety-net timeout
+        /// → complete (handles the rare server-crash case).
+        /// </summary>
+        public bool EvaluateAutoComplete(bool isPlaybackStarted, bool bufferEmpty, float timeSinceLastData)
+        {
+            if (!isPlaybackStarted || !bufferEmpty)
+            {
+                return false;
+            }
+
+            if (_serverStreamEnd)
+            {
+                return true;
+            }
+
+            return timeSinceLastData > playbackCompleteTimeout;
+        }
 
         // Cached values
         private string _cachedGameObjectName;
@@ -566,6 +618,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 _totalSamplesPlayed = 0;
                 _underrunCount = 0;
                 _lastDataReceivedTime = Time.realtimeSinceStartup; // Initialize timestamp for auto-detection
+                _serverStreamEnd = false; // Clear stale signal — turn N's flag must not finalize turn N+1
 
                 // Extra safety: Ensure buffer is completely empty
                 // (Should already be cleared by StopPlaybackInternal but this is a safety check)
@@ -1206,17 +1259,22 @@ namespace Tsc.AIBridge.Audio.Playback
             }
 #endif
 
-            // Auto-detect playback completion without waiting for backend AudioStreamEnd message
-            // If buffer is empty and no new data for playbackCompleteTimeout, playback is complete
-            if (_isPlaybackStarted && !_shouldStop && _audioBuffer.Count == 0)
+            // Finalize playback when the orchestrator's AudioStreamEnd signal has arrived AND
+            // the buffer has drained. The safety-net timeout (3s default) only kicks in if the
+            // server signal never arrives — covers the rare server-crash scenario without
+            // firing during normal multi-sentence streaming under network jitter (the original
+            // OpusHead-parse bug was caused by a 0.15s timeout firing mid-response).
+            if (!_shouldStop)
             {
                 float timeSinceLastData = Time.realtimeSinceStartup - _lastDataReceivedTime;
-
-                if (timeSinceLastData > playbackCompleteTimeout)
+                if (EvaluateAutoComplete(_isPlaybackStarted, _audioBuffer.Count == 0, timeSinceLastData))
                 {
                     if (enableVerboseLogging)
                     {
-                        Debug.Log($"[{_cachedGameObjectName}] Auto-detected playback complete - buffer empty for {timeSinceLastData:F2}s");
+                        var trigger = _serverStreamEnd
+                            ? "server signal + empty buffer"
+                            : $"safety-net timeout ({timeSinceLastData:F2}s with no data, no server signal)";
+                        Debug.Log($"[{_cachedGameObjectName}] Auto-detected playback complete — {trigger}");
                     }
                     _shouldStop = true;
                 }

@@ -251,9 +251,6 @@ namespace Tsc.AIBridge.Core
                 OnAiResponseReceived(responseData);
             };
 
-            // Note: AudioStreamEnd message removed - stream end is now detected via
-            // AudioPlayer.OnPlaybackComplete/OnPlaybackInterrupted events
-
             // CRITICAL: Find and set AudioPlayer FIRST before initializing AudioMessageHandler
             // This ensures derived classes can initialize their AudioStreamProcessor in time
             AudioPlayer = GetComponentInChildren<StreamingAudioPlayer>();
@@ -266,6 +263,18 @@ namespace Tsc.AIBridge.Core
                 if (enableVerboseLogging)
                     Debug.Log($"[{NpcName}] AudioMessageHandler initialized for audio processing");
             }
+
+            // Forward the orchestrator's AudioStreamEnd control message to the audio handler so
+            // playback completes deterministically once the buffer drains. This replaces the
+            // previous approach of guessing end-of-stream via a 0.15s buffer-drain timeout —
+            // that timeout fired during normal multi-sentence streaming under network jitter
+            // and corrupted the OGG parser state for the next chunk.
+            // Wired here (not at construction time of _audioMessageHandler) so every NPC client
+            // subclass automatically gets the bridge.
+            _metadataHandler.OnAudioStreamEnd += audioStreamEndMessage =>
+            {
+                _audioMessageHandler?.OnAudioStreamEnd(audioStreamEndMessage);
+            };
 
             // Subscribe to StreamingAudioPlayer events for IsTalking state management (interruption support)
             if (AudioPlayer != null)

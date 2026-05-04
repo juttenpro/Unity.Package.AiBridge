@@ -6,6 +6,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-05-04
+
+### Added
+- **Server-driven playback completion** via the orchestrator's existing
+  `AudioStreamEnd` control message. `StreamingAudioPlayer` now has a public
+  `MarkServerStreamEnd()` method, an `IsServerStreamEnd` property, and a pure
+  decision function `EvaluateAutoComplete(isPlaybackStarted, bufferEmpty,
+  timeSinceLastData)` that finalizes playback as soon as the server signals
+  end-of-stream and the buffer has drained.
+- **Dispatch wiring**: `NpcClientBase` subscribes to
+  `ConversationMetadataHandler.OnAudioStreamEnd` (event already existed but had
+  no listener) and forwards the message through `AudioMessageHandler` →
+  `AudioStreamProcessor` → `StreamingAudioPlayer`.
+- **`AudioStreamEndMessage.WasCancelled`** field — aligns the Unity DTO with
+  the backend so cancel/interrupt paths are distinguishable from natural
+  completion.
+- **9 new EditMode tests** in `Tsc.AIBridge.Tests.Editor` covering
+  `EvaluateAutoComplete` decision rules, server-signal flag lifecycle across
+  turns, and end-to-end dispatch through the audio handler stack.
+
+### Changed
+- **`StreamingAudioPlayer.playbackCompleteTimeout` default: `0.15f` → `3.0f`**
+  (and `[Range]` widened to `1.0f..10.0f`). This timeout is now a *safety net*
+  for the rare server-crash case, not the primary completion trigger. The old
+  150ms value fired during normal multi-sentence ElevenLabs streaming under
+  network jitter, mid-response — corrupting the OGG parser state for the next
+  chunk.
+- `StartStream()` now clears the `_serverStreamEnd` flag so a stale signal
+  from turn N cannot finalize turn N+1.
+
+### Fixed
+- **`[OggOpusParser] Invalid OpusHead signature: h...` parse errors during
+  multi-sentence NPC responses.** Root cause: the 0.15s buffer-drain timeout
+  fired between sentences while ElevenLabs was streaming, triggering a decoder
+  reset; the next mid-stream OGG audio page was then misidentified as a new
+  stream and the parser tried to read its first audio packet (TOC byte 0x68 =
+  `'h'`) as `OpusHead`.
+
+### Notes — Backwards Compatibility
+- An older orchestrator that does NOT send `AudioStreamEnd` will degrade
+  gracefully to the safety-net timeout (3s after buffer drains). Audio still
+  plays correctly; only the response-end detection is slower.
+- No breaking changes to public APIs. New methods on `StreamingAudioPlayer`
+  and `AudioStreamProcessor` are additive.
+
+### Business Impact
+- Fixes audible glitches and a stream of red Unity console errors on every
+  multi-sentence NPC response — the log noise was masking other bugs.
+- Eliminates the parser-reset race; playback completion is now deterministic
+  rather than a timing-dependent heuristic.
+- Adds explicit cancellation accounting: `WasCancelled=true` on
+  interruption/cancel/error, `false` on natural completion. Useful for
+  metrics and for distinguishing "stream cut short" from "all expected audio
+  arrived" on the client.
+
 ## [1.13.0] - 2026-04-24
 
 ### Added

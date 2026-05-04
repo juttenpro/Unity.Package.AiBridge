@@ -640,7 +640,17 @@ namespace Tsc.AIBridge.Audio.Processing
                     Debug.Log("[AudioStreamProcessor] Decoder reset - ready for new audio stream");
             }
         }
-        
+
+        /// <summary>
+        /// Forwards the orchestrator's AudioStreamEnd signal to the audio player so playback
+        /// completes deterministically once the buffer drains, instead of relying on a
+        /// buffer-drain timeout heuristic.
+        /// </summary>
+        public void MarkServerStreamEnd()
+        {
+            _audioPlayer?.MarkServerStreamEnd();
+        }
+
         /// <summary>
         /// Get decoder packet count for verification
         /// </summary>
