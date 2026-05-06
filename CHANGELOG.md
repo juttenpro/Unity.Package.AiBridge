@@ -6,6 +6,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-05-06
+
+### Fixed
+- **OggOpusParser: support multiple concatenated OGG streams in one input.**
+  Voxtral and Cartesia now send one self-contained OGG stream per `TtsSentence`
+  (each starting with a fresh BOS-flagged OpusHead and ending with an EOS-flagged
+  page). The legacy parser ignored the BOS flag entirely (constants commented
+  out) and treated sentence #2's page-sequence-0 as a "rewind" of sentence #1's
+  page 0, then tried to decode the new stream's `OpusHead` packet as audio —
+  flooding the Unity console with 80+ "Invalid OpusHead signature: h..." errors
+  per turn and dropping mid-turn audio (the byte `0x68 = 'h'` is the typical
+  Opus TOC byte for 24 kHz mono SILK config, i.e. the first byte of a real audio
+  packet).
+
+  `ReadOggPage` now detects a BOS-flagged page mid-stream, rewinds the input
+  by 27 bytes, resets parser state (`_headersParsed`, `_pendingPackets`,
+  `_continuedPacket`, `_lastPageSequence`, `_seenPageSequences`), and signals
+  the caller via `false` return. `ReadNextOpusPacket` recognises that signal
+  (`!_headersParsed` after `ReadOggPage` failed) and routes back through
+  `ParseHeaders`, which re-reads the rewound bytes as the new logical stream's
+  `OpusHead`. Audio packets from every concatenated stream now flow through
+  cleanly. Single-stream scenarios (ElevenLabs, single-sentence turns) are
+  unaffected.
+
+  Also: `ReadNextOpusPacket` no longer returns `0` when `ReadOggPage` produces
+  a page with zero packets — that case is the EOS-only sentinel page that
+  closes every voxtral / cartesia sub-stream. The loop now continues into the
+  next page so the BOS-flagged OpusHead of the next sub-stream gets processed
+  instead of being silently swallowed.
+
+### Added
+- `OggOpusParserMultiStreamTests` — regression guard with two cases:
+  1. Two concatenated streams produce all audio packets from BOTH streams,
+     no header-magic leakage into audio packet output, correct ordering.
+  2. Single stream still works after the multi-stream fix (ElevenLabs path
+     unchanged).
+
 ## [1.14.0] - 2026-05-04
 
 ### Added

@@ -16,7 +16,14 @@ namespace Tsc.AIBridge.Audio.Codecs
         //private const string OGG_CAPTURE_PATTERN = "OggS";
         //private const byte OGG_VERSION = 0;
         //private const byte FLAG_CONTINUED = 0x01;
-        //private const byte FLAG_FIRST = 0x02;
+        /// <summary>
+        /// Beginning-of-stream flag in OGG page header_type byte. Set on the very first
+        /// page of every logical OGG stream (carries the OpusHead packet). Detection of
+        /// this flag mid-decode signals that a NEW logical stream is beginning — used to
+        /// support multi-sentence TTS responses where each sentence is its own self-contained
+        /// OGG stream (the post-2026-05-06 voxtral/cartesia flow).
+        /// </summary>
+        private const byte FLAG_FIRST = 0x02;
         //private const byte FLAG_LAST = 0x04;
 
         // Opus header signatures
@@ -91,55 +98,75 @@ namespace Tsc.AIBridge.Audio.Codecs
         {
             try
             {
-                // Parse headers if not done yet
-                if (!_headersParsed)
+                // Loop in case ReadOggPage detects a new logical OGG stream begin (BOS flag).
+                // In that case it resets parser state to _headersParsed=false and we route back
+                // through ParseHeaders. Without this loop, multi-sentence voxtral/cartesia
+                // streams would never parse the new OpusHead and audio would be dropped.
+                while (true)
                 {
-                    if (!ParseHeaders())
+                    // Parse headers if not done yet (or just got reset by BOS detection below)
+                    if (!_headersParsed)
                     {
-                        Debug.LogError("[OggOpusParser] Failed to parse Opus headers");
-                        return -1;
+                        if (!ParseHeaders())
+                        {
+                            Debug.LogError("[OggOpusParser] Failed to parse Opus headers");
+                            return -1;
+                        }
                     }
-                }
 
-                // Return any pending packets first
-                if (_pendingPackets.Count > 0)
-                {
-                    var packet = _pendingPackets[0];
-                    _pendingPackets.RemoveAt(0);
-
-                    if (packet.Length <= packetBuffer.Length)
+                    // Return any pending packets first
+                    if (_pendingPackets.Count > 0)
                     {
-                        Array.Copy(packet, 0, packetBuffer, 0, packet.Length);
-                        return packet.Length;
+                        var packet = _pendingPackets[0];
+                        _pendingPackets.RemoveAt(0);
+
+                        if (packet.Length <= packetBuffer.Length)
+                        {
+                            Array.Copy(packet, 0, packetBuffer, 0, packet.Length);
+                            return packet.Length;
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"[OggOpusParser] Packet too large: {packet.Length} > {packetBuffer.Length}");
+                            return -1;
+                        }
                     }
-                    else
+
+                    // Read next Ogg page
+                    if (!ReadOggPage())
                     {
-                        Debug.LogWarning($"[OggOpusParser] Packet too large: {packet.Length} > {packetBuffer.Length}");
-                        return -1;
+                        // Two possibilities for ReadOggPage returning false:
+                        //  1. BOS detected mid-stream → state was reset, _headersParsed is now false.
+                        //     Loop back so ParseHeaders runs on the rewound bytes (the new OpusHead).
+                        //  2. Genuine end-of-stream / no-data-yet → return 0 to caller.
+                        if (!_headersParsed)
+                        {
+                            continue;
+                        }
+                        //_isEndOfStream = true;
+                        return 0;
                     }
-                }
 
-                // Read next Ogg page
-                if (!ReadOggPage())
-                {
-                    //_isEndOfStream = true;
-                    return 0;
-                }
-
-                // Return first packet from the page
-                if (_pendingPackets.Count > 0)
-                {
-                    var packet = _pendingPackets[0];
-                    _pendingPackets.RemoveAt(0);
-
-                    if (packet.Length <= packetBuffer.Length)
+                    // Return first packet from the page
+                    if (_pendingPackets.Count > 0)
                     {
-                        Array.Copy(packet, 0, packetBuffer, 0, packet.Length);
-                        return packet.Length;
-                    }
-                }
+                        var packet = _pendingPackets[0];
+                        _pendingPackets.RemoveAt(0);
 
-                return 0;
+                        if (packet.Length <= packetBuffer.Length)
+                        {
+                            Array.Copy(packet, 0, packetBuffer, 0, packet.Length);
+                            return packet.Length;
+                        }
+                    }
+
+                    // ReadOggPage succeeded but produced no packets. This happens for the
+                    // payload-less EOS sentinel page that closes every voxtral / cartesia
+                    // sub-stream (zero-segment page with header type 0x04). Don't bail out
+                    // here — the next page in the input is the BOS of the next sub-stream
+                    // (multi-sentence turn) and we still need to deliver its audio.
+                    continue;
+                }
             }
             catch (Exception ex)
             {
@@ -507,12 +534,49 @@ namespace Tsc.AIBridge.Audio.Codecs
 
             // Parse header fields
             //var version = _headerBuffer[4];
-            //var headerType = _headerBuffer[5];
+            var headerType = _headerBuffer[5];
             //var granulePosition = BitConverter.ToUInt64(_headerBuffer, 6);
             //var serialNumber = BitConverter.ToUInt32(_headerBuffer, 14);
             var pageSequence = BitConverter.ToUInt32(_headerBuffer, 18);
             //var checksum = BitConverter.ToUInt32(_headerBuffer, 22);
             var pageSegments = _headerBuffer[26];
+
+            // Multi-stream handling: when the BOS (Beginning-Of-Stream) flag is set AND we
+            // already finished parsing a previous stream's headers, this page belongs to a
+            // NEW logical OGG stream. Voxtral/Cartesia sends one self-contained OGG stream
+            // per TTS sentence/batch (each starting with a fresh OpusHead-page that carries
+            // BOS=0x02), so without this detection the parser tries to decode the new stream's
+            // OpusHead bytes as audio packets and floods the console with
+            // "Invalid OpusHead signature: h..." errors plus dropped audio.
+            //
+            // Reset the parser state, rewind the stream by 27 bytes (so the next ParseHeaders
+            // call re-reads this very page as the new stream's OpusHead), and signal the
+            // outer loop in ReadNextOpusPacket to re-parse headers before continuing.
+            if ((headerType & FLAG_FIRST) != 0 && _headersParsed)
+            {
+                if (_isVerboseLogging)
+                    Debug.Log("[OggOpusParser] BOS-flagged page detected mid-stream — resetting parser for new logical OGG stream");
+
+                if (_inputStream.CanSeek)
+                {
+                    _inputStream.Position -= 27;
+                }
+                else
+                {
+                    Debug.LogError("[OggOpusParser] Cannot rewind non-seekable stream on BOS detection — new stream's OpusHead will be lost");
+                }
+
+                _headersParsed = false;
+                _pendingPackets.Clear();
+                _continuedPacket.Clear();
+                _lastPageSequence = uint.MaxValue;
+                _seenPageSequences.Clear();
+
+                // Returning false here means "no packets produced this call". The caller loop
+                // in ReadNextOpusPacket sees _headersParsed went false and routes back through
+                // ParseHeaders, which re-reads the rewound bytes correctly as the new OpusHead.
+                return false;
+            }
 
             // Check page sequence continuity
             if (_seenPageSequences.Contains(pageSequence))
