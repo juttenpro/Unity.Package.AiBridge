@@ -6,6 +6,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-05-07
+
+### Changed (internal — public API preserved)
+- **`OggOpusParser` rewritten from scratch** as a proper state machine. The
+  public surface (`Initialize`, `ReadNextOpusPacket`, `Channels`, `SampleRate`,
+  `PreSkip`) is unchanged so `OpusStreamDecoder` and any external consumer
+  compile without modification. The internals are fundamentally different:
+
+  **Before** — three overlapping byte buffers (`_streamBuffer`,
+  `_continuousStream`, `_incompletePageBuffer`), five OGG-header constants
+  commented out, no end-of-stream concept, an `_inputStream = new MemoryStream(...)`
+  in-place stream-replacement during chunk-boundary recovery, and a global
+  `HashSet<uint>` of page sequences shared across all logical streams. Adding
+  multi-stream support in 1.14.1 required wallpapering on a "rewind 27 bytes
+  and re-enter" trick — fragile and easy to regress.
+
+  **After** — explicit state machine
+  (`ExpectingNewLogicalStream → ReadingHeaders → Streaming → ExpectingNewLogicalStream`),
+  per-logical-stream context (serial, last-sequence, partial-packet, header
+  info) wiped on every BOS-flagged page, single byte source (the caller's
+  `Stream`) with no replacement / no manual rewind, packet reassembly driven
+  correctly by the segment-table 255-rule and continued-flag per RFC 3533 §6,
+  and graceful recovery for garbage between streams via forward-scan to the
+  next "OggS" capture pattern.
+
+### Added
+- `_readPosition` is tracked internally by the parser. Callers no longer have
+  to worry about `_input.Position` being knocked to the end by an external
+  append; the parser saves and restores its own read offset across calls.
+- `OggOpusParserStateMachineTests` — nine new edge-case tests:
+  multi-segment packets (510 bytes via `[255,255,0]`), packets spanning two
+  pages (continued-flag stitching), three packets in one page, sequence-rewind
+  ignored, interleaved-serial pages dropped, drip-fed incremental data,
+  EOS without subsequent stream, garbage-between-streams recovery, and
+  header-property accessibility post-BOS.
+
+### Fixed
+- Multi-sentence voxtral / cartesia OGG streams now decode end-to-end without
+  the "Invalid OpusHead signature: h..." error spam and without dropped audio
+  mid-turn — the same regression that 1.14.1 partially addressed via a rewind
+  trick is now structurally impossible.
+- 0-byte Opus packets (rare segment-table convention) are no longer routed to
+  the Opus decoder where they would have produced spurious errors.
+
 ## [1.14.1] - 2026-05-06
 
 ### Fixed
