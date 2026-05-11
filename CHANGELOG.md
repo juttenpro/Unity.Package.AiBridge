@@ -6,6 +6,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.1] - 2026-05-11
+
+### Fixed
+- **`StreamingAudioPlayer.StopPlayback` no longer uses runtime reflection** to coordinate
+  with `Tsc.Training.Audio.AudioLoadLockManager`. The previous implementation called
+  `Type.GetType("Tsc.Training.Audio.AudioLoadLockManager, Training")` to flip the
+  `IsStreamingAudioCleanupInProgress` flag — but the assembly-name string did not
+  resolve in production, so the lookup silently returned `null` every cleanup. The
+  flag was therefore never set, the wait-loops in `VoiceLinePlayer` and
+  `NpcAudioPlayer` were effectively no-ops, and the race protection against
+  concurrent AI-audio cleanup and scripted-audio loading (Addressables
+  `LoadAssetAsync` overlapping with `DestroyImmediate` on the same `AudioSource`)
+  had been disabled for an unknown period.
+
+### Added
+- `StreamingAudioPlayer.OnAudioCleanupStarted` and `OnAudioCleanupCompleted` static
+  events. Fired around the `StopPlayback` cleanup block (from a `try` / `finally` so
+  `Completed` runs even on exceptions). External coordinators subscribe to these
+  events to track when streaming-audio cleanup is in progress, replacing the
+  reflection-based approach. Within this repo, `AudioCleanupLockSubscriber` in
+  `Tsc.AIBridge.Extended` (the assembly that already references both this package
+  and `com.simulationcrew.training`) registers handlers in
+  `RuntimeInitializeOnLoadMethod(SubsystemRegistration)` and forwards them to
+  `AudioLoadLockManager.IsStreamingAudioCleanupInProgress`.
+- `AudioCleanupEventsTests` — six tests covering single-fire semantics,
+  start-before-end ordering, `finally`-guaranteed completion event, repeated
+  cycles, completion without an `AudioFilterRelay`, and null-safe invocation
+  without subscribers.
+
+### Changed (internal — public API preserved)
+- The reflection block (~50 lines) in `StopPlaybackInternal` is reduced to one
+  `OnAudioCleanupStarted?.Invoke()` / `OnAudioCleanupCompleted?.Invoke()` pair,
+  and the warning spam `❌ AudioLoadLockManager type not found via reflection`
+  (one per turn, visible in every verbose-logging session) is gone.
+
 ## [1.15.0] - 2026-05-07
 
 ### Changed (internal — public API preserved)

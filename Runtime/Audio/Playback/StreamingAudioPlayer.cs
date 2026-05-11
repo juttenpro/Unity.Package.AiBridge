@@ -45,6 +45,29 @@ namespace Tsc.AIBridge.Audio.Playback
         // Static events for logging (prefixed to avoid naming conflicts)
         public static event Action OnPlaybackStartedStatic;
 
+        /// <summary>
+        /// Raised at the start of <see cref="StopPlayback"/> cleanup, before any audio resources
+        /// are torn down. External coordinators (notably <c>Tsc.Training.Audio.AudioLoadLockManager</c>)
+        /// subscribe to set their cleanup-in-progress flag so that scripted audio loaders
+        /// (<c>VoiceLinePlayer</c>, <c>NpcAudioPlayer</c>) wait until cleanup finishes — preventing
+        /// race conditions on the same <see cref="AudioSource"/> that can corrupt Unity's
+        /// AssetDatabase and .meta files.
+        ///
+        /// Replaces a previous reflection-based approach
+        /// (<c>Type.GetType("Tsc.Training.Audio.AudioLoadLockManager, Training")</c>) that silently
+        /// failed in production because the assembly name lookup did not match. Events also
+        /// keep this package free of any direct reference to the Training assembly.
+        /// </summary>
+        public static event Action OnAudioCleanupStarted;
+
+        /// <summary>
+        /// Raised at the end of <see cref="StopPlayback"/> cleanup, after the audio relay has
+        /// been stopped (or skipped when not assigned). Always fires when
+        /// <see cref="OnAudioCleanupStarted"/> fired, including on exceptions — emitted from a
+        /// finally block so subscribers can reliably clear their lock state.
+        /// </summary>
+        public static event Action OnAudioCleanupCompleted;
+
         // Static test mode flag - can be set before component creation
         private static bool _globalSuppressWarnings = false;
 
@@ -800,57 +823,29 @@ namespace Tsc.AIBridge.Audio.Playback
             if (enableVerboseLogging)
                 Debug.Log($"[{_cachedGameObjectName}] 🤐 NPC speech state reset (playback stopped)");
 
-            // CRITICAL: Set cleanup flag to prevent VoiceLinePlayer from loading during DestroyImmediate
-            // This prevents Unity AssetDatabase corruption and .meta file corruption
-            bool cleanupFlagWasSet = false;
+            // CRITICAL: Notify coordinators that streaming-audio cleanup is starting, so scripted
+            // audio loaders (VoiceLinePlayer, NpcAudioPlayer) can wait before invoking
+            // Addressables.LoadAssetAsync on the same AudioSource. Without this synchronization,
+            // concurrent operations corrupt Unity's AssetDatabase / .meta files.
+            //
+            // Replaces a reflection lookup of Tsc.Training.Audio.AudioLoadLockManager that
+            // silently failed in production (assembly-name mismatch) — see CHANGELOG 1.15.1.
+            OnAudioCleanupStarted?.Invoke();
             try
             {
-                // Access via reflection since we can't add direct reference to Training assembly
-                var audioLockType = System.Type.GetType("Tsc.Training.Audio.AudioLoadLockManager, Training");
-                if (audioLockType != null)
-                {
-                    var flagProperty = audioLockType.GetProperty("IsStreamingAudioCleanupInProgress");
-                    if (flagProperty != null)
-                    {
-                        flagProperty.SetValue(null, true);
-                        cleanupFlagWasSet = true;
-                        if (enableVerboseLogging)
-                            Debug.Log($"[{_cachedGameObjectName}] [{Time.time:F3}] ✓ Set IsStreamingAudioCleanupInProgress = true");
-                    }
-                    else if (enableVerboseLogging)
-                    {
-                        Debug.LogWarning($"[{_cachedGameObjectName}] [{Time.time:F3}] ❌ AudioLoadLockManager found but IsStreamingAudioCleanupInProgress property not found");
-                    }
-                }
-                else if (enableVerboseLogging)
-                {
-                    Debug.LogWarning($"[{_cachedGameObjectName}] [{Time.time:F3}] ❌ AudioLoadLockManager type not found via reflection");
-                }
-
                 // Stop relay if it exists (may be null in tests)
                 // This now also recreates AudioClip and resets AudioSource.time for complete buffer clear
                 audioFilterRelay?.StopPlayback();
 
                 if (enableVerboseLogging)
-                    Debug.Log($"[{_cachedGameObjectName}] [{Time.time:F3}] Audio relay stopped (cleanup flag was set: {cleanupFlagWasSet})");
+                    Debug.Log($"[{_cachedGameObjectName}] [{Time.time:F3}] Audio relay stopped");
             }
             finally
             {
-                // Clear cleanup flag (only if we set it successfully)
-                if (cleanupFlagWasSet)
-                {
-                    var audioLockType = System.Type.GetType("Tsc.Training.Audio.AudioLoadLockManager, Training");
-                    if (audioLockType != null)
-                    {
-                        var flagProperty = audioLockType.GetProperty("IsStreamingAudioCleanupInProgress");
-                        if (flagProperty != null)
-                        {
-                            flagProperty.SetValue(null, false);
-                            if (enableVerboseLogging)
-                                Debug.Log($"[{_cachedGameObjectName}] [{Time.time:F3}] ✓ Set IsStreamingAudioCleanupInProgress = false");
-                        }
-                    }
-                }
+                // Fires even on exceptions inside the try-block so subscribers can reliably
+                // clear their cleanup-in-progress flag — leaving it stuck would block
+                // VoiceLinePlayer forever from loading scripted audio on the next turn.
+                OnAudioCleanupCompleted?.Invoke();
             }
 
             // Clear buffer - CRITICAL for preventing audio bleeding between sessions
