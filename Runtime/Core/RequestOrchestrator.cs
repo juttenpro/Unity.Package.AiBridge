@@ -1442,6 +1442,10 @@ namespace Tsc.AIBridge.Core
                         language = request.NpcConfig?.Language,
                         temperature = request.NpcConfig?.Temperature ?? 0,
                         maxTokens = request.NpcConfig?.MaxTokens ?? 0,
+                        // Optional Gemini 2.5+ reasoning budget — carried from the
+                        // AI API Template via ConversationRequest. Null = backend uses
+                        // provider default (existing pre-thinking behaviour).
+                        thinkingBudget = _currentConversationRequest?.ThinkingBudget,
                         ttsModel = request.NpcConfig?.TtsModel,
                         sttProvider = request.NpcConfig?.SttProvider,
                         ttsProvider = request.NpcConfig?.TtsProvider,

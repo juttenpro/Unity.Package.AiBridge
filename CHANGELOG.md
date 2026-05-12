@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-05-12
+
+### Added
+- **`ConversationContext.thinkingBudget` (nullable int)** — wire-level field forwarding the
+  content creator's choice from the AI API Template (Gemini 2.5+ reasoning budget) to the
+  backend. Semantics: `null` = backend uses provider default (existing behaviour preserved
+  bit-for-bit); `0` = disable thinking (flash/-lite only); `-1` = dynamic; positive integer
+  = explicit token reservation. Serialized with `NullValueHandling.Ignore` so unmodified
+  callers omit the field entirely.
+- **`AnalysisService.RequestAnalysisAsync` optional `thinkingBudget` parameter**
+  (defaults to `null`). When provided, it is placed in the outgoing `ConversationContext`
+  so the backend can apply it to the Vertex AI `generationConfig.thinkingConfig`. Existing
+  call sites without the parameter continue to work unchanged.
+- **`ConversationRequest.ThinkingBudget` (nullable int)** — carries the budget through the
+  NPC conversation flow into `TextInputMessage.Context` via `RequestOrchestrator`.
+- `AnalysisServiceThinkingBudgetTests` — four runtime tests verifying that the budget
+  reaches `ConversationContext` for the documented value range (0, -1, positive) and that
+  backward-compat callers leave it null.
+
+### Why
+Placebo + AcuteZorg AI API Templates use `gemini-2.5-flash(-lite)` with `maxTokens=800`.
+With thinking enabled by default (dynamic budget), the model consumed ~750 tokens on
+reasoning, leaving only ~25 tokens for the visible JSON output — causing the analysis
+prompt's JSON response to truncate mid-field (e.g. `"IsDownplay":` cut off). Content
+creators had no way to disable thinking from the template; the field was defined in the
+LocaleConfig editor but the wire payload didn't carry it. This release closes that gap.
+
 ## [1.15.1] - 2026-05-11
 
 ### Fixed

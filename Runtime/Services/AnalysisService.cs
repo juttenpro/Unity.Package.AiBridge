@@ -70,6 +70,12 @@ namespace Tsc.AIBridge.Services
         /// <param name="maxTokens">Maximum tokens for response</param>
         /// <param name="responseFormat">Response format - use "json_object" for clean JSON without markdown (OpenAI/Azure OpenAI only)</param>
         /// <param name="location">Google Cloud region for Vertex AI (e.g., "europe-west4") - optional, fallback to backend env var</param>
+        /// <param name="thinkingBudget">
+        /// Optional reasoning-token budget for Gemini 2.5+ thinking-capable models.
+        /// Null = unset (backend provider default). 0 = disable thinking (flash/-lite only).
+        /// -1 = dynamic. Positive = explicit token reservation. See
+        /// <c>ConversationContext.thinkingBudget</c> for full semantics.
+        /// </param>
         /// <returns>Task that completes with AnalysisResponse when analysis is done</returns>
         /// <exception cref="InvalidOperationException">Thrown when WebSocket is not connected</exception>
         /// <exception cref="ArgumentException">Thrown when messages array is null or empty</exception>
@@ -81,7 +87,8 @@ namespace Tsc.AIBridge.Services
             float temperature,
             int maxTokens,
             string responseFormat,
-            string location = null)
+            string location = null,
+            int? thinkingBudget = null)
         {
             // Check WebSocket connection
             if (!WebSocketAdapter.IsConnected)
@@ -110,6 +117,9 @@ namespace Tsc.AIBridge.Services
                     llmModel = llmModel,
                     temperature = temperature,
                     maxTokens = maxTokens,
+                    // Optional Gemini 2.5+ thinking-token budget. Carries the
+                    // content-creator's choice from the AI API Template to the backend.
+                    thinkingBudget = thinkingBudget,
                     responseFormat = responseFormat,
                     location = location,
                     // Language and VoiceId are optional - backend provides defaults

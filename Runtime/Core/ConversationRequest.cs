@@ -26,6 +26,16 @@ namespace Tsc.AIBridge.Core
         public string TtsModel { get; set; } = "eleven_turbo_v2_5";
         public string Language { get; set; } = "nl-NL";
         public int MaxTokens { get; set; } = 500;
+
+        /// <summary>
+        /// Optional reasoning-token budget for Gemini 2.5+ thinking-capable models.
+        /// Null = unset (backend uses provider default). 0 = disable thinking
+        /// (flash/-lite only). -1 = dynamic. Positive = explicit reservation.
+        /// Carried into <see cref="Messages.ConversationContext.thinkingBudget"/> by
+        /// RequestOrchestrator. Content creators control this per AI API Template.
+        /// </summary>
+        public int? ThinkingBudget { get; set; }
+
         public float Temperature { get; set; } = 0.7f;
         public float TopP { get; set; } = 1.0f;
         public float TopK { get; set; } = 0f;

@@ -59,6 +59,24 @@ namespace Tsc.AIBridge.Messages
         public int maxTokens;
 
         /// <summary>
+        /// Reasoning-token budget for Gemini 2.5+ thinking-capable models. Forwarded
+        /// to the backend's <c>generationConfig.thinkingConfig.thinkingBudget</c>.
+        ///
+        /// Semantics (per Google Vertex AI docs):
+        ///   null = unset (backend uses provider default — pre-thinking behaviour)
+        ///   -1   = dynamic, model decides budget per query
+        ///   0    = disable thinking (gemini-2.5-flash and -flash-lite only;
+        ///          gemini-2.5-pro rejects 0)
+        ///   N>0  = explicit token reservation
+        ///
+        /// Nullable so non-Gemini providers and unmodified callers omit the field
+        /// from the JSON payload. Content creators control this per AI API Template
+        /// — see Tsc.RuleSystem LocaleConfig.llmThinkingBudget.
+        /// </summary>
+        [JsonProperty("thinkingBudget", NullValueHandling = NullValueHandling.Ignore)]
+        public int? thinkingBudget;
+
+        /// <summary>
         /// Language for the conversation (e.g., "nl-NL", "en-US")
         /// </summary>
         [JsonProperty("language")]
