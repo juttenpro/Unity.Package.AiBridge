@@ -1286,6 +1286,13 @@ namespace Tsc.AIBridge.Core
                     LlmModel = parameters.LlmModel,
                     Temperature = parameters.Temperature,
                     MaxTokens = parameters.MaxTokens,
+                    // Gemini 2.5+ reasoning-token budget from the AI API Template.
+                    // Null when the template doesn't opt into thinking control, in which
+                    // case the field is omitted from the SessionStart wire payload and
+                    // the backend keeps its provider default (existing pre-thinking
+                    // behaviour). Sessions inherit this once at SessionStart; subsequent
+                    // dialogue turns within the session reuse the same budget.
+                    ThinkingBudget = _currentConversationRequest?.ThinkingBudget,
                     // STT settings
                     SttProvider = parameters.SttProvider,
                     LanguageCode = parameters.Language,  // Note: field is called LanguageCode, not Language

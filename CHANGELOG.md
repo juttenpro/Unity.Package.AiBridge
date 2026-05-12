@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-05-12
+
+### Added
+- **`SessionStartMessage.ThinkingBudget` (nullable int)** — wire-level field forwarding
+  the content creator's choice from the AI API Template to the backend at session start
+  for real-time NPC dialogue. Same semantics as `ConversationContext.thinkingBudget`
+  (introduced in 1.16.0): `null` = backend uses provider default (existing behaviour
+  preserved bit-for-bit); `0` = disable thinking (gemini-2.5-flash and -flash-lite only);
+  `-1` = dynamic; positive integer = explicit token reservation. Serialized with
+  `NullValueHandling.Ignore` so unmodified scenarios omit the field entirely.
+- **`RequestOrchestrator.ProcessAudioRequest`** now reads
+  `_currentConversationRequest?.ThinkingBudget` and sets it on the outgoing
+  `SessionStartMessage`, closing the gap where 1.16.0 wired the budget through the
+  text-input + analysis flows but the audio-driven dialogue path still emitted
+  `SessionStart` without it.
+- `SessionStartMessageThinkingBudgetTests` — six editor tests covering null omission
+  (NullValueHandling.Ignore), the documented semantic values (0, -1, positive), and
+  round-trip from backend-shape JSON.
+
+### Why
+1.16.0 added `thinkingBudget` plumbing for analysis + text-input but real-time NPC
+dialogue (the dominant flow for VR training) goes through `SessionStartMessage`. The
+backend applies `thinkingBudget` per session (set once at SessionStart, inherited by
+every LLM turn within the session), so omitting the field on SessionStart defeated the
+per-template control entirely for live dialogue — personas configured with
+`llmThinkingBudget = 0` in the template still incurred ~700 reasoning tokens per turn
+on gemini-2.5-flash, causing the truncation symptoms 1.16.0 was meant to address. This
+release closes that final gap.
+
 ## [1.16.0] - 2026-05-12
 
 ### Added

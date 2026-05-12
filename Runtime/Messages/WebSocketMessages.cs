@@ -144,6 +144,30 @@ namespace Tsc.AIBridge.Messages
         public int MaxTokens { get; set; } = 500;
 
         /// <summary>
+        /// Reasoning-token budget for Gemini 2.5+ thinking-capable models. Forwarded
+        /// to the backend's <c>generationConfig.thinkingConfig.thinkingBudget</c> for
+        /// every LLM turn within this real-time dialogue session — sessions inherit
+        /// the budget once at SessionStart, not per turn.
+        ///
+        /// Semantics (per Google Vertex AI docs):
+        ///   null = unset (backend uses provider default — pre-thinking behaviour)
+        ///   -1   = dynamic, model decides budget per query
+        ///   0    = disable thinking (gemini-2.5-flash and -flash-lite only;
+        ///          gemini-2.5-pro rejects 0)
+        ///   N>0  = explicit token reservation (consumed from MaxTokens, so ensure
+        ///          MaxTokens >= ThinkingBudget + expected visible response)
+        ///
+        /// Nullable so non-Gemini providers and unmodified callers omit the field
+        /// from the JSON payload. Content creators control this per AI API Template —
+        /// see Tsc.RuleSystem LocaleConfig.llmThinkingBudget, which flows through
+        /// ConversationRequest.ThinkingBudget into this field via RequestOrchestrator.
+        /// Mirrors <see cref="ConversationContext.thinkingBudget"/> used by the
+        /// analysis + text-input flows.
+        /// </summary>
+        [JsonProperty("thinkingBudget", NullValueHandling = NullValueHandling.Ignore)]
+        public int? ThinkingBudget { get; set; }
+
+        /// <summary>
         /// Temperature for LLM response generation (0.0 - 1.0)
         /// </summary>
         [JsonProperty("temperature")]
