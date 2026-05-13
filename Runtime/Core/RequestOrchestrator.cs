@@ -130,6 +130,11 @@ namespace Tsc.AIBridge.Core
         private bool _isRequestActive; // Request lifecycle - true from StartAudioRequest until EndAudioRequest/Cancel
         private Coroutine _processQueueCoroutine;
 
+        // Metadata-handler we are currently subscribed to for OnConversationComplete cleanup.
+        // Tracked so the same handler is not subscribed twice (same-NPC retries) and so we can
+        // unsubscribe symmetrically on NPC switch / cancel / destroy.
+        private ConversationMetadataHandler _subscribedMetadataHandler;
+
         /// <summary>
         /// Event fired when the active NPC changes.
         /// Used by InterruptionManager to track which NPC is currently active without reflection.
@@ -272,6 +277,9 @@ namespace Tsc.AIBridge.Core
             {
                 _webSocketClient.OnDisconnected -= HandleWebSocketDisconnected;
             }
+
+            // Unsubscribe from any lingering ConversationMetadataHandler subscription.
+            UnregisterConversationCompletionHandler();
 
             if (_processQueueCoroutine != null)
             {
@@ -483,6 +491,11 @@ namespace Tsc.AIBridge.Core
             if (enableVerboseLogging)
                 Debug.Log($"[RequestOrchestrator] Found NPC client: {_activeNpcClient.NpcName} for ID: {npcConfig.Id}");
 
+            // Subscribe to per-turn completion so the next user-turn starts with a fresh session.
+            // Without this, _currentSession lingers after the backend cleans up its session,
+            // and the next recording-stopped event sends EndOfSpeech for the stale RequestId.
+            RegisterConversationCompletionHandler(_activeNpcClient);
+
             // Notify listeners (e.g., InterruptionManager) about active NPC change
             OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
 
@@ -592,6 +605,11 @@ namespace Tsc.AIBridge.Core
             if (enableVerboseLogging)
                 Debug.Log($"[RequestOrchestrator] Found NPC client: {_activeNpcClient.NpcName} for ID: {npcConfig.Id}");
 
+            // Subscribe to per-turn completion so the next user-turn starts with a fresh session.
+            // Without this, _currentSession lingers after the backend cleans up its session,
+            // and the next recording-stopped event sends EndOfSpeech for the stale RequestId.
+            RegisterConversationCompletionHandler(_activeNpcClient);
+
             // Notify listeners (e.g., InterruptionManager) about active NPC change
             OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
 
@@ -647,6 +665,9 @@ namespace Tsc.AIBridge.Core
                 // Cancel WebSocket session - notify backend to stop LLM/TTS generation
                 var requestIdToCancel = _currentSession.RequestId;
                 _ = CancelSessionOnBackendAsync(requestIdToCancel, reason);
+
+                // Unsubscribe from per-turn completion before clearing the NpcClient reference.
+                UnregisterConversationCompletionHandler();
 
                 // Clear session
                 _currentSession = null;
@@ -1102,6 +1123,78 @@ namespace Tsc.AIBridge.Core
         #endregion
 
         #region Private Methods
+
+        /// <summary>
+        /// Subscribe to the NPC client's ConversationMetadataHandler so the orchestrator
+        /// can clear per-turn state when the backend signals conversationComplete.
+        ///
+        /// Without this, _currentSession lingers after a successful turn — every subsequent
+        /// recording-stopped event then sends EndOfSpeech for the stale RequestId, the
+        /// backend answers "Session not found", and the NPC goes silent while animations
+        /// keep running (incident 2026-05-11).
+        ///
+        /// Safe to call repeatedly: re-subscribing to the same handler is a no-op so
+        /// same-NPC retries don't accumulate duplicate subscriptions.
+        /// </summary>
+        private void RegisterConversationCompletionHandler(NpcClientBase npcClient)
+        {
+            var newHandler = npcClient?.MetadataHandler;
+            if (_subscribedMetadataHandler == newHandler)
+                return;
+
+            if (_subscribedMetadataHandler != null)
+                _subscribedMetadataHandler.OnConversationComplete -= HandleConversationCompleted;
+
+            _subscribedMetadataHandler = newHandler;
+
+            if (_subscribedMetadataHandler != null)
+                _subscribedMetadataHandler.OnConversationComplete += HandleConversationCompleted;
+        }
+
+        /// <summary>
+        /// Symmetric counterpart to <see cref="RegisterConversationCompletionHandler"/>.
+        /// Called on NPC switch, session cancel, and component destruction so no stale
+        /// subscription remains on a NpcClient we no longer drive.
+        /// </summary>
+        private void UnregisterConversationCompletionHandler()
+        {
+            if (_subscribedMetadataHandler != null)
+            {
+                _subscribedMetadataHandler.OnConversationComplete -= HandleConversationCompleted;
+                _subscribedMetadataHandler = null;
+            }
+        }
+
+        /// <summary>
+        /// Per-turn cleanup hook fired by the backend's conversationComplete message.
+        /// Clears _currentSession, _isRequestActive and _isProcessingRequest so the next
+        /// user-turn starts with a fresh RequestId. Also drops the NpcMessageRouter's
+        /// per-NPC entry — that router holds its own state slot consulted by
+        /// NpcAudioPlayer.SendPauseStream / SendResumeStream and must not point at the
+        /// completed turn after cleanup.
+        /// </summary>
+        private void HandleConversationCompleted(bool audioReceived)
+        {
+            // Snapshot before clearing so we can address the router cleanup.
+            var completedRequestId = _currentSession?.RequestId;
+            var completedNpcName = _activeNpcClient?.NpcName;
+
+            _currentSession = null;
+            _isRequestActive = false;
+            _isProcessingRequest = false;
+
+            if (!string.IsNullOrEmpty(completedRequestId) && NpcMessageRouter.HasInstance)
+            {
+                NpcMessageRouter.Instance.ClearRequest(completedRequestId);
+            }
+
+            if (enableVerboseLogging)
+            {
+                Debug.Log($"[RequestOrchestrator] Conversation completed (audioReceived={audioReceived}) — " +
+                          $"session state cleared for {completedNpcName ?? "(no active NPC)"} " +
+                          $"(RequestId: {completedRequestId ?? "(none)"})");
+            }
+        }
 
         /// <summary>
         /// Flush buffered audio chunks after WebSocket reconnection

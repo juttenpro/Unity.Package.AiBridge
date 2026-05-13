@@ -6,6 +6,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.1] - 2026-05-13
+
+### Fixed
+- **Stale-session message floods after successful turn completion** — `RequestOrchestrator`
+  now subscribes to `ConversationMetadataHandler.OnConversationComplete` of the active NPC
+  and clears `_currentSession`, `_isRequestActive`, `_isProcessingRequest`, and the
+  per-NPC entry in `NpcMessageRouter` when the backend signals the turn is complete.
+  Previously the event was declared and fired but had no subscriber — `_currentSession`
+  lingered until the next NPC switch, disconnect, or explicit cancel. Subsequent
+  recording-stopped events (VAD silence, retry attempts) then sent `EndOfSpeech` for
+  the already-cleaned-up RequestId, the backend answered "Session not found", and the
+  NPC went silent while local animations kept running. Symmetric register / unregister
+  in `StartAudioRequest`, `StartTextRequest`, `CancelCurrentSession`, and `OnDestroy`;
+  re-subscribing to the same `MetadataHandler` is a no-op so same-NPC retries don't
+  accumulate duplicate handlers.
+
+### Added
+- `ConversationCompleteCleanupTests` — six EditMode tests covering: state cleared with
+  active session, `_isRequestActive` cleared, `_isProcessingRequest` cleared,
+  `IsProcessingRequest()` returns false, defensive no-throw when cleanup runs without
+  an active session, and cleanup runs regardless of the `audioReceived` flag value.
+
+### Why
+Production incident 2026-05-11: a VR sollicitatietraining locked up for 3.5 minutes
+while the Unity client repeatedly sent `EndOfSpeech` / `EndOfAudio` for a session the
+backend had already cleaned up (per-turn lifecycle, by design — see
+`Analysis-ApiOrchestrator-SessionContext.md`). The client implicitly assumed
+`StartAudioRequest` would always overwrite stale state, but VAD-triggered recording
+stops can fire `OnRecordingStopped` without a fresh `StartAudioRequest` having run
+first. Closing the dead-letter event subscription closes that class of bug at the
+source. The change is observable only via the new tests; no public API change.
+
 ## [1.17.0] - 2026-05-12
 
 ### Added
