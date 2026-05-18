@@ -6,6 +6,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.2] - 2026-05-13
+
+### Fixed
+- **`AudioStreamProcessor` no longer silently drops late-arriving audio chunks.**
+  Production session 2026-05-13 17:42 showed a Voxtral TTS turn losing ~50% of the
+  audio on the client (95688 of ~190000 expected samples). The backend confirmed
+  sending all 30748 bytes (165 OGG pages, 4046ms) but the client only played ~2 seconds.
+  Root cause traced to a race in `NpcClientBase` → `AudioStreamProcessor`:
+
+  1. `StreamingAudioPlayer` safety-net (1,87s with no data) fires `StopPlayback`
+  2. `OnPlaybackComplete` invokes `NpcClientBase.ResetAudioStateForNextTurn`
+  3. `audioProcessor.EndAudioStream()` runs → `_isStreamingAudio = false`
+  4. Server keeps streaming (it has not crashed; it was just slow for 1,87s)
+  5. Late chunks hit the `if (!_isStreamingAudio) return;` guard
+  6. Bytes silently discarded — no log (only under verbose), no counter, no event
+
+  Verified end-to-end by `OggOpusParserProductionScenarioTests` (parser handles 200
+  packets in 165-page Voxtral-shape streams correctly) and `OpusStreamDecoderRoundtripTests`
+  (decoder decodes 200 real Opus frames correctly). Bug is therefore at the processor
+  layer, not parser or decoder.
+
+### Added
+- `AudioStreamProcessor.DroppedBytesAfterStreamEnd` — per-turn counter of bytes that
+  arrived after `EndAudioStream` and could not be recovered (outside the resume window
+  or with player in shutdown). Resets on every `StartAudioStream`. Production
+  observability: should be 0 on a healthy turn.
+- `StreamingAudioPlayer.ResumePlaybackForLateChunks()` — re-arms the player for
+  continuation audio without resetting decoder state, sample counters, or the
+  `_serverStreamEnd` flag. Used by `AudioStreamProcessor` when late chunks arrive
+  within the resume window so the existing `AddAudioData → StartPlayback` re-trigger
+  logic can fire.
+- Auto-resume behaviour: chunks arriving within `ResumeWindowSeconds` (5s) after
+  `EndAudioStream` reopen the stream, decode normally, and feed the player buffer.
+  Bytes arriving outside the window are still dropped (preventing audio from a
+  long-finished turn bleeding into the next), but are counted and logged loudly via
+  `Debug.LogWarning` instead of disappearing silently.
+- `AudioStreamProcessorLateChunkRaceTests` — three tests pinning the contract:
+  baseline full-stream decode, late-chunk recovery within window, and outside-window
+  drop accounting.
+- `OggOpusParserProductionScenarioTests` — four tests proving the parser correctly
+  extracts 200 packets from production-shaped streams (165 pages, Voxtral shape,
+  also drip-fed). Eliminates the parser as a suspect in audio truncation.
+- `OpusStreamDecoderRoundtripTests` — four tests with real OpusSharp-encoded packets
+  proving the decoder produces the expected sample count end-to-end. Eliminates the
+  decoder as a suspect.
+- `Runtime/AssemblyInfo.cs` with `[InternalsVisibleTo("Tsc.AIBridge.Tests.Editor")]`
+  to support a test seam (`AudioStreamProcessor.ForceLastEndTimeForTest`) without
+  exposing it as a public production surface.
+
+### Changed (internal)
+- The `if (!_isStreamingAudio) return;` guard in `ProcessReceivedAudio` is now a
+  two-arm branch: late chunks within the resume window auto-resume; outside the
+  window they increment the dropped-bytes counter and emit a `LogWarning`
+  (previously a `LogWarning` only under verbose).
+- `EndAudioStream` records `DateTime.UtcNow` to mark the start of the late-chunk
+  resume window.
+- `StartAudioStream` resets `DroppedBytesAfterStreamEnd` and clears the resume
+  timestamp so per-turn observability is meaningful.
+
 ## [1.17.1] - 2026-05-13
 
 ### Fixed

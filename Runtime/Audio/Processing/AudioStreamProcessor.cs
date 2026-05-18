@@ -97,6 +97,46 @@ namespace Tsc.AIBridge.Audio.Processing
         private const int AVERAGE_OPUS_CHUNK_SIZE = 350; // Bytes - average size for 64kbps @ 20ms frames
 
         /// <summary>
+        /// Window within which late-arriving audio chunks (received after EndAudioStream)
+        /// trigger an auto-resume of the stream instead of being silently dropped.
+        ///
+        /// Production rationale: TTS providers like Voxtral/Cartesia occasionally pause
+        /// chunk delivery for 1-3s mid-stream. The StreamingAudioPlayer safety-net timeout
+        /// (1.87s with no data, no server signal) then fires StopPlayback → OnPlaybackComplete
+        /// → ResetAudioStateForNextTurn → this.EndAudioStream(). If chunks resume seconds
+        /// later (because the server WAS still streaming), they would hit !_isStreamingAudio
+        /// and be discarded without log or counter. Five seconds covers typical Voxtral dips
+        /// without permanently keeping the stream open if the user has moved on.
+        /// </summary>
+        private const double ResumeWindowSeconds = 5.0;
+
+        /// <summary>
+        /// Timestamp of the most recent EndAudioStream call. Used to decide whether an
+        /// incoming chunk falls inside the auto-resume window.
+        /// </summary>
+        private DateTime _lastEndAudioStreamTime = DateTime.MinValue;
+
+        /// <summary>
+        /// Cumulative count of audio bytes received via ProcessReceivedAudio after
+        /// EndAudioStream AND outside the auto-resume window — bytes that could not be
+        /// recovered and were silently lost from the audio output.
+        ///
+        /// Production observability: should be 0 on a healthy turn. A non-zero value
+        /// indicates either a late-chunk arrival outside the resume window or a chunk
+        /// while the player pipeline was shutting down. The value is reset on each new
+        /// StartAudioStream so it reflects per-turn loss.
+        /// </summary>
+        public long DroppedBytesAfterStreamEnd { get; private set; }
+
+        /// <summary>
+        /// Test seam — forces <see cref="_lastEndAudioStreamTime"/> to a specific value so
+        /// tests can verify the "outside resume window" drop path without sleeping for seconds.
+        /// Visible only to the package's own test assembly via [InternalsVisibleTo]; never call
+        /// from production code.
+        /// </summary>
+        internal void ForceLastEndTimeForTest(DateTime when) => _lastEndAudioStreamTime = when;
+
+        /// <summary>
         /// Initializes the audio processor with required components and settings.
         /// </summary>
         public AudioStreamProcessor(StreamingAudioPlayer audioPlayer, int opusBitrate = 24000, float bufferDuration = 0.5f, bool isVerboseLogging = false)
@@ -397,6 +437,11 @@ namespace Tsc.AIBridge.Audio.Processing
                 _isStreamingAudio = true;
                 _isOpusStream = isOpus;
 
+                // Reset per-turn observability counter. Late-chunk drops from a previous turn
+                // should not bleed into the current turn's reporting.
+                DroppedBytesAfterStreamEnd = 0;
+                _lastEndAudioStreamTime = DateTime.MinValue;
+
                 // Reset decoder for clean state - each TTS response is a new OGG stream
                 // Without this, the parser tries to decode OpusHead/OpusTags of the new stream
                 // as audio packets, causing Opus decode error -4
@@ -470,9 +515,43 @@ namespace Tsc.AIBridge.Audio.Processing
             {
                 if (!_isStreamingAudio)
                 {
-                    if (_isVerboseLogging)
-                        Debug.LogWarning($"[AudioStreamProcessor] Received audio but stream not started - ignoring data");
-                    return;
+                    // Robust late-chunk handling. In production, the safety-net timeout in
+                    // StreamingAudioPlayer (1.87s of no data → StopPlayback → OnPlaybackComplete →
+                    // NpcClientBase.ResetAudioStateForNextTurn → this.EndAudioStream()) often
+                    // fires while the TTS server is still streaming. The previous code dropped
+                    // the late chunks silently, losing ~50% of the audio in observed sessions
+                    // (Voxtral incident 2026-05-13 17:42: 30748 bytes sent, ~14000 played back).
+                    //
+                    // We now auto-resume the stream within a bounded window. Outside the window
+                    // (the user has moved on, or the pipeline is shutting down) we still drop,
+                    // but loudly — bytes counted in DroppedBytesAfterStreamEnd so production
+                    // can observe silent loss instead of guessing.
+                    var secondsSinceEnd = (DateTime.UtcNow - _lastEndAudioStreamTime).TotalSeconds;
+                    var playerCanResume = _audioPlayer != null
+                                          && _audioPlayer.PipelineState != Playback.AudioPipelineState.ShuttingDown
+                                          && _audioPlayer.PipelineState != Playback.AudioPipelineState.Destroyed;
+
+                    if (_isOpusStream && secondsSinceEnd < ResumeWindowSeconds && playerCanResume)
+                    {
+                        Debug.LogWarning($"[AudioStreamProcessor] Late chunk ({audioData.Length} bytes) arrived " +
+                                         $"{secondsSinceEnd:F2}s after EndAudioStream — resuming playback so " +
+                                         "audio is not silently lost (production-safe recovery for TTS-provider " +
+                                         "chunk-rate dips that triggered the client safety-net early).");
+
+                        _isStreamingAudio = true;
+                        _audioPlayer.ResumePlaybackForLateChunks();
+                        // Fall through to normal processing below.
+                    }
+                    else
+                    {
+                        DroppedBytesAfterStreamEnd += audioData.Length;
+                        var reason = !_isOpusStream ? "non-opus stream"
+                                     : !playerCanResume ? "player pipeline shut down"
+                                     : "outside resume window";
+                        Debug.LogWarning($"[AudioStreamProcessor] Dropped {audioData.Length} bytes after stream end " +
+                                         $"(total dropped this turn: {DroppedBytesAfterStreamEnd}). Reason: {reason}.");
+                        return;
+                    }
                 }
 
                 if (_isOpusStream)
@@ -571,6 +650,11 @@ namespace Tsc.AIBridge.Audio.Processing
                     // Without this, _isStreamingAudio stays true → StartAudioStream returns early
                     // → next turn's _isStreamActive never set → FillAudioBuffer outputs silence → NPC hangs
                     _isStreamingAudio = false;
+
+                    // Mark the moment so ProcessReceivedAudio can detect late chunks
+                    // arriving within ResumeWindowSeconds and resume the stream instead of
+                    // silently dropping (production audio-truncation recovery — see field doc).
+                    _lastEndAudioStreamTime = DateTime.UtcNow;
 
                     // Signal the real-time player that the stream is complete
                     if (_audioPlayer != null)

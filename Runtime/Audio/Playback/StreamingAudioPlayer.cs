@@ -679,6 +679,61 @@ namespace Tsc.AIBridge.Audio.Playback
         }
 
         /// <summary>
+        /// Re-arms playback for late-arriving audio chunks after a safety-net timeout
+        /// stopped playback prematurely.
+        /// </summary>
+        /// <remarks>
+        /// CRITICAL for robust audio against TTS providers whose chunk-rate occasionally dips
+        /// (Voxtral, Cartesia). The flow being recovered:
+        ///   1. Server is still streaming TTS audio
+        ///   2. A brief gap in chunks exceeds the safety-net timeout (1,87s + 3s configurable)
+        ///   3. <see cref="StopPlayback"/> fires <see cref="OnPlaybackComplete"/>
+        ///   4. <c>NpcClientBase.ResetAudioStateForNextTurn</c> calls
+        ///      <c>AudioStreamProcessor.EndAudioStream()</c>, which would normally close the stream
+        ///   5. <c>AudioStreamProcessor</c> instead detects a late chunk within the resume window
+        ///      and calls this method to re-arm the player without resetting decoder state.
+        ///
+        /// Unlike <see cref="StartStream"/>, this method DOES NOT:
+        /// - clear <see cref="_audioBuffer"/> (we are continuing the same logical stream)
+        /// - reset <c>_totalSamplesReceived</c> / <c>_totalSamplesPlayed</c> (continuation, not new stream)
+        /// - reset <c>_serverStreamEnd</c> (if the server's end-signal already arrived, we still want
+        ///   <see cref="EvaluateAutoComplete"/> to finalise once the late chunks finish playing)
+        /// - clear <c>_isPrimingBuffer</c> (we already started once, no need for the larger initial buffer)
+        ///
+        /// It DOES reset the flags that would otherwise prevent
+        /// <see cref="AddAudioData"/> → <see cref="StartPlayback"/> from re-firing.
+        /// </remarks>
+        public void ResumePlaybackForLateChunks()
+        {
+            lock (_stateLock)
+            {
+                if (_pipelineState == AudioPipelineState.ShuttingDown
+                    || _pipelineState == AudioPipelineState.Destroyed)
+                {
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{_cachedGameObjectName}] ResumePlaybackForLateChunks blocked — pipeline {_pipelineState}");
+                    return;
+                }
+
+                _forceStop = false;
+                _isStreamActive = true;
+                _isPlaybackStarted = false; // re-arm so AddAudioData → StartPlayback can re-trigger
+                _streamComplete = false;
+                _shouldStop = false;
+                _isReceivingResponse = true;
+
+                // Re-enter Streaming state if we were Idle; leave ShuttingDown/Paused alone.
+                if (_pipelineState == AudioPipelineState.Idle)
+                {
+                    _pipelineState = AudioPipelineState.Streaming;
+                }
+
+                if (enableVerboseLogging)
+                    Debug.Log($"[{_cachedGameObjectName}] ResumePlaybackForLateChunks — playback re-armed for late chunks");
+            }
+        }
+
+        /// <summary>
         /// Add audio samples to the streaming buffer
         /// </summary>
         public void AddAudioData(float[] samples)
