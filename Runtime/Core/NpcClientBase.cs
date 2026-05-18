@@ -635,6 +635,10 @@ namespace Tsc.AIBridge.Core
         /// even if one of them throws (e.g., Opus decode error on iOS).
         /// Without this, state corruption causes the NPC to hang on subsequent turns.
         /// </summary>
+        // Tracks an in-flight deferred-teardown coroutine so we can cancel/replace it when
+        // a new defer cycle begins or the NPC is destroyed. Null when no defer is pending.
+        private Coroutine _deferredTeardownCoroutine;
+
         private void ResetAudioStateForNextTurn(bool wasInterrupted)
         {
             // Don't reset state if pipeline is shutting down — prevents event cascade from
@@ -653,15 +657,93 @@ namespace Tsc.AIBridge.Core
             // fresh OGG stream, and re-trigger StartAudioStream → buffer wipe + decoder
             // reset → ~6 seconds of remaining audio lost. See production incident
             // 2026-05-18 11:48 and StreamEndDecision for the full rationale.
+            //
+            // CRITICAL (v1.17.4 fix for 2026-05-18 13:58 incident): defer alone is not
+            // enough. The defer MUST eventually end, otherwise:
+            //   1. _receivedStreamCount stays >0 → next turn's first OGG header is missed
+            //      → no fresh StartAudioStream → next turn silent.
+            //   2. Player has _forceStop=true from the StopPlayback that ran before the
+            //      defer decision → late chunks are decoded but produce silence.
+            // Therefore the defer-path:
+            //   - re-arms the player via ResumePlaybackForLateChunks so late chunks can play
+            //   - schedules a coroutine that polls for server signal OR hard timeout, then
+            //     runs the deferred teardown.
             var serverStreamEnd = AudioPlayer?.IsServerStreamEnd ?? true;
             if (!StreamEndDecision.ShouldTearDownAudioStream(wasInterrupted, serverStreamEnd))
             {
                 Debug.LogWarning($"[{NpcName}] Playback complete fired before server signalled AudioStreamEnd — " +
                                  "deferring EndAudioStream/Reset so late chunks can continue into the open stream. " +
-                                 "If no further chunks arrive, the stream resets cleanly on the next user turn.");
+                                 $"Defer will end on server signal or after {DeferExpiry.DefaultMaxDeferSeconds}s hard timeout.");
+
+                // Re-arm the player so late chunks within the defer window actually play.
+                // StopPlayback (which fired right before this method) set _forceStop=true;
+                // without this call FillAudioBuffer would emit silence forever even though
+                // chunks fill the buffer. This is what caused the 2026-05-18 13:58 "next
+                // turn silent" bug.
+                AudioPlayer?.ResumePlaybackForLateChunks();
+
+                // Cancel any previous defer-cycle and start a fresh one.
+                if (_deferredTeardownCoroutine != null)
+                {
+                    StopCoroutine(_deferredTeardownCoroutine);
+                }
+                _deferredTeardownCoroutine = StartCoroutine(WaitForDeferToExpireThenTearDown());
                 return;
             }
 
+            // Not in defer territory — cancel any pending defer coroutine so it doesn't
+            // double-fire teardown after the immediate teardown we're about to run.
+            if (_deferredTeardownCoroutine != null)
+            {
+                StopCoroutine(_deferredTeardownCoroutine);
+                _deferredTeardownCoroutine = null;
+            }
+
+            PerformAudioTeardown(wasInterrupted);
+        }
+
+        /// <summary>
+        /// Coroutine companion to <see cref="ResetAudioStateForNextTurn"/>'s defer path.
+        /// Polls each frame for <see cref="Audio.Playback.StreamingAudioPlayer.IsServerStreamEnd"/>
+        /// or hard timeout (<see cref="DeferExpiry.DefaultMaxDeferSeconds"/>), then runs the
+        /// teardown that was originally deferred.
+        /// </summary>
+        private System.Collections.IEnumerator WaitForDeferToExpireThenTearDown()
+        {
+            var elapsed = 0f;
+            while (true)
+            {
+                var serverSignalled = AudioPlayer != null && AudioPlayer.IsServerStreamEnd;
+                if (DeferExpiry.ShouldEndDefer(elapsed, serverSignalled))
+                {
+                    var reason = serverSignalled ? "server signalled AudioStreamEnd" : "hard timeout";
+                    if (enableVerboseLogging)
+                        Debug.Log($"[{NpcName}] Defer ending — reason: {reason} (elapsed: {elapsed:F2}s)");
+
+                    _deferredTeardownCoroutine = null;
+                    PerformAudioTeardown(wasInterrupted: false);
+                    yield break;
+                }
+
+                // If the NPC was deactivated/destroyed mid-defer, drop the coroutine quietly.
+                if (this == null || gameObject == null || !gameObject.activeInHierarchy)
+                {
+                    _deferredTeardownCoroutine = null;
+                    yield break;
+                }
+
+                yield return null;
+                elapsed += Time.deltaTime;
+            }
+        }
+
+        /// <summary>
+        /// Runs the actual EndAudioStream + AudioMessageHandler.Reset sequence. Extracted
+        /// from <see cref="ResetAudioStateForNextTurn"/> so both the immediate-teardown
+        /// path and the deferred-teardown coroutine share one implementation.
+        /// </summary>
+        private void PerformAudioTeardown(bool wasInterrupted)
+        {
             var label = wasInterrupted ? "interrupted" : "complete";
 
             try

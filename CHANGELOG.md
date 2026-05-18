@@ -6,6 +6,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.4] - 2026-05-18
+
+### Fixed
+- **Deferred audio teardown now always resolves.** v1.17.3's defer had no end
+  condition. Production session 2026-05-18 13:58 showed the failure mode:
+  safety-net fired → defer engaged → server signal arrived 2s later (nobody
+  listening) → 2 minutes pass → next user turn → chunks come in but
+  `_receivedStreamCount` was still >0 (defer skipped `AudioMessageHandler.Reset`)
+  → first OGG header misclassified as "additional OGG header, part of ongoing
+  stream" → no fresh `StartAudioStream` → player still in `_forceStop=true`
+  zombie state from the previous `StopPlayback` → entire next turn silent.
+
+  Two changes resolve this:
+  1. The defer path now calls `StreamingAudioPlayer.ResumePlaybackForLateChunks()`
+     immediately, re-arming `_forceStop`, `_isStreamActive`, `_isPlaybackStarted`
+     and the pipeline state so chunks arriving within the defer window actually
+     play instead of being silently buffered into a stopped player.
+  2. The defer path schedules a coroutine
+     (`WaitForDeferToExpireThenTearDown`) that polls each frame for
+     `IsServerStreamEnd` (clean end) or a hard timeout of 5 seconds (server-crash
+     safety net). When either fires, the previously-skipped `EndAudioStream` +
+     `AudioMessageHandler.Reset` runs — ensuring the next turn starts with a
+     clean state.
+
+### Added
+- `Tsc.AIBridge.Core.DeferExpiry.ShouldEndDefer(elapsedSeconds, serverStreamEnd, maxDeferSeconds)`
+  — pure decision function for "is this defer cycle done yet?". Tested without a
+  MonoBehaviour or coroutine; the timing comes from the caller. Default hard
+  timeout is `DefaultMaxDeferSeconds = 5` (covers observed Voxtral chunk-rate
+  dips with comfortable margin).
+- `DeferExpiryTests` — 8 tests pinning the policy: wait when neither signal nor
+  timeout, end on signal, end on timeout, signal beats timeout, custom maxDefer
+  values honoured.
+- `NpcClientBase.PerformAudioTeardown(bool wasInterrupted)` — extracted from
+  `ResetAudioStateForNextTurn` so both the immediate-teardown path and the
+  deferred-teardown coroutine share one implementation.
+- `NpcClientBase.WaitForDeferToExpireThenTearDown()` — coroutine that polls
+  per-frame until `DeferExpiry.ShouldEndDefer` returns true, then runs
+  `PerformAudioTeardown(false)`. Cancels itself if the NPC is deactivated mid-defer.
+
+### Changed (internal)
+- `NpcClientBase.ResetAudioStateForNextTurn` defer-path now:
+  - calls `ResumePlaybackForLateChunks()` before scheduling the coroutine,
+  - cancels any previous deferred-teardown coroutine before starting a new one,
+  - logs a clearer message including the hard-timeout value so the bounded
+    duration is explicit in production logs.
+- The immediate-teardown path also cancels a pending deferred-teardown coroutine
+  to prevent double-fire.
+
 ## [1.17.3] - 2026-05-18
 
 ### Fixed
