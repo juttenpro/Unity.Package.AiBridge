@@ -6,6 +6,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.3] - 2026-05-18
+
+### Fixed
+- **Safety-net timeout no longer tears down stream state while the server is still streaming.**
+  Follow-up to v1.17.2: that release added a late-chunk auto-resume path in
+  `AudioStreamProcessor.ProcessReceivedAudio`, but production session 2026-05-18 11:48
+  showed the new path was never reached. The server (Voxtral) was streaming a 78-char
+  response (~7-8s audio) when a 1,50s no-data gap tripped the client safety-net.
+  `OnPlaybackComplete` → `NpcClientBase.ResetAudioStateForNextTurn(false)` called
+  `AudioMessageHandler.Reset()` which set `_receivedStreamCount = 0` and reset the Opus
+  decoder. 233ms later the next chunk arrived; its OGG page magic ("OggS") was treated
+  by `AudioMessageHandler.ProcessBinaryMessage` as the FIRST OGG header of a new stream
+  → `StartAudioStream` was called → buffer wiped + decoder reset AGAIN. The ~6 seconds
+  of remaining audio the server kept sending decoded into the freshly reset stream,
+  but the player observed it as a tiny new stream followed by an immediate
+  `Server signalled end-of-audio-stream`. Result: only 1,59s of audio played, ~6s lost.
+
+  Root cause: `ResetAudioStateForNextTurn` was unconditional on the `wasInterrupted`
+  flag; it ran the full teardown for safety-net timeouts too. With the v1.17.3 fix,
+  teardown only runs when the stream is **truly done**: explicit interruption OR
+  explicit server `AudioStreamEnd` signal (via `StreamingAudioPlayer.IsServerStreamEnd`).
+  A safety-net timeout alone defers teardown — late chunks flow naturally into the
+  still-open stream via `AudioMessageHandler.ProcessBinaryMessage` (no
+  `_receivedStreamCount` reset, no StartAudioStream re-trigger, no buffer wipe).
+
+### Added
+- `Tsc.AIBridge.Core.StreamEndDecision.ShouldTearDownAudioStream(bool wasInterrupted, bool serverStreamEnd)`
+  — pure decision function encoding the teardown policy. Unit-testable without a
+  MonoBehaviour or WebSocket session. Returns `true` when teardown is correct
+  (interruption or server signal), `false` to defer (safety-net premature).
+- `StreamEndDecisionTests` — three tests pinning the policy:
+  interruption-always-tears-down, server-end-tears-down, and
+  safety-net-without-server-defers (the regression-fix).
+
+### Changed (internal)
+- `NpcClientBase.ResetAudioStateForNextTurn` now consults `StreamEndDecision` before
+  calling `EndAudioStream` and `AudioMessageHandler.Reset`. When the decision is
+  "defer", emits a `LogWarning` so the deferral is visible in production logs and
+  returns early.
+
+### Trade-off
+- If a safety-net timeout fires AND the server never sends `AudioStreamEnd` (e.g.,
+  server crash mid-response), the stream remains "logically open" until the next
+  user turn. At that point `StartAudioStream` resets state cleanly. Acceptable:
+  better to keep state alive briefly than to truncate real audio. The v1.17.2 resume
+  path in `AudioStreamProcessor.ProcessReceivedAudio` remains as a backup for
+  edge cases where `_isStreamingAudio` does become `false` (explicit interruption
+  scenarios).
+
 ## [1.17.2] - 2026-05-13
 
 ### Fixed

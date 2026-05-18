@@ -646,6 +646,22 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
+            // Defer teardown when the safety-net timeout fired but the server hasn't yet
+            // signalled AudioStreamEnd. Late chunks from the still-streaming TTS provider
+            // (Voxtral chunk-rate dip is the common cause) would otherwise see
+            // _receivedStreamCount==0 after AudioMessageHandler.Reset(), get treated as a
+            // fresh OGG stream, and re-trigger StartAudioStream → buffer wipe + decoder
+            // reset → ~6 seconds of remaining audio lost. See production incident
+            // 2026-05-18 11:48 and StreamEndDecision for the full rationale.
+            var serverStreamEnd = AudioPlayer?.IsServerStreamEnd ?? true;
+            if (!StreamEndDecision.ShouldTearDownAudioStream(wasInterrupted, serverStreamEnd))
+            {
+                Debug.LogWarning($"[{NpcName}] Playback complete fired before server signalled AudioStreamEnd — " +
+                                 "deferring EndAudioStream/Reset so late chunks can continue into the open stream. " +
+                                 "If no further chunks arrive, the stream resets cleanly on the next user turn.");
+                return;
+            }
+
             var label = wasInterrupted ? "interrupted" : "complete";
 
             try
