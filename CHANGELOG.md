@@ -6,6 +6,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-05-20
+
+### Added
+- **`Tsc.AIBridge.Messages.LlmEmptyResponseMessage`** — new server→client WebSocket
+  message emitted when the LLM streaming call completes but produces no usable
+  content (Azure OpenAI content-filter block, Vertex Safety / Recitation refusal,
+  length cap before any text was emitted). Carries the provider-reported
+  `FinishReason` verbatim so consumers can branch on it
+  (`ContentFiltered`, `Safety`, `Length`, …) without parsing the human-readable
+  `Reason` string. Distinct from `ErrorMessage` because the underlying HTTP call
+  itself succeeded.
+- **`NpcClientBase.OnLlmEmptyResponse`** — public event raised when the new
+  message arrives. Subscribers (typically the Training-Platform `NpcClient`)
+  SHOULD insert a placeholder turn in their `ChatHistory` so the next prompt has
+  a valid `user → assistant → user` shape — preventing the cascade where two
+  user messages in a row re-trigger Azure's content filter.
+- **`ConversationMetadataHandler.OnLlmEmptyResponse`** — internal event channel
+  forwarded by `NpcClientBase`.
+- `WebSocketMessageTypes.LlmEmptyResponse` constant (value `"LlmEmptyResponse"`)
+  — must match the backend's `ApiOrchestrator.Models.WebSocket.WebSocketMessageTypes.LlmEmptyResponse`.
+
+### Why
+Production incident 2026-05-20 09:54 (MaxJonkers, Leefstijl conversation): Azure
+OpenAI's `DialogReactionsGpt-41-mini` deployment returned 0 chunks / 0 chars for
+three consecutive dialog turns. The client's existing empty-content guard in
+`ChatHistory.AddReaction` silently dropped each NPC turn, so the next call's chat
+history contained two user messages in a row. Azure's filter saw the broken
+conversation shape and produced another empty response — a self-reinforcing
+loop that left the colleague's NPC silent for three back-to-back questions.
+
+The signal lets the client break the loop by inserting a neutral placeholder
+turn (default `"..."`), restoring the alternation the LLM expects.
+
+### Tests
+- `LlmEmptyResponseMessageTests` (4 tests) — wire shape, round-trip, null
+  finishReason tolerance, type-constant match with backend.
+- `LlmEmptyResponseRoutingTests` (5 tests) — end-to-end `ProcessMessage` →
+  `OnLlmEmptyResponse` event including the cross-talk guard that a `NoTranscript`
+  message must NOT bleed into the new event channel.
+
 ## [1.17.4] - 2026-05-18
 
 ### Fixed

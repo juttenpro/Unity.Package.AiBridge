@@ -33,6 +33,18 @@ namespace Tsc.AIBridge.WebSocket
         public event Action OnSessionStarted;  // Added for session confirmation
         public event Action<ConversationTurnResponse> OnMetadataReceived;
         public event Action<NoTranscriptMessage> OnNoTranscript;
+
+        /// <summary>
+        /// Fired when the backend reports that the LLM completed cleanly but
+        /// produced no content (content-filter block, safety refusal, etc.).
+        /// Receivers (typically <see cref="Core.NpcClientBase"/>) should insert a
+        /// placeholder turn in ChatHistory to keep the conversation shape valid
+        /// for the next turn — without this, two user messages in a row will
+        /// hit Azure's filter again and the 2026-05-20 cascade repeats.
+        /// Added in aibridge v1.18.0.
+        /// </summary>
+        public event Action<LlmEmptyResponseMessage> OnLlmEmptyResponse;
+
         public event Action<BufferHintMessage> OnBufferHint;
         public event Action<SentenceMetadataMessage> OnSentenceMetadata;
         public event Action<bool> OnConversationComplete;  // bool indicates if audio was received
@@ -313,6 +325,27 @@ namespace Tsc.AIBridge.WebSocket
                     // Only fire OnNoTranscript — NOT OnTranscription, to avoid duplicate noSpeechDetected in RuleSystem.
                     // The OnSttFailed path in AIBridgeRulesHandler already handles sending the correct SystemInput.
                     OnNoTranscript?.Invoke(noTranscriptMsg);
+                    break;
+
+                case WebSocketMessageTypes.LlmEmptyResponse:
+                    // Backend tells us the LLM call succeeded but produced no usable
+                    // content (e.g. Azure content-filter block). We forward this so
+                    // NpcClientBase can insert a placeholder turn in ChatHistory and
+                    // prevent the "stacked user messages" feedback loop. Always
+                    // logged at Warning so a single empty turn is immediately visible
+                    // in the Unity console. Added v1.18.0.
+                    var emptyResponseMsg = JsonConvert.DeserializeObject<LlmEmptyResponseMessage>(json);
+                    if (emptyResponseMsg != null)
+                    {
+                        Debug.LogWarning($"[{_personaName}] LLM empty-response signal received — " +
+                                         $"FinishReason: {emptyResponseMsg.FinishReason ?? "(unset)"}, " +
+                                         $"Reason: {emptyResponseMsg.Reason}");
+                        OnLlmEmptyResponse?.Invoke(emptyResponseMsg);
+                    }
+                    else
+                    {
+                        Debug.LogError($"[{_personaName}] Failed to deserialize LlmEmptyResponse message: {json}");
+                    }
                     break;
                     
                 case WebSocketMessageTypes.BufferHint:

@@ -231,6 +231,13 @@ namespace Tsc.AIBridge.Core
             // Subscribe to STT failure events to forward to RequestOrchestrator
             _metadataHandler.OnNoTranscript += HandleSttFailed;
 
+            // Subscribe to LLM empty-response signal. Forwarded verbatim to the
+            // public event so the Training-Platform NpcClient can decide what to
+            // do (insert ChatHistory placeholder, optionally surface UI hint).
+            // The package itself is intentionally policy-free here — adding the
+            // placeholder belongs in the client where ChatHistory lives.
+            _metadataHandler.OnLlmEmptyResponse += HandleLlmEmptyResponse;
+
             // Subscribe to SessionStarted event and forward to public OnSessionStarted event
             _metadataHandler.OnSessionStarted += () =>
             {
@@ -358,6 +365,29 @@ namespace Tsc.AIBridge.Core
             }
         }
 
+        /// <summary>
+        /// Handle the LLM empty-response signal from the backend. Default
+        /// implementation forwards the message to <see cref="OnLlmEmptyResponse"/>
+        /// for the consuming client to act on. Derived classes may override to
+        /// add subclass-specific behaviour (e.g. analytics) but should call the
+        /// base to preserve the public event.
+        /// </summary>
+        protected virtual void HandleLlmEmptyResponse(Messages.LlmEmptyResponseMessage message)
+        {
+            if (message == null)
+            {
+                Debug.LogWarning($"[{NpcName}] HandleLlmEmptyResponse received null message — ignored");
+                return;
+            }
+
+            Debug.LogWarning(
+                $"[{NpcName}] LLM empty response — finishReason={message.FinishReason ?? "(unset)"}, " +
+                $"reason=\"{message.Reason}\". " +
+                "Consumer should insert a ChatHistory placeholder to keep conversation shape valid.");
+
+            OnLlmEmptyResponse?.Invoke(message);
+        }
+
         protected abstract void ValidateConfiguration();
 
         protected virtual void OnDestroy()
@@ -367,6 +397,7 @@ namespace Tsc.AIBridge.Core
             {
                 _metadataHandler.OnTranscription -= HandleTranscription;
                 _metadataHandler.OnNoTranscript -= HandleSttFailed;
+                _metadataHandler.OnLlmEmptyResponse -= HandleLlmEmptyResponse;
                 // Note: OnSessionStarted and OnAIResponse use lambdas, automatically cleaned up when _metadataHandler is disposed
                 // Note: AudioStreamEnd handler removed - stream end now detected via AudioPlayer events
             }
@@ -404,6 +435,28 @@ namespace Tsc.AIBridge.Core
         /// Event fired when audio stops playing
         /// </summary>
         public event Action OnAudioStopped;
+
+        /// <summary>
+        /// Fired when the backend reports that the LLM completed cleanly but
+        /// produced no usable content for this turn (Azure OpenAI content-filter
+        /// block, Vertex Safety / Recitation refusal, length-cap before any
+        /// content was emitted, …).
+        /// </summary>
+        /// <remarks>
+        /// Subscribers (typically a Training-Platform-side NpcClient) SHOULD
+        /// insert a placeholder turn in their ChatHistory so the next turn's
+        /// prompt has a valid <c>user→assistant→user</c> shape. Without the
+        /// placeholder the next call to the LLM contains two user messages in a
+        /// row, which (a) re-triggers Azure's content filter and (b) confuses
+        /// chat-tuned models — the exact 2026-05-20 cascade where three
+        /// successive MaxJonkers turns produced no audio.
+        ///
+        /// Distinct from <see cref="Action"/>-style error events: the LLM call
+        /// itself succeeded; only its output was empty. Branch UI behaviour on
+        /// <see cref="Messages.LlmEmptyResponseMessage.FinishReason"/> instead of
+        /// the human-readable <c>Reason</c> field. Added v1.18.0.
+        /// </remarks>
+        public event Action<Messages.LlmEmptyResponseMessage> OnLlmEmptyResponse;
 
         /// <summary>
         /// Event fired when conversation starts

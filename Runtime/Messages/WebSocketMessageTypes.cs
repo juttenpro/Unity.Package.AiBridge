@@ -40,6 +40,20 @@ namespace Tsc.AIBridge.Messages
         public const string LatencyMetrics = "LatencyMetrics";
         public const string SentenceMetadata = "SentenceMetadata"; // Real-time character animation metadata
         public const string ConversationComplete = "conversationComplete"; // Lowercase per protocol
+
+        /// <summary>
+        /// Server → Client. Signal that the LLM completed cleanly but produced no
+        /// output content (e.g. Azure OpenAI content-filter block, Vertex Safety
+        /// refusal, max-tokens cap reached before any usable text). Distinct from
+        /// <see cref="Error"/> because the HTTP call itself succeeded.
+        ///
+        /// Clients SHOULD insert a placeholder turn into their ChatHistory on
+        /// receipt so the next turn's prompt has a valid user→assistant→user
+        /// shape — preventing the "stacked user messages" feedback loop that
+        /// re-triggers Azure's filter (see 2026-05-20 MaxJonkers cascade). Added
+        /// in aibridge v1.18.0.
+        /// </summary>
+        public const string LlmEmptyResponse = "LlmEmptyResponse";
     }
 
     /// <summary>

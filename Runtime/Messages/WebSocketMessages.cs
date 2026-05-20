@@ -775,6 +775,48 @@ namespace Tsc.AIBridge.Messages
     }
 
     /// <summary>
+    /// Server → Client. The LLM streaming call completed but produced no usable
+    /// content. Typical causes: Azure OpenAI content-filter block, Vertex AI
+    /// Safety / Recitation / ProhibitedContent refusal, length-cap before any
+    /// usable text was emitted. Distinct from <see cref="ErrorMessage"/> because
+    /// the underlying HTTP call succeeded — only the model produced nothing.
+    ///
+    /// Receivers (typically <c>NpcClientBase</c>) should:
+    /// <list type="bullet">
+    /// <item><description>Insert a placeholder turn in the local ChatHistory so the
+    /// next turn's prompt has a valid <c>user→assistant→user</c> shape. Without a
+    /// placeholder the next call will contain two user messages in a row, which
+    /// re-triggers Azure's content filter and confuses chat-tuned models — the
+    /// exact cascade observed on 2026-05-20 (3 silent NPC turns in a row).</description></item>
+    /// <item><description>Branch UI/log behaviour on <see cref="FinishReason"/>
+    /// (e.g. <c>"ContentFiltered"</c>, <c>"Safety"</c>, <c>"Length"</c>) rather
+    /// than parsing <see cref="Reason"/>.</description></item>
+    /// </list>
+    /// Added in aibridge v1.18.0.
+    /// </summary>
+    [Serializable]
+    public class LlmEmptyResponseMessage : WebSocketMessageBase
+    {
+        /// <summary>
+        /// Provider-reported finish reason on the streaming response. Forwarded
+        /// verbatim from the backend's <c>session.LlmFinishReason</c>. Common
+        /// values: <c>"ContentFiltered"</c> (Azure), <c>"Safety"</c>,
+        /// <c>"Recitation"</c>, <c>"ProhibitedContent"</c> (Vertex),
+        /// <c>"Length"</c> / <c>"MAX_TOKENS"</c> (any provider). Null when the
+        /// provider didn't report one.
+        /// </summary>
+        [JsonProperty("finishReason")]
+        public string FinishReason;
+
+        /// <summary>
+        /// Human-readable explanation, suitable for debug logging. Do NOT parse
+        /// this — branch on <see cref="FinishReason"/> instead.
+        /// </summary>
+        [JsonProperty("reason")]
+        public string Reason = "";
+    }
+
+    /// <summary>
     /// Message sent when STT fails to produce a transcript
     /// Allows Unity to handle the situation gracefully (e.g., say "Pardon?")
     /// </summary>
