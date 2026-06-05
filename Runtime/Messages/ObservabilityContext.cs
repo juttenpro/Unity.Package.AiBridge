@@ -63,5 +63,13 @@ namespace Tsc.AIBridge.Messages
         /// </summary>
         [JsonProperty("platform")]
         public string Platform;
+
+        /// <summary>
+        /// VirtualSkillsLab game-round id, created by the API and returned to the client (held in
+        /// the GameDataLogger). Correlation key to the player's step-by-step LogViewer logs on that
+        /// server. Null when no round is active (menu / pre-round).
+        /// </summary>
+        [JsonProperty("gameRoundId")]
+        public int? GameRoundId;
     }
 }

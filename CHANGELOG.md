@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-06-05
+
+### Added
+- **`Tsc.AIBridge.Messages.ObservabilityContext.GameRoundId`** — new anonymous field
+  carrying the VirtualSkillsLab game-round id (created by the API, held in the
+  GameDataLogger). The correlation key that ties an orchestrator turn / Slack issue to the
+  player's step-by-step LogViewer logs on that server, and a searchable column in the
+  observability dashboard. Null when no round is active.
+
+### Why
+Ops needs to jump from a Slack issue (or a dashboard turn) to the player's LogViewer
+step-logs. The per-launch app-log GUID is the wrong grain; the game-round id is the shared
+key both systems use. The host project's `IObservabilityContextProvider` reads it live from
+`TrainingGlobals.GameDataLogger.CurrentGameRoundId`.
+
 ## [1.19.0] - 2026-06-05
 
 ### Added
