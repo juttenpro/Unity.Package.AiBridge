@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-06-05
+
+### Added
+- **`Tsc.AIBridge.Messages.ObservabilityContext.Platform`** — new anonymous field
+  reporting the client platform/runtime: `"VR"`, `"Mobile_Android"`, `"Mobile_iOS"`,
+  or `"Editor (VR)"` / `"Editor (Mobile)"` when run from the Unity Editor. Rides on
+  outbound messages like the other observability IDs so the orchestrator's Slack logs
+  and dashboard can tell internal test traffic (Editor) from customer traffic and
+  triage per platform. Matches
+  `ApiOrchestrator.Models.WebSocket.ObservabilityContext.Platform` on the backend.
+
+### Why
+Ops could not tell from orchestrator Slack logs whether an error originated from
+internal testing (VR / Mobile / Editor) or a customer. `appMode`
+(Development/Production) already flowed; platform was the missing dimension. The host
+project's `IObservabilityContextProvider` resolves it at compile time from the
+`TSC_VR` scripting define plus `UNITY_EDITOR` / `UNITY_IOS` / `UNITY_ANDROID`.
+
 ## [1.18.0] - 2026-05-20
 
 ### Added

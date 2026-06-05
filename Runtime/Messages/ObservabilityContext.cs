@@ -55,5 +55,13 @@ namespace Tsc.AIBridge.Messages
         /// </summary>
         [JsonProperty("appMode")]
         public string AppMode;
+
+        /// <summary>
+        /// Client platform/runtime this build runs on: "VR", "Mobile_Android", "Mobile_iOS",
+        /// or "Editor (VR)" / "Editor (Mobile)" when running from the Unity Editor. Lets ops
+        /// distinguish internal test traffic (Editor) from customer traffic. Null when unset.
+        /// </summary>
+        [JsonProperty("platform")]
+        public string Platform;
     }
 }
