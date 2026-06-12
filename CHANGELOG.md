@@ -6,6 +6,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.20.1] - 2026-06-12
+
+### Fixed
+- **`StreamingAudioPlayer.EndStream()` now clears `_isStreamActive`.** A stream torn down via
+  the deferred-teardown path stayed flagged active forever, which silently swallowed queued
+  scripted reactions in the host project.
+
+  The chain: a safety-net timeout without a server `AudioStreamEnd` engages the defer in
+  `NpcClientBase.ResetAudioStateForNextTurn`, which calls `ResumePlaybackForLateChunks()`
+  (sets `_isStreamActive = true`) so late chunks can still play. When the defer ends via its
+  5s hard timeout (no late chunks arrived, server never signalled), `PerformAudioTeardown`
+  runs `AudioStreamProcessor.EndAudioStream()` → `EndStream()`. `EndStream()` only set
+  `_streamComplete`/`_isReceivingResponse`; `StopPlaybackInternal` (the only other place that
+  clears `_isStreamActive`) does NOT run on this path. So `_isStreamActive` was left `true`
+  indefinitely. Combined with `AudioFilterRelay`'s looping spatial-audio dummy clip
+  (`AudioSource.isPlaying == true`), `IsPlaybackActive` (`= _isStreamActive && _cachedIsPlaying`)
+  stuck `true`. The host project's `NpcAudioPlayer` waits on `IsPlaybackActive` before playing a
+  Queue-mode scripted reaction, so the reaction never started — no audio, no `ReactionStarted`
+  SystemInput — until the next turn's `StartStream` reset the state. Reported as "scripted
+  reaction not played" in placebo / verdovende prik.
+
+  A genuine late chunk arriving after teardown still re-arms the stream via
+  `ResumePlaybackForLateChunks()`, so the 1.17.x late-chunk recovery is unaffected.
+
+### Added
+- **`StreamingAudioPlayer.IsStreamActive`** — public read-only accessor for `_isStreamActive`.
+  Unlike `IsPlaybackActive` it does not depend on `AudioSource.isPlaying`, so it is the reliable
+  "is a stream still open?" signal and the seam the regression test asserts on.
+- `StreamingAudioPlayerStreamActiveTeardownTests` — 3 EditMode tests: deferred-teardown clears
+  the active flag, normal teardown clears it, and a late chunk after teardown still re-arms the
+  stream (recovery not regressed).
+
 ## [1.20.0] - 2026-06-05
 
 ### Added

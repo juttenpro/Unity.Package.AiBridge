@@ -211,6 +211,14 @@ namespace Tsc.AIBridge.Audio.Playback
         private const int UNDERRUN_GRACE_PERIOD_SAMPLES = 24000; // ~500ms at 48kHz - ignore underruns during buffer stabilization
 
         public bool IsPlaybackActive => _isStreamActive && _cachedIsPlaying;
+
+        /// <summary>
+        /// True while a stream is open (set by StartStream / ResumePlaybackForLateChunks, cleared
+        /// by the final EndStream teardown and by StopPlaybackInternal). Unlike
+        /// <see cref="IsPlaybackActive"/> this does NOT depend on AudioSource.isPlaying, so it is
+        /// the reliable signal for "is a stream still active?" — see the 1.20.1 EndStream fix.
+        /// </summary>
+        public bool IsStreamActive => _isStreamActive;
         public bool HasBufferedAudio => _audioBuffer.Count > 0;
         public float BufferLevel => _audioBuffer.Count / (float)_sampleRate; // In seconds
 
@@ -824,6 +832,23 @@ namespace Tsc.AIBridge.Audio.Playback
             {
                 _streamComplete = true;
                 _isReceivingResponse = false; // NEW: Mark that response is complete
+
+                // CRITICAL (1.20.1): clear _isStreamActive on the FINAL teardown.
+                // EndStream() is the end of the line for a stream — it runs from
+                // AudioStreamProcessor.EndAudioStream(), including the deferred-teardown path in
+                // NpcClientBase (PerformAudioTeardown after a safety-net defer). That defer first
+                // calls ResumePlaybackForLateChunks() — which sets _isStreamActive=true so late
+                // chunks can still play — and StopPlaybackInternal (the only other place that
+                // clears the flag) does NOT run on this path. So when the defer ended via its hard
+                // timeout (no late chunks, no server signal), _isStreamActive stayed true forever.
+                // IsPlaybackActive (=_isStreamActive && _cachedIsPlaying) then stuck true because
+                // AudioFilterRelay's looping dummy clip keeps AudioSource.isPlaying true. Downstream
+                // that hung NpcAudioPlayer's Queue-mode scripted reactions on IsPlaybackActive: no
+                // audio, no ReactionStarted, until the next turn's StartStream reset things. A
+                // genuine late chunk arriving after this re-arms the stream via
+                // ResumePlaybackForLateChunks(), so recovery is unaffected.
+                _isStreamActive = false;
+
                 if (enableVerboseLogging)
                     Debug.Log($"[{_cachedGameObjectName}] Stream ended - Total received: {_totalSamplesReceived} samples ({_totalSamplesReceived / (float)_sampleRate:F2}s)");
             }
