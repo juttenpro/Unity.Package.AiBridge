@@ -275,21 +275,25 @@ namespace Tsc.AIBridge.WebSocket
                     var completeMsg = JsonConvert.DeserializeObject<ConversationCompleteMessage>(json);
                     var completeRequestId = completeMsg?.RequestId;
 
-                    //Debug.Log($"[{_personaName}] Conversation completed - checking if cleanup needed");
-
                     // Check if audio was received via RequestOrchestrator
                     // Use HasInstance to avoid FindFirstObjectByType when orchestrator is already destroyed
                     // (e.g., after leaving a lesson scene while WebSocket is still connected)
-                    var audioReceived = false;
                     if (RequestOrchestrator.HasInstance)
                     {
                         var orchestrator = RequestOrchestrator.Instance;
-                        // CRITICAL: Only check/complete if this message is for the CURRENT session
-                        // This prevents turn 1's conversationComplete from completing turn 2's session
+                        // CRITICAL: Only act on a completion for the CURRENT session — including the
+                        // event below. Raising OnConversationComplete for a stale turn killed the
+                        // ACTIVE turn: the orchestrator's cleanup hook clears _currentSession /
+                        // _isRequestActive without RequestId knowledge, so a late turn-N completion
+                        // arriving while turn N+1 was already recording wiped N+1's state. PTT release
+                        // then found "no active request" → no EndOfSpeech, no transcript, no SttFailed
+                        // → RuleSystem stayed busy and the NPC was mute until an NPC switch
+                        // (2026-06-12 audit, client critical C4). The voice-fallback subscriber must
+                        // equally only ever see the current turn.
                         var currentSessionId = orchestrator.GetCurrentSessionId();
                         if (currentSessionId == completeRequestId)
                         {
-                            audioReceived = orchestrator.GetCurrentSessionStreamsReceived() > 0;
+                            var audioReceived = orchestrator.GetCurrentSessionStreamsReceived() > 0;
 
                             // If no audio was received (e.g. NoTranscript case), we need to clean up the session
                             // With audio, AudioStreamEnd handles cleanup. Without audio, we do it here.
@@ -303,15 +307,21 @@ namespace Tsc.AIBridge.WebSocket
                             {
                                 Debug.Log($"[{_personaName}] Audio was received ({orchestrator.GetCurrentSessionStreamsReceived()} streams) for session {completeRequestId} - AudioStreamEnd will handle cleanup");
                             }
+
+                            // Notify listeners — only for the turn that is actually current.
+                            OnConversationComplete?.Invoke(audioReceived);
                         }
                         else if(_enableVerboseLogging)
                         {
-                            Debug.Log($"[{_personaName}] conversationComplete for old session {completeRequestId}, current is {currentSessionId} - ignoring cleanup");
+                            Debug.Log($"[{_personaName}] conversationComplete for old session {completeRequestId}, current is {currentSessionId} - ignoring (no cleanup, no event)");
                         }
                     }
-
-                    // Notify listeners
-                    OnConversationComplete?.Invoke(audioReceived);
+                    else
+                    {
+                        // No orchestrator (left the lesson scene with the socket still open): keep the
+                        // legacy unconditional notification so remaining listeners can settle.
+                        OnConversationComplete?.Invoke(false);
+                    }
                     break;
                     
                 case WebSocketMessageTypes.NoTranscript:
