@@ -6,6 +6,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-06-12
+
+### Fixed
+- **A late `conversationComplete` for an old turn no longer kills the active turn.** The
+  v1.17.1 fix gated `CompleteCurrentSession()` on a RequestId match, but
+  `ConversationMetadataHandler` still raised `OnConversationComplete` unconditionally — also in
+  the "old session, ignoring cleanup" branch. `RequestOrchestrator`'s cleanup hook clears
+  `_currentSession`/`_isRequestActive` without RequestId knowledge, so the chain was: user
+  interrupts the NPC and immediately starts talking (turn N+1 recording); the backend still
+  sends turn N's completion; the event fires; turn N+1's state is wiped. PTT release then found
+  "no active request" → no EndOfSpeech, no transcript, no SttFailed → RuleSystem stayed busy and
+  the NPC was permanently mute until an NPC switch. The event now only fires for the turn that
+  is actually current (the no-orchestrator legacy path keeps its unconditional notify). This
+  also stops the voice-fallback subtitle listener from seeing stale turns.
+  (2026-06-12 robustness audit, client critical C4.)
+
+### Added
+- **Per-turn first-signal watchdog** (`RequestOrchestrator`, Inspector field
+  `turnFirstSignalTimeoutSeconds`, default 120s, 0 = off). After a request is sent, the turn
+  now fails loudly when the backend shows no sign of life (no transcript, no audio playback
+  start, no completion) within the budget — recovery runs the same contract as a WebSocket
+  disconnect (`OnSttFailed` with reason `TurnResponseTimeout` + state reset), so the RuleSystem
+  resets and the player can simply ask again. Covers half-open TCP connections (WiFi drop
+  without RST — there is no app-level keepalive in either direction), server hangs, and backend
+  error paths that skip `conversationComplete`; also catches a silently failed text-request
+  send. Phase-1-only by design: the watchdog stops permanently at the first backend signal, so
+  it can never cut off a long Full-mode monologue, and paused time does not consume budget
+  (PauseManager pauses backend streaming too). Decision logic is a pure function
+  (`EvaluateTurnWatchdog`) with EditMode coverage.
+  (2026-06-12 robustness audit, client high H8.)
+- `StaleConversationCompleteTests` — 4 EditMode tests pinning the stale/matching/no-orchestrator
+  completion paths end-to-end through `ConversationMetadataHandler.ProcessMessage`.
+- `TurnFirstSignalWatchdogTests` — 10 EditMode tests: verdict logic (disabled, turn
+  ended/replaced, signal seen, stale signal from an older turn, paused, within/over budget),
+  the fail-turn recovery contract, and signal recording on transcript/audio.
+
 ## [1.20.1] - 2026-06-12
 
 ### Fixed
