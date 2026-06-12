@@ -99,6 +99,11 @@ namespace Tsc.AIBridge.Core
         [Tooltip("Enable verbose logging for debugging")]
         private bool enableVerboseLogging;
 
+        [Header("Turn Watchdog")]
+        [SerializeField]
+        [Tooltip("Fails the active turn when the backend shows no first sign of life (transcript, audio, completion) within this many seconds after the request was sent. Covers half-open connections and backend error paths that skip conversationComplete. 0 disables the watchdog.")]
+        private float turnFirstSignalTimeoutSeconds = 120f;
+
         #endregion
 
         #region Events
@@ -134,6 +139,12 @@ namespace Tsc.AIBridge.Core
         // Tracked so the same handler is not subscribed twice (same-NPC retries) and so we can
         // unsubscribe symmetrically on NPC switch / cancel / destroy.
         private ConversationMetadataHandler _subscribedMetadataHandler;
+
+        // Turn watchdog state: the RequestId for which a backend response signal (transcript or
+        // audio playback start) was recorded, and whether a pause is active — paused time must not
+        // count toward the watchdog budget because PauseManager pauses backend streaming too.
+        private string _turnSignalSeenForRequestId;
+        private bool _isPauseActive;
 
         /// <summary>
         /// Event fired when the active NPC changes.
@@ -326,6 +337,10 @@ namespace Tsc.AIBridge.Core
         /// <param name="source">Source of the pause (for logging): "ApplicationPause", "TrainingPause", etc.</param>
         public void HandlePauseStateChange(bool isPaused, string source = "Unknown")
         {
+            // Tracked for the turn watchdog: backend streaming is paused along with the client,
+            // so silence while paused is legitimate and must not count toward the turn timeout.
+            _isPauseActive = isPaused;
+
             if (isPaused)
             {
                 // Pause - stop any active recording to prevent orphaned state
@@ -835,6 +850,13 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public void MarkAudioStreamReceived()
         {
+            // Any audio for the current turn is proof of backend life — ends the turn watchdog's
+            // first-signal window.
+            if (_currentSession != null)
+            {
+                _turnSignalSeenForRequestId = _currentSession.RequestId;
+            }
+
             if (_currentSession != null && _currentSession.StreamsReceived == 0)
             {
                 _currentSession.StreamsReceived = 1;
@@ -865,12 +887,145 @@ namespace Tsc.AIBridge.Core
             }
         }
 
+        #region Turn Watchdog
+
+        /// <summary>
+        /// Outcome of one turn-watchdog evaluation tick. See <see cref="EvaluateTurnWatchdog"/>.
+        /// </summary>
+        internal enum TurnWatchdogVerdict
+        {
+            KeepWaiting,
+            KeepWaitingPaused,
+            StopWatching,
+            FailTurn
+        }
+
+        /// <summary>
+        /// Decision logic for the per-turn first-signal watchdog, kept pure so the timing edges
+        /// are unit-testable without PlayMode.
+        ///
+        /// Phase-1-only by design: the watchdog only covers the window between sending a request
+        /// and the FIRST backend response signal (transcript, audio playback start, completion —
+        /// completion clears the session, which lands in the "turn ended" branch). Once any signal
+        /// proves the chain is alive it stops for good, so it can never cut off a long Full-mode
+        /// monologue mid-stream. Paused time does not consume budget: PauseManager pauses backend
+        /// streaming too, so silence while paused is legitimate (2026-06-12 audit, client H8).
+        /// </summary>
+        internal static TurnWatchdogVerdict EvaluateTurnWatchdog(
+            string watchedRequestId,
+            string currentRequestId,
+            string signalSeenForRequestId,
+            bool isPaused,
+            float elapsedSinceSendSeconds,
+            float timeoutSeconds)
+        {
+            if (timeoutSeconds <= 0f)
+                return TurnWatchdogVerdict.StopWatching; // feature disabled via Inspector
+
+            if (currentRequestId != watchedRequestId)
+                return TurnWatchdogVerdict.StopWatching; // turn completed, cancelled or replaced
+
+            if (signalSeenForRequestId == watchedRequestId)
+                return TurnWatchdogVerdict.StopWatching; // backend proved alive — phase 1 over
+
+            if (isPaused)
+                return TurnWatchdogVerdict.KeepWaitingPaused;
+
+            return elapsedSinceSendSeconds >= timeoutSeconds
+                ? TurnWatchdogVerdict.FailTurn
+                : TurnWatchdogVerdict.KeepWaiting;
+        }
+
+        /// <summary>
+        /// Watches one turn for its first backend response signal and fails it when none arrives.
+        /// Started right after the request is sent (audio and text paths). Without this, a
+        /// half-open connection (WiFi drop without RST — no app-level keepalive exists in either
+        /// direction), a server hang, or a backend error path that skips conversationComplete left
+        /// _currentSession armed forever: the NPC stayed silent until the TCP layer happened to
+        /// notice or the player switched NPCs.
+        /// </summary>
+        private IEnumerator TurnFirstSignalWatchdog(string requestId)
+        {
+            const float tickSeconds = 1f;
+            var elapsed = 0f;
+
+            while (true)
+            {
+                // Realtime: an unresponsive backend should be detected even at timeScale 0; the
+                // explicit pause branch (not timeScale) decides whether the budget is consumed.
+                yield return new WaitForSecondsRealtime(tickSeconds);
+
+                var verdict = EvaluateTurnWatchdog(
+                    requestId,
+                    _currentSession?.RequestId,
+                    _turnSignalSeenForRequestId,
+                    _isPauseActive,
+                    elapsed,
+                    turnFirstSignalTimeoutSeconds);
+
+                switch (verdict)
+                {
+                    case TurnWatchdogVerdict.StopWatching:
+                        yield break;
+                    case TurnWatchdogVerdict.FailTurn:
+                        FailUnresponsiveTurn(requestId);
+                        yield break;
+                    case TurnWatchdogVerdict.KeepWaiting:
+                        elapsed += tickSeconds;
+                        break;
+                    case TurnWatchdogVerdict.KeepWaitingPaused:
+                        break; // freeze the clock while paused
+                }
+            }
+        }
+
+        /// <summary>
+        /// Fails a turn whose backend never responded, via the same recovery contract as
+        /// <see cref="HandleWebSocketDisconnected"/>: RaiseSttFailed lets the RuleSystem reset
+        /// IsReactionBusy, and the session slot is released so the player can simply try again.
+        /// </summary>
+        private void FailUnresponsiveTurn(string requestId)
+        {
+            Debug.LogWarning(
+                $"[RequestOrchestrator] No backend response for turn {requestId} within " +
+                $"{turnFirstSignalTimeoutSeconds}s — failing the turn (half-open connection, server " +
+                "hang, or error path that skipped conversationComplete). The next PTT starts clean.");
+
+            if (_isRequestActive)
+            {
+                _isRequestActive = false;
+                RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage
+                {
+                    Reason = "TurnResponseTimeout",
+                    AudioDuration = 0,
+                    SttProvider = "none"
+                });
+            }
+
+            if (!string.IsNullOrEmpty(requestId) && NpcMessageRouter.HasInstance)
+            {
+                NpcMessageRouter.Instance.ClearRequest(requestId);
+            }
+
+            _currentSession = null;
+            _isProcessingRequest = false;
+        }
+
+        #endregion
+
         /// <summary>
         /// Raise the OnTranscriptionReceived event
         /// Called by NpcClientBase when transcription is received from WebSocket
         /// </summary>
         public void RaiseTranscriptionReceived(string transcript)
         {
+            // A transcript is proof of backend life for the current turn — ends the turn
+            // watchdog's first-signal window.
+            if (_currentSession != null)
+            {
+                _turnSignalSeenForRequestId = _currentSession.RequestId;
+            }
+
             OnTranscriptionReceived?.Invoke(transcript);
         }
 
@@ -1432,6 +1587,9 @@ namespace Tsc.AIBridge.Core
                 if (enableVerboseLogging)
                     Debug.Log($"[RequestOrchestrator] SessionStart message sent successfully");
 
+                // The request is now in flight: watch for the backend's first sign of life.
+                StartCoroutine(TurnFirstSignalWatchdog(request.RequestId));
+
                 // Wait for SessionStarted confirmation from backend before flushing
                 if (_activeNpcClient != null)
                 {
@@ -1568,6 +1726,11 @@ namespace Tsc.AIBridge.Core
 
                 // Send text input via WebSocket
                 yield return _webSocketClient.SendTextInputAsync(textInputMessage);
+
+                // The request is now in flight: watch for the backend's first sign of life. This
+                // also covers a silently failed send — the turn then fails after the timeout
+                // instead of staying half-armed forever.
+                StartCoroutine(TurnFirstSignalWatchdog(request.RequestId));
 
                 if (enableVerboseLogging)
                     Debug.Log($"[RequestOrchestrator] Text request started. Session: {_currentSession.RequestId}");
