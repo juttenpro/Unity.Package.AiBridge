@@ -168,6 +168,17 @@ namespace Tsc.AIBridge.Messages
         public int? ThinkingBudget { get; set; }
 
         /// <summary>
+        /// Optional reactive dialogue-LLM fallback target from the AI API Template. Omitted from
+        /// the payload entirely when no fallback is configured (NullValueHandling.Ignore), so older
+        /// backends/clients and fallback-less templates are unaffected. When present, the backend
+        /// switches to this provider/model — with its own sampling knobs — if the primary produces
+        /// no first token within the switch deadline. Set per AI API Template via
+        /// ConversationRequest.LlmFallback → RequestOrchestrator.
+        /// </summary>
+        [JsonProperty("llmFallback", NullValueHandling = NullValueHandling.Ignore)]
+        public LlmFallbackConfig LlmFallback { get; set; }
+
+        /// <summary>
         /// Temperature for LLM response generation (0.0 - 1.0)
         /// </summary>
         [JsonProperty("temperature")]

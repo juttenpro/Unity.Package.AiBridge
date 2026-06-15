@@ -1541,6 +1541,9 @@ namespace Tsc.AIBridge.Core
                     // behaviour). Sessions inherit this once at SessionStart; subsequent
                     // dialogue turns within the session reuse the same budget.
                     ThinkingBudget = _currentConversationRequest?.ThinkingBudget,
+                    // Optional per-template dialogue-LLM fallback target. Null when the template
+                    // configures none → omitted from the wire payload → backend wraps nothing.
+                    LlmFallback = _currentConversationRequest?.LlmFallback,
                     // STT settings
                     SttProvider = parameters.SttProvider,
                     LanguageCode = parameters.Language,  // Note: field is called LanguageCode, not Language

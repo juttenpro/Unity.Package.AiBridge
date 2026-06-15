@@ -41,6 +41,17 @@ namespace Tsc.AIBridge.Core
         public float TopK { get; set; } = 0f;
         public float FrequencyPenalty { get; set; } = 0f;
         public float PresencePenalty { get; set; } = 0f;
+
+        /// <summary>
+        /// Optional reactive dialogue-LLM fallback target from the AI API Template. Null = no
+        /// fallback (backend wraps nothing; a stalled primary degrades gracefully). When set, the
+        /// backend switches to this provider/model — with its own sampling knobs — if the primary
+        /// produces no first token in time. Carried verbatim into
+        /// <see cref="Messages.SessionStartMessage.LlmFallback"/> by RequestOrchestrator.
+        /// Populated per AI API Template by RuleSystem.
+        /// </summary>
+        public Messages.LlmFallbackConfig LlmFallback { get; set; }
+
         public string VoiceId { get; set; }  // TTS voice identifier
         public string TtsStreamingMode { get; set; } = "batch";
         public float TtsStability { get; set; } = 0.5f;

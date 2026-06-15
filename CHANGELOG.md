@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-06-15
+
+### Added
+- **Per-template dialogue-LLM fallback wire field.** `SessionStartMessage.llmFallback`
+  (new `LlmFallbackConfig`) carries an optional fallback provider/model + its own sampling
+  knobs over the wire, plumbed from `ConversationRequest.LlmFallback` via `RequestOrchestrator`.
+  When the primary LLM stalls before its first token, the backend retries the dialogue turn on
+  this target with provider-correct params (a different provider never inherits the primary's
+  sampling). Null = no fallback: the field is omitted from the payload (`NullValueHandling.Ignore`)
+  and a stalled primary degrades gracefully — older backends/clients and fallback-less templates
+  are unaffected. The target is opt-in **per AI API Template**, replacing the previous global
+  appsettings fallback that leaked across tenants (Saxion 401 incident). The system prompt and
+  chat history are reused from the primary, so only the LLM knobs travel. RuleSystem populates
+  `ConversationRequest.LlmFallback` (separate change).
+
 ## [1.21.0] - 2026-06-12
 
 ### Fixed
