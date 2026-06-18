@@ -20,7 +20,7 @@ namespace OpusSharp.Editor
         private const string PackageNativesPath = "Packages/com.simulationcrew.aibridge/Plugins/OpusSharp/OpusSharp.Natives/runtimes";
         private const string TargetPluginsPath = "Assets/Plugins/OpusSharp";
         private const string InstalledVersionKey = "OpusSharp.InstalledVersion";
-        private const string CurrentVersion = "1.3.0";
+        private const string CurrentVersion = "1.3.1";
 
         static OpusPluginInstaller()
         {
@@ -475,18 +475,19 @@ namespace OpusSharp.Editor
                 return;
             }
 
+            // Exclude the simulator lib from ALL builds. The pipeline is device-only,
+            // and the (undocumented) "SimulatorSDK" PluginImporter flag no longer scopes
+            // this lib to a simulator-only Xcode search path as of Unity 6000.3.13: it
+            // leaked into the device archive beside the device libopus.a -> duplicate
+            // '-lopus' + fatal arm64 "iOS-simulator" slice -> ARCHIVE FAILED. Disabling
+            // iOS outright is version-independent. Re-enable manually for a real sim build.
             importer.ClearSettings();
             importer.SetCompatibleWithAnyPlatform(false);
             importer.SetCompatibleWithEditor(false);
-            importer.SetCompatibleWithPlatform(BuildTarget.iOS, true);
-            importer.SetPlatformData(BuildTarget.iOS, "CPU", "AnyCPU");
-            importer.SetPlatformData(BuildTarget.iOS, "CompileFlags", "");
-            importer.SetPlatformData(BuildTarget.iOS, "FrameworkDependencies", "");
-            // Mark as simulator-only so Xcode excludes it from device builds
-            importer.SetPlatformData(BuildTarget.iOS, "SimulatorSDK", "true");
+            importer.SetCompatibleWithPlatform(BuildTarget.iOS, false);
 
             importer.SaveAndReimport();
-            Debug.Log($"[OpusSharp] Configured iOS simulator plugin: {pluginPath}");
+            Debug.Log($"[OpusSharp] Disabled iOS simulator plugin (device-only build): {pluginPath}");
         }
 
         private static void ConfigurePlugin(

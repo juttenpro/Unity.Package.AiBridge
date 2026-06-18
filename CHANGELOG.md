@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.1] - 2026-06-18
+
+### Fixed
+- **iOS device build no longer links the simulator `libopus.a`.** The (undocumented)
+  `SimulatorSDK` PluginImporter flag stopped scoping the simulator Opus lib to a
+  simulator-only Xcode search path as of Unity 6000.3.13, so it leaked into the device
+  archive (duplicate `-lopus` + arm64 `iOS-simulator` slice → ARCHIVE FAILED).
+  `ConfigureIOSSimulatorPlugin` now disables iOS on the simulator lib entirely
+  (device-only pipeline). Reconfigure version bumped so existing projects re-apply on
+  next editor load.
+
 ## [1.22.0] - 2026-06-15
 
 ### Added
