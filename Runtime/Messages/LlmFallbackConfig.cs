@@ -46,9 +46,14 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("maxTokens", NullValueHandling = NullValueHandling.Ignore)]
         public int? MaxTokens { get; set; }
 
-        /// <summary>Reasoning-token budget for a thinking-capable Gemini fallback. Vertex AI only.</summary>
+        /// <summary>Reasoning-token budget for a Gemini 2.5 fallback. Vertex AI only.</summary>
         [JsonProperty("thinkingBudget", NullValueHandling = NullValueHandling.Ignore)]
         public int? ThinkingBudget { get; set; }
+
+        /// <summary>Reasoning-depth selector (minimal|low|medium|high) for a Gemini 3.x fallback.
+        /// Vertex AI only. Mutually exclusive with <see cref="ThinkingBudget"/>.</summary>
+        [JsonProperty("thinkingLevel", NullValueHandling = NullValueHandling.Ignore)]
+        public string ThinkingLevel { get; set; }
 
         /// <summary>Google Cloud region for a Vertex AI fallback. Omitted → backend GOOGLE_LOCATION env.</summary>
         [JsonProperty("location", NullValueHandling = NullValueHandling.Ignore)]

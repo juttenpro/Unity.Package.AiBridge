@@ -36,6 +36,15 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public int? ThinkingBudget { get; set; }
 
+        /// <summary>
+        /// Reasoning-depth selector for Gemini 3.x thinking models (<c>minimal | low | medium | high</c>).
+        /// Null = unset. Carried into <see cref="Messages.ConversationContext.thinkingLevel"/> and
+        /// <see cref="Messages.SessionStartMessage.ThinkingLevel"/> by RequestOrchestrator. MUTUALLY
+        /// EXCLUSIVE with <see cref="ThinkingBudget"/> (backend 400s if both are sent). Content
+        /// creators control this per AI API Template.
+        /// </summary>
+        public string ThinkingLevel { get; set; }
+
         public float Temperature { get; set; } = 0.7f;
         public float TopP { get; set; } = 1.0f;
         public float TopK { get; set; } = 0f;

@@ -88,7 +88,8 @@ namespace Tsc.AIBridge.Services
             int maxTokens,
             string responseFormat,
             string location = null,
-            int? thinkingBudget = null)
+            int? thinkingBudget = null,
+            string thinkingLevel = null)
         {
             // Check WebSocket connection
             if (!WebSocketAdapter.IsConnected)
@@ -120,6 +121,8 @@ namespace Tsc.AIBridge.Services
                     // Optional Gemini 2.5+ thinking-token budget. Carries the
                     // content-creator's choice from the AI API Template to the backend.
                     thinkingBudget = thinkingBudget,
+                    // Gemini 3.x reasoning-depth selector (mutually exclusive with thinkingBudget).
+                    thinkingLevel = thinkingLevel,
                     responseFormat = responseFormat,
                     location = location,
                     // Language and VoiceId are optional - backend provides defaults

@@ -1541,6 +1541,9 @@ namespace Tsc.AIBridge.Core
                     // behaviour). Sessions inherit this once at SessionStart; subsequent
                     // dialogue turns within the session reuse the same budget.
                     ThinkingBudget = _currentConversationRequest?.ThinkingBudget,
+                    // Gemini 3.x reasoning-depth selector (minimal|low|medium|high). Mutually
+                    // exclusive with ThinkingBudget; same per-session inheritance as the budget.
+                    ThinkingLevel = _currentConversationRequest?.ThinkingLevel,
                     // Optional per-template dialogue-LLM fallback target. Null when the template
                     // configures none → omitted from the wire payload → backend wraps nothing.
                     LlmFallback = _currentConversationRequest?.LlmFallback,
@@ -1707,6 +1710,8 @@ namespace Tsc.AIBridge.Core
                         // AI API Template via ConversationRequest. Null = backend uses
                         // provider default (existing pre-thinking behaviour).
                         thinkingBudget = _currentConversationRequest?.ThinkingBudget,
+                        // Gemini 3.x reasoning-depth selector; mutually exclusive with thinkingBudget.
+                        thinkingLevel = _currentConversationRequest?.ThinkingLevel,
                         ttsModel = request.NpcConfig?.TtsModel,
                         sttProvider = request.NpcConfig?.SttProvider,
                         ttsProvider = request.NpcConfig?.TtsProvider,

@@ -168,6 +168,18 @@ namespace Tsc.AIBridge.Messages
         public int? ThinkingBudget { get; set; }
 
         /// <summary>
+        /// Reasoning-depth selector for Gemini 3.x thinking models (e.g. gemini-3.1-flash-lite):
+        /// <c>minimal | low | medium | high</c>. Forwarded to the backend's
+        /// <c>generationConfig.thinkingConfig.thinkingLevel</c>. MUTUALLY EXCLUSIVE with
+        /// <see cref="ThinkingBudget"/> — the backend rejects (HTTP 400) any request carrying both,
+        /// so the AI API Template emits exactly one. Nullable + NullValueHandling.Ignore so the field
+        /// is omitted when unset. Flows from Tsc.RuleSystem LocaleConfig (LlmThinkingMode level members)
+        /// through ConversationRequest.ThinkingLevel into this field via RequestOrchestrator.
+        /// </summary>
+        [JsonProperty("thinkingLevel", NullValueHandling = NullValueHandling.Ignore)]
+        public string ThinkingLevel { get; set; }
+
+        /// <summary>
         /// Optional reactive dialogue-LLM fallback target from the AI API Template. Omitted from
         /// the payload entirely when no fallback is configured (NullValueHandling.Ignore), so older
         /// backends/clients and fallback-less templates are unaffected. When present, the backend

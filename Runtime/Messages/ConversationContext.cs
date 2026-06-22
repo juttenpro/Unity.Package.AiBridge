@@ -77,6 +77,16 @@ namespace Tsc.AIBridge.Messages
         public int? thinkingBudget;
 
         /// <summary>
+        /// Reasoning-depth selector for Gemini 3.x thinking models (<c>minimal | low | medium | high</c>).
+        /// Forwarded to the backend's <c>generationConfig.thinkingConfig.thinkingLevel</c>. MUTUALLY
+        /// EXCLUSIVE with <see cref="thinkingBudget"/> — the backend rejects (HTTP 400) any request
+        /// carrying both. Nullable + NullValueHandling.Ignore so non-Gemini-3.x callers omit the field.
+        /// Content creators control this per AI API Template — see Tsc.RuleSystem LocaleConfig.
+        /// </summary>
+        [JsonProperty("thinkingLevel", NullValueHandling = NullValueHandling.Ignore)]
+        public string thinkingLevel;
+
+        /// <summary>
         /// Language for the conversation (e.g., "nl-NL", "en-US")
         /// </summary>
         [JsonProperty("language")]

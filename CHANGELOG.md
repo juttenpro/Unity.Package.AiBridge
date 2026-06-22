@@ -6,6 +6,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-06-22
+
+### Added
+- **Gemini 3.x `thinkingLevel` support** across the wire contract. Gemini 3.x models
+  (e.g. `gemini-3.1-flash-lite`, becoming the default analysis model) do NOT use
+  `thinkingBudget` — they use `thinkingConfig.thinkingLevel` (`minimal | low | medium | high`)
+  and thinking cannot be fully disabled (`minimal` is the floor). Sending budget AND level
+  together is a backend HTTP 400, so the two are mutually exclusive.
+  - `ConversationRequest.ThinkingLevel` (string) — set by Tsc.RuleSystem from the AI API Template.
+  - `SessionStartMessage.ThinkingLevel`, `ConversationContext.thinkingLevel`,
+    `LlmFallbackConfig.ThinkingLevel` — wire fields (`thinkingLevel`, `NullValueHandling.Ignore`).
+  - `AnalysisService.RequestAnalysisAsync` gains an optional `thinkingLevel` parameter.
+  - `RequestOrchestrator` forwards `ThinkingLevel` onto both the `SessionStartMessage` (audio
+    dialogue) and `ConversationContext` (text/NPC) builds, mirroring `ThinkingBudget`.
+- `SessionStartMessageThinkingLevelTests` — editor tests covering null omission
+  (`NullValueHandling.Ignore`), the documented level values, and backend-shape round-trip.
+
+### Why
+- `gemini-3.1-flash-lite` is becoming the default analysis model. Without `thinkingLevel` the
+  per-template reasoning-depth choice was ignored on Gemini 3.x (the `thinkingBudget=0`
+  default-off path silently NO-OPs there). Requires an ApiOrchestrator backend with
+  `thinkingLevel` support (`Google.Cloud.AIPlatform.V1 >= 3.72.0`).
+
 ## [1.22.2] - 2026-06-22
 
 ### Fixed
