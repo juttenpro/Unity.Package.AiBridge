@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.22.2] - 2026-06-22
+
+### Fixed
+- **`StaleConversationCompleteTests` no longer fails after an Editor PlayMode session.**
+  The three orchestrator-present tests assert through `ConversationMetadataHandler`'s
+  `conversationComplete` path, which gates on `RequestOrchestrator.HasInstance`
+  (`_instance != null && !_isQuitting`). `_isQuitting` is set true by `OnApplicationQuit`
+  — which the Editor fires on *exit* of every PlayMode session — and is never reset, so it
+  leaks into the edit-mode domain the EditMode tests share. The tests installed `_instance`
+  by reflection but left `_isQuitting` stuck true, so `HasInstance` returned false and the
+  handler took the no-orchestrator branch (raising `OnConversationComplete(false)` with no
+  stale-gating and no session cleanup) → all three assertions flipped. Green right after a
+  recompile (fresh domain), red after any PlayMode round-trip — which broke the pre-build
+  test gate. `SetUp` now resets the static `_isQuitting` to false alongside `_instance`, so
+  the precondition matches the "orchestrator present, not quitting" scenario under test.
+  Production runtime is unaffected: domain reload on play-enter (project default) resets the
+  static each session, and player builds fire quit exactly once.
+
 ## [1.22.1] - 2026-06-18
 
 ### Fixed

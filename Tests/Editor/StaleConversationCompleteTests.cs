@@ -40,6 +40,8 @@ namespace Tsc.AIBridge.Tests.Editor
         private const BindingFlags PrivateInstance = BindingFlags.NonPublic | BindingFlags.Instance;
         private static readonly FieldInfo SingletonField =
             typeof(RequestOrchestrator).GetField("_instance", BindingFlags.NonPublic | BindingFlags.Static);
+        private static readonly FieldInfo QuittingField =
+            typeof(RequestOrchestrator).GetField("_isQuitting", BindingFlags.NonPublic | BindingFlags.Static);
 
         [SetUp]
         public void SetUp()
@@ -48,6 +50,13 @@ namespace Tsc.AIBridge.Tests.Editor
             _orchestrator = _orchestratorObject.AddComponent<RequestOrchestrator>();
             // EditMode AddComponent does not run Awake's singleton assignment; install explicitly.
             SingletonField.SetValue(null, _orchestrator);
+
+            // HasInstance is gated on the static _isQuitting too. OnApplicationQuit sets it true when a
+            // prior Editor PlayMode session exits and nothing ever resets it, so it leaks into the
+            // edit-mode domain these tests share. Clear it so HasInstance reflects "orchestrator present";
+            // otherwise the handler takes the no-orchestrator branch and every assertion here flips.
+            Assert.IsNotNull(QuittingField, "Field '_isQuitting' not found on RequestOrchestrator");
+            QuittingField.SetValue(null, false);
 
             _handler = new ConversationMetadataHandler("TestNpc", new LatencyTracker("TestNpc"));
         }
