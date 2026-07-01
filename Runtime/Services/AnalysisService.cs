@@ -89,7 +89,8 @@ namespace Tsc.AIBridge.Services
             string responseFormat,
             string location = null,
             int? thinkingBudget = null,
-            string thinkingLevel = null)
+            string thinkingLevel = null,
+            float? topP = null)
         {
             // Check WebSocket connection
             if (!WebSocketAdapter.IsConnected)
@@ -118,6 +119,8 @@ namespace Tsc.AIBridge.Services
                     llmModel = llmModel,
                     temperature = temperature,
                     maxTokens = maxTokens,
+                    // Optional nucleus sampling (top-p) from the AI API Template; null -> backend 0.95 fallback.
+                    topP = topP,
                     // Optional Gemini 2.5+ thinking-token budget. Carries the
                     // content-creator's choice from the AI API Template to the backend.
                     thinkingBudget = thinkingBudget,

@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-07-01
+
+### Added
+- **Analysis-path `topP` (nucleus sampling) support.** `AnalysisService.RequestAnalysisAsync` gains an
+  optional `topP` parameter and `ConversationContext.topP` (`topP`, `NullValueHandling.Ignore`) carries it
+  to the backend. Previously the analysis path dropped TopP entirely and the ApiOrchestrator VertexAIService
+  hardcoded 0.95, so the PromptComposer test runner (which sends the template's TopP over REST) diverged from
+  runtime analysis. Now both honour the per-template TopP, consistent with dialogue and with the OpenAI /
+  Mistral / Azure providers.
+
+### Why
+- Closes a test-runner-vs-runtime divergence: a creator's per-template nucleus sampling was silently ignored
+  on the Vertex analysis path. Requires an ApiOrchestrator backend that reads `ConversationContext.topP`.
+
 ## [1.23.0] - 2026-06-22
 
 ### Added

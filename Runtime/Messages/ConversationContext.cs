@@ -59,6 +59,15 @@ namespace Tsc.AIBridge.Messages
         public int maxTokens;
 
         /// <summary>
+        /// Nucleus sampling (top-p, 0.0-1.0). Forwarded to the backend, which applies it to Vertex AI's
+        /// generationConfig.TopP (OpenAI/Mistral/Azure honour it too). Nullable + NullValueHandling.Ignore
+        /// so unmodified callers omit the field and the service keeps its 0.95 fallback. Content creators
+        /// control this per AI API Template.
+        /// </summary>
+        [JsonProperty("topP", NullValueHandling = NullValueHandling.Ignore)]
+        public float? topP;
+
+        /// <summary>
         /// Reasoning-token budget for Gemini 2.5+ thinking-capable models. Forwarded
         /// to the backend's <c>generationConfig.thinkingConfig.thinkingBudget</c>.
         ///
