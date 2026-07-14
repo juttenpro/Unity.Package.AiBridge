@@ -1544,6 +1544,11 @@ namespace Tsc.AIBridge.Core
                     // Gemini 3.x reasoning-depth selector (minimal|low|medium|high). Mutually
                     // exclusive with ThinkingBudget; same per-session inheritance as the budget.
                     ThinkingLevel = _currentConversationRequest?.ThinkingLevel,
+                    // Player vocal-delivery (prosody) analysis from the AI API Template. Null/empty
+                    // provider = off (omitted from the wire → backend runs no analysis). Audio path only;
+                    // EnableProsodyAnalysis is derived so the backend's per-session gate matches.
+                    ProsodyProvider = _currentConversationRequest?.ProsodyProvider,
+                    EnableProsodyAnalysis = !string.IsNullOrEmpty(_currentConversationRequest?.ProsodyProvider),
                     // Optional per-template dialogue-LLM fallback target. Null when the template
                     // configures none → omitted from the wire payload → backend wraps nothing.
                     LlmFallback = _currentConversationRequest?.LlmFallback,

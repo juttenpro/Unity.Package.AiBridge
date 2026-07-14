@@ -45,6 +45,15 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public string ThinkingLevel { get; set; }
 
+        /// <summary>
+        /// Optional player vocal-DELIVERY (prosody) analysis provider for this conversation, from the
+        /// AI API Template. Null/empty = off. When set ("prosody" = own analyzer, "devaice" = audEERING),
+        /// the backend runs a parallel, fire-and-forget analysis of the player's audio and returns
+        /// delivery descriptors as out-of-band metadata. Carried into
+        /// <see cref="Messages.SessionStartMessage.ProsodyProvider"/> by RequestOrchestrator (audio path).
+        /// </summary>
+        public string ProsodyProvider { get; set; }
+
         public float Temperature { get; set; } = 0.7f;
         public float TopP { get; set; } = 1.0f;
         public float TopK { get; set; } = 0f;

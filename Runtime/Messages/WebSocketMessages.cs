@@ -180,6 +180,22 @@ namespace Tsc.AIBridge.Messages
         public string ThinkingLevel { get; set; }
 
         /// <summary>
+        /// Player vocal-DELIVERY (prosody) analysis provider. Null/empty = off (field omitted). When set
+        /// ("prosody" own analyzer, "devaice" audEERING), the backend runs a parallel analysis of the
+        /// player's audio and returns delivery descriptors out-of-band. Content creators set this per
+        /// AI API Template; flows from ConversationRequest.ProsodyProvider via RequestOrchestrator.
+        /// </summary>
+        [JsonProperty("prosodyProvider", NullValueHandling = NullValueHandling.Ignore)]
+        public string ProsodyProvider { get; set; }
+
+        /// <summary>
+        /// Derived gate for prosody analysis (true iff <see cref="ProsodyProvider"/> is set). The
+        /// backend enables its parallel, out-of-band prosody pipeline on this flag.
+        /// </summary>
+        [JsonProperty("enableProsodyAnalysis")]
+        public bool EnableProsodyAnalysis { get; set; }
+
+        /// <summary>
         /// Optional reactive dialogue-LLM fallback target from the AI API Template. Omitted from
         /// the payload entirely when no fallback is configured (NullValueHandling.Ignore), so older
         /// backends/clients and fallback-less templates are unaffected. When present, the backend

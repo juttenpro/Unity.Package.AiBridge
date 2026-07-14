@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-07-14
+
+### Added
+- **Player vocal-delivery (prosody) analysis provider** on the SessionStart wire contract.
+  `ConversationRequest.ProsodyProvider` (null/empty = off) flows through `RequestOrchestrator`
+  into two new `SessionStartMessage` fields — `prosodyProvider` (`NullValueHandling.Ignore`) and
+  the derived `enableProsodyAnalysis` gate. When set (`"prosody"` = own analyzer, `"devaice"` =
+  audEERING, server-side), the backend runs a parallel, fire-and-forget analysis of the player's
+  audio and returns delivery descriptors (assertiveness / escalation / pace / hesitation) as
+  out-of-band `prosodyresult` metadata. Audio path only — no text-input/analysis path involvement.
+  Additive and omitted from the payload when unset, so unmodified callers and older backends are
+  unaffected.
+
+### Why
+- Enables the Agressietraining to measure *how* the player uses their voice (delivery) — assertive
+  vs. hesitant, calm vs. escalated — fed into the Rule System as FloatVariables, with the provider
+  chosen per AI API Template. Deliberately mirrors the lightweight `ThinkingBudget` per-session wire
+  pattern rather than the heavier per-provider config route. Requires an ApiOrchestrator backend
+  that reads `enableProsodyAnalysis`/`prosodyProvider` from SessionStart.
+
 ## [1.24.0] - 2026-07-01
 
 ### Added
