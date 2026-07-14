@@ -741,6 +741,50 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
+        /// Freeze the player's vocal-delivery (prosody) baseline for the ACTIVE session. Content-creator
+        /// -triggered (RuleSystem) at the warmup→escalation transition, so a fixed escalation threshold
+        /// stays meaningful and sustained escalation is not normalised away. Fire-and-forget; no-op when
+        /// there is no active session (backend also no-ops if prosody is off).
+        /// </summary>
+        public void SendFreezeProsodyBaselineToBackend()
+        {
+            var requestId = _currentSession?.RequestId;
+            if (string.IsNullOrEmpty(requestId))
+            {
+                Debug.LogWarning("[RequestOrchestrator] Cannot freeze prosody baseline - no active session");
+                return;
+            }
+
+            _ = FreezeProsodyBaselineOnBackendAsync(requestId);
+        }
+
+        /// <summary>
+        /// Internal async method to send FreezeProsodyBaseline message to backend.
+        /// </summary>
+        private async System.Threading.Tasks.Task FreezeProsodyBaselineOnBackendAsync(string requestId)
+        {
+            if (_webSocketClient == null)
+            {
+                Debug.LogWarning("[RequestOrchestrator] Cannot freeze prosody baseline - WebSocketClient is null");
+                return;
+            }
+
+            try
+            {
+                await _webSocketClient.SendFreezeProsodyBaselineAsync(new FreezeProsodyBaselineMessage
+                {
+                    RequestId = requestId
+                });
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Sent FreezeProsodyBaseline to backend for session {requestId}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[RequestOrchestrator] Failed to send FreezeProsodyBaseline: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Send InterruptionOccurred message to backend (stop TTS, keep LLM for metadata)
         /// Does NOT clear session state - backend will send conversationComplete with wasInterrupted=true
         /// </summary>

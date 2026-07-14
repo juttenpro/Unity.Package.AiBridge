@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.26.0] - 2026-07-14
+
+### Added
+- **`FreezeProsodyBaseline` client→server control message.** `WebSocketClient.SendFreezeProsodyBaselineAsync`
+  + `RequestOrchestrator.SendFreezeProsodyBaselineToBackend()` (sources the active session id from
+  `GetCurrentSessionId`) let the client tell the backend to freeze the player's vocal-delivery (prosody)
+  baseline for the current session. Mirrors the existing PauseStream / SessionCancel send path.
+
+### Why
+- The vocal-delivery baseline is self-normalising and drifts as the player speaks, which would erode a
+  fixed escalation threshold and normalise away sustained escalation. Freezing it at the
+  warmup→escalation transition — triggered from the RuleSystem, since only the content creator knows that
+  moment — keeps the 0..1 escalation scale stable within the session. Requires an ApiOrchestrator backend
+  that handles the `FreezeProsodyBaseline` message.
+
 ## [1.25.0] - 2026-07-14
 
 ### Added
