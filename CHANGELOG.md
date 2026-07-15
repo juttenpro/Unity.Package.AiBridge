@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-07-15
+
+### Changed
+- **Vocal-delivery baseline is now client-owned and carried on the wire; the server is stateless.**
+  New `ProsodyBaselineState` DTO (opaque `version`/`frozen`/`features{count,mean,m2}`) held on
+  `SpeechInputHandler.ProsodyBaseline` — the player-scoped input handler, so one baseline survives NPC
+  switches, multi-NPC rooms, and WS reconnects within a case. `SessionStartMessage` carries it
+  (`prosodyBaseline`, `NullValueHandling.Ignore`) plus an optional `prosodyRefOffsetMs` response-latency
+  anchor; `RequestOrchestrator` sources it from `speechInputHandler.ProsodyBaseline`. The server seeds a
+  per-turn working copy, folds this turn's confident samples, and returns the updated copy on
+  `prosodyresult` (consumed project-side in `NpcClient`).
+
+### Removed
+- **`FreezeProsodyBaseline` client→server control message** (added in 1.26.0). Freezing is now a `frozen`
+  flag inside the carried baseline, set client-side by the "Freeze Vocal Baseline" rule node — no separate
+  WS round-trip. Deletes `FreezeProsodyBaselineMessage`, `WebSocketClient.SendFreezeProsodyBaselineAsync`,
+  `RequestOrchestrator.SendFreezeProsodyBaselineToBackend()`, and the `FreezeProsodyBaseline` message-type
+  constant.
+
+### Why
+- The backend measures GENERICALLY (training-agnostic); targets/thresholds live in the Rule System. A
+  client-owned baseline keeps the server stateless and horizontally scalable, and correctly ties the
+  reference to the player (not to a per-turn session or a single NPC) — essential for the upcoming
+  6-NPC room training. Freezing as carried state removes an out-of-band control message and the race it
+  implied. Requires an ApiOrchestrator backend on the measurement-v2 contract.
+
 ## [1.26.0] - 2026-07-14
 
 ### Added

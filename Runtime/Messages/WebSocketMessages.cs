@@ -196,6 +196,22 @@ namespace Tsc.AIBridge.Messages
         public bool EnableProsodyAnalysis { get; set; }
 
         /// <summary>
+        /// Player-owned vocal-delivery baseline (measurement v2), carried verbatim. The server is
+        /// stateless: it seeds a per-turn working copy from this, folds this turn's confident samples,
+        /// and returns the updated copy on <c>prosodyresult</c>. Omitted when unset (first turn / prosody
+        /// off) so older backends are unaffected.
+        /// </summary>
+        [JsonProperty("prosodyBaseline", NullValueHandling = NullValueHandling.Ignore)]
+        public ProsodyBaselineState ProsodyBaseline { get; set; }
+
+        /// <summary>
+        /// Optional response-latency anchor (ms): offset from NPC-TTS-end to recording start, for the
+        /// A01 "response latency" feature. Omitted when not measured.
+        /// </summary>
+        [JsonProperty("prosodyRefOffsetMs", NullValueHandling = NullValueHandling.Ignore)]
+        public int? ProsodyRefOffsetMs { get; set; }
+
+        /// <summary>
         /// Optional reactive dialogue-LLM fallback target from the AI API Template. Omitted from
         /// the payload entirely when no fallback is configured (NullValueHandling.Ignore), so older
         /// backends/clients and fallback-less templates are unaffected. When present, the backend

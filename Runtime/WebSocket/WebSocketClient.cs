@@ -628,31 +628,6 @@ namespace Tsc.AIBridge.WebSocket
         }
 
         /// <summary>
-        /// Send FreezeProsodyBaseline message to freeze the player's vocal-delivery baseline on the backend
-        /// </summary>
-        public async Task SendFreezeProsodyBaselineAsync(FreezeProsodyBaselineMessage message)
-        {
-            // Ensure connection before sending
-            if (!await EnsureConnectionAsync())
-            {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Failed to establish connection for FreezeProsodyBaseline");
-                return;
-            }
-
-            // Capture local reference to prevent race condition
-            var webSocket = _webSocket;
-            if (webSocket == null || !webSocket.IsConnected)
-            {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for FreezeProsodyBaseline");
-                return;
-            }
-
-            await webSocket.SendJsonAsync(message);
-            if (enableVerboseLogging)
-                Debug.Log($"[UnifiedWebSocket] Sent FreezeProsodyBaseline for RequestId: {message.RequestId}");
-        }
-
-        /// <summary>
         /// Send ResumeStream message to resume paused audio streaming
         /// </summary>
         public async Task SendResumeStreamAsync(ResumeStreamMessage message)

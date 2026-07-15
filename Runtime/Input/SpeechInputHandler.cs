@@ -6,6 +6,7 @@ using UnityEngine;
 using Tsc.AIBridge.Audio.Capture;
 using UnityEngine.InputSystem;
 using Tsc.AIBridge.Audio.VAD;
+using Tsc.AIBridge.Messages;
 
 namespace Tsc.AIBridge.Input
 {
@@ -87,6 +88,22 @@ namespace Tsc.AIBridge.Input
         /// Returns true if recording should be blocked, false otherwise.
         /// </summary>
         public static Func<bool> ShouldBlockRecording;
+
+        #endregion
+
+        #region Prosody baseline (player-owned, carried on the wire)
+
+        /// <summary>
+        /// The player's client-owned vocal-delivery baseline (measurement layer v2). Lives here — on the
+        /// player-scoped input handler — so it survives NPC switches, multi-NPC rooms, and WS reconnects
+        /// within a case. RequestOrchestrator sends it on each SessionStart; NpcClient stores the server's
+        /// updated copy from <c>prosodyresult</c>; the "Freeze Vocal Baseline" rule node sets its Frozen
+        /// flag. Never null (the backend simply gets an empty baseline on the first turn).
+        /// </summary>
+        public ProsodyBaselineState ProsodyBaseline { get; set; } = new ProsodyBaselineState();
+
+        /// <summary>Start a fresh baseline (e.g. a new case / re-calibration).</summary>
+        public void ResetProsodyBaseline() => ProsodyBaseline = new ProsodyBaselineState();
 
         #endregion
 
