@@ -1505,6 +1505,11 @@ namespace Tsc.AIBridge.Core
 
                 var messages = GetChatHistory();
 
+                // The vocal baseline is LESSON-scoped. Enforce that here, where the lesson is known, so it
+                // holds for every entry path (menu start, next case, retry) without a caller having to
+                // remember to reset. A lesson change drops the state; an empty lessonId (AI coach) does not.
+                ProsodyBaselineStore.EnsureLessonScope(AIBridgeObservability.TryGetContext()?.LessonId);
+
                 // Build SessionStartMessage with all parameters including custom vocabulary
                 var sessionStartMessage = new SessionStartMessage
                 {
@@ -1549,10 +1554,11 @@ namespace Tsc.AIBridge.Core
                     // EnableProsodyAnalysis is derived so the backend's per-session gate matches.
                     ProsodyProvider = _currentConversationRequest?.ProsodyProvider,
                     EnableProsodyAnalysis = !string.IsNullOrEmpty(_currentConversationRequest?.ProsodyProvider),
-                    // Player-owned vocal baseline (measurement v2): held on SpeechInputHandler, sent each
-                    // turn; the server's updated copy comes back via NpcClient. Lives on the player-scoped
-                    // input handler so it survives NPC switches, multi-NPC rooms, and WS reconnects.
-                    ProsodyBaseline = speechInputHandler != null ? speechInputHandler.ProsodyBaseline : null,
+                    // Player-owned vocal baseline (measurement v2), sent each turn; the server's updated copy
+                    // comes back via NpcClient. Read from the lesson-scoped store, not from a scene
+                    // component: scene loads (every attempt) destroy the handler, which used to restart the
+                    // baseline before it was statistically usable.
+                    ProsodyBaseline = ProsodyBaselineStore.State,
                     // Optional per-template dialogue-LLM fallback target. Null when the template
                     // configures none → omitted from the wire payload → backend wraps nothing.
                     LlmFallback = _currentConversationRequest?.LlmFallback,

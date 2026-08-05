@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-08-04
+
+### Fixed
+- **The vocal-delivery baseline no longer restarts on every attempt.** It was held in a field on
+  `SpeechInputHandler`, which sits on the course "System" prefab and is destroyed by every
+  `LoadSceneMode.Single` scene load — i.e. on each attempt. Since a lesson runs several attempts of only a
+  few player turns, and the server needs a minimum number of observations before it trusts a z-score, the
+  reference never became statistically usable: field logs (2026-08-03) show runs of all-zero z-scores
+  alternating with absurd ones (loudnessZ 37.6 → 44.1) computed against a two-sample reference.
+
+### Added
+- **`ProsodyBaselineStore`** — process-lifetime holder for the baseline, scoped to ONE LESSON.
+  `EnsureLessonScope(lessonId)` (called from the SessionStart build, where the lesson is known) drops the
+  state when the lesson changes, so the reference cannot leak across lessons or courses via an entry path
+  that forgot to reset; an empty lessonId (AI coach) does not change scope. `Reset()` for logout / player
+  change. `SpeechInputHandler.ProsodyBaseline` now delegates to it, so the public API and both call sites
+  are unchanged — and it no longer matters which `SpeechInputHandler` instance a caller resolves.
+
+### Why
+- The measurement is RELATIVE to the speaker's own calm voice, so the baseline's lifetime decides whether
+  the feature works at all. Lesson scope keeps the reference recent (same player, same session, same
+  microphone) while spanning the attempts needed to accumulate it. In memory only — never persisted, and it
+  leaves the client solely as the carried state on SessionStart.
+
 ## [1.27.0] - 2026-07-15
 
 ### Changed

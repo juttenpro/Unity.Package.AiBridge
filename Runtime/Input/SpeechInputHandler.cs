@@ -94,16 +94,24 @@ namespace Tsc.AIBridge.Input
         #region Prosody baseline (player-owned, carried on the wire)
 
         /// <summary>
-        /// The player's client-owned vocal-delivery baseline (measurement layer v2). Lives here — on the
-        /// player-scoped input handler — so it survives NPC switches, multi-NPC rooms, and WS reconnects
-        /// within a case. RequestOrchestrator sends it on each SessionStart; NpcClient stores the server's
-        /// updated copy from <c>prosodyresult</c>; the "Freeze Vocal Baseline" rule node sets its Frozen
-        /// flag. Never null (the backend simply gets an empty baseline on the first turn).
+        /// The player's client-owned vocal-delivery baseline (measurement layer v2). RequestOrchestrator
+        /// sends it on each SessionStart; NpcClient stores the server's updated copy from
+        /// <c>prosodyresult</c>; the "Freeze Vocal Baseline" rule node sets its Frozen flag. Never null
+        /// (the backend simply gets an empty baseline on the first turn).
+        ///
+        /// The state itself lives in <see cref="ProsodyBaselineStore"/>, NOT in this component: this
+        /// handler is destroyed on every scene load (each attempt), which restarted the baseline before it
+        /// was ever statistically usable. Delegating also means it no longer matters WHICH
+        /// SpeechInputHandler instance a caller resolves — they all see the same lesson-scoped state.
         /// </summary>
-        public ProsodyBaselineState ProsodyBaseline { get; set; } = new ProsodyBaselineState();
+        public ProsodyBaselineState ProsodyBaseline
+        {
+            get => ProsodyBaselineStore.State;
+            set => ProsodyBaselineStore.State = value;
+        }
 
-        /// <summary>Start a fresh baseline (e.g. a new case / re-calibration).</summary>
-        public void ResetProsodyBaseline() => ProsodyBaseline = new ProsodyBaselineState();
+        /// <summary>Start a fresh baseline (logout / player change; a lesson change resets automatically).</summary>
+        public void ResetProsodyBaseline() => ProsodyBaselineStore.Reset();
 
         #endregion
 
