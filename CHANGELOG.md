@@ -6,6 +6,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-08-05
+
+### Fixed
+- **A dropped WebSocket no longer ends the training session with "the application needs to be
+  restarted".** Reported from the field (Edward, customer HMC, IVA bedrijfsartsen): releasing the
+  push-to-talk button produced `[RequestOrchestrator] Cannot send end messages - WebSocket not
+  connected and no reconnection in progress`. That line, and the errors ahead of it in the same
+  chain, were untagged `Debug.LogError` calls, which the host project's `ErrorHandler` classifies as
+  Fatal — so a recoverable network hiccup showed the generic "Something went wrong" popup whose
+  button quits the app. All connection failures on a single turn now log through
+  `UserErrorLogger.LogRecoverableError`, and their user message changed from "Please wait or restart
+  the session" to "Please try again", which is what actually applies.
+- **A failed `SessionStart` now releases the turn immediately instead of at push-to-talk release.**
+  `ProcessAudioRequest` used to `yield break` on a faulted send without resetting `_isRequestActive`
+  or `_currentSession`. The turn stayed armed, so the RuleSystem's `IsReactionBusy` stayed set and
+  the user only learned the turn had failed after speaking a full sentence into a dead socket. Both
+  this path and the disconnect handler now go through one shared `AbortActiveTurn`, which fires
+  `OnSttFailed(Reason="ConnectionLost")` exactly once per turn.
+
+### Removed
+- **The auto-reconnect loop in `WebSocketConnection`** (10 attempts, exponential backoff) — it could
+  not work. `HandleClose` started the loop and then raised `OnDisconnected`, on which
+  `WebSocketClient.CleanupConnection()` unsubscribed from that connection and nulled its reference.
+  A successful reconnect was therefore invisible to the app (`IsConnected` stayed false, messages
+  arrived on events with no subscribers) while the reopened socket sat unread on the backend holding
+  one of Kestrel's 100 upgraded-connection slots. It also retried with the ORIGINAL JWT — valid for
+  exactly one hour, `ClockSkew.Zero` server-side — so after an hour every attempt failed on auth and
+  the final one reported "Connection lost … restart" as a fatal error. Reconnection now has one
+  owner: `WebSocketClient.EnsureConnectionAsync`, which every `SendXAsync` already calls first and
+  which fetches a fresh JWT, disposes the stale socket and re-subscribes.
+- **`RequestOrchestrator._droppedAudioChunks`** — never incremented anywhere, so the
+  "N audio chunks could not be sent" diagnostic it guarded could never fire.
+
+### Changed
+- `WebSocketConnection` no longer logs `LogError` in any state. Deciding that a failure is final is
+  the caller's job; a `LogError` from the transport layer reaches the user as a fatal popup.
+- **BREAKING (internal):** `WebSocketConnection`'s constructor lost its `reconnectBaseDelay`,
+  `reconnectMaxDelay` and `maxReconnectAttempts` parameters. The only call site is
+  `WebSocketClient.EnsureConnectionAsync`.
+
+### Added
+- **`UserErrorLogger.LogRecoverableError`** — emits `[UserError:…] [Recoverable] …`. The host
+  project's `ErrorHandler` registers `[Recoverable]` as non-fatal: still reported to Oops for
+  diagnostics, no fatal popup. Deliberately separate from the `[UserError:…]` tag so unrecoverable
+  conditions on the same path (authentication failure, unassigned API-key provider) keep their fatal
+  popup — retrying never fixes those.
+
+### Note
+- After a close the socket now stays down until the next send, by design (event-driven rather than a
+  background retry loop). Ensuring a warm socket *before* a lesson starts is the job of a
+  lesson-start connection check on the app side, which is the follow-up to this change.
+
 ## [1.28.0] - 2026-08-04
 
 ### Fixed

@@ -157,7 +157,6 @@ namespace Tsc.AIBridge.Core
         private bool _wasConnectedLastFrame = true;
         private float _lastConnectionWarningTime;
         private const float CONNECTION_WARNING_COOLDOWN = 2.0f; // Only log warning every 2 seconds
-        private int _droppedAudioChunks;
 
         // Audio buffering during reconnection
         private readonly Queue<byte[]> _reconnectionAudioBuffer = new();
@@ -244,12 +243,35 @@ namespace Tsc.AIBridge.Core
                 _textRequestQueue.Clear();
             }
 
-            // Abort active request so the RuleSystem can reset IsReactionBusy.
-            // Without this, no STT result ever arrives and the NPC stays permanently unresponsive.
-            // HandleRecordingStopped() checks _isRequestActive first, so only one path fires the event.
+            AbortActiveTurn($"WebSocket disconnected ({code})");
+        }
+
+        /// <summary>
+        /// Abandons the in-flight turn and clears turn state so the session keeps working.
+        /// </summary>
+        /// <remarks>
+        /// Shared by every path that discovers the turn cannot complete: an observed socket close
+        /// (<see cref="HandleWebSocketDisconnected"/>) and a SessionStart that never reached a live
+        /// socket (ProcessAudioRequest). Both used to be handled separately, and the
+        /// faulted-SessionStart path did not reset anything at all — the turn stayed armed, so the
+        /// failure only surfaced at push-to-talk release with "Cannot send end messages", after the
+        /// user had already spoken a full sentence into a dead socket.
+        ///
+        /// Aborting fires OnSttFailed so the RuleSystem resets IsReactionBusy. Without that, no STT
+        /// result ever arrives and the NPC stays unresponsive for the rest of the lesson.
+        ///
+        /// The <c>_isRequestActive</c> guard makes this idempotent: both paths can fire for the same
+        /// turn, and the RuleSystem must not evaluate the sttFailed rule twice for one utterance.
+        ///
+        /// Audio still sitting in AudioStreamProcessor's encoder queue is deliberately not drained
+        /// here — StartEncoding() clears it at the start of the next turn.
+        /// </remarks>
+        /// <param name="context">Short reason for the abort, used in the log line.</param>
+        private void AbortActiveTurn(string context)
+        {
             if (_isRequestActive)
             {
-                Debug.LogWarning($"[RequestOrchestrator] Active request aborted due to WebSocket disconnect ({code})");
+                Debug.LogWarning($"[RequestOrchestrator] Active turn aborted — {context}");
                 _isRequestActive = false;
                 RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage
                 {
@@ -1226,18 +1248,17 @@ namespace Tsc.AIBridge.Core
                 }
                 else
                 {
-                    // Not reconnecting - connection lost permanently
-                    Debug.LogError("[RequestOrchestrator] Cannot send end messages - WebSocket not connected and no reconnection in progress");
-
-                    // Log summary of what was lost
-                    if (_droppedAudioChunks > 0)
-                    {
-                        Debug.LogError($"[RequestOrchestrator] Recording session lost: {_droppedAudioChunks} audio chunks could not be sent due to disconnection");
-                    }
+                    // The socket is down and no handshake is in flight. Recoverable: the next
+                    // push-to-talk goes through EnsureConnectionAsync again (fresh JWT + rebuilt
+                    // socket). Reaching this point means SessionStart never made it onto a live
+                    // socket for this turn — the reconnection buffer can only fill after a
+                    // successful SessionStart — so the recorded speech was never transmitted.
+                    UserErrorLogger.LogRecoverableError(
+                        "Connection lost. Please try again.",
+                        "[RequestOrchestrator] Cannot send end messages - WebSocket not connected and no reconnection in progress");
 
                     // Notify RuleSystem so IsReactionBusy resets (prevents permanent NPC freeze)
-                    _isRequestActive = false;
-                    RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage { Reason = "ConnectionLost" });
+                    AbortActiveTurn("no connection at push-to-talk release");
 
                     return;
                 }
@@ -1375,7 +1396,6 @@ namespace Tsc.AIBridge.Core
             }
 
             // Reset counters
-            _droppedAudioChunks = 0;
             _reconnectionBufferOverflows = 0;
 
             Debug.Log($"[RequestOrchestrator] ✅ Successfully sent {sentCount} buffered chunks to backend");
@@ -1596,12 +1616,22 @@ namespace Tsc.AIBridge.Core
 
                 if (sendTask.IsFaulted)
                 {
-                    Debug.LogError($"[RequestOrchestrator] Failed to send SessionStart: {sendTask.Exception?.GetBaseException().Message}");
+                    // Recoverable: SendSessionStartAsync already tried EnsureConnectionAsync (fresh
+                    // JWT + rebuilt socket) and could not reach the backend for THIS turn. The next
+                    // push-to-talk tries again, so this must not raise the fatal restart popup.
+                    UserErrorLogger.LogRecoverableError(
+                        "Connection lost. Please try again.",
+                        $"[RequestOrchestrator] Failed to send SessionStart: {sendTask.Exception?.GetBaseException().Message}");
+
                     // Unsubscribe on error
                     if (_activeNpcClient != null)
                     {
                         _activeNpcClient.OnSessionStarted -= sessionStartedHandler;
                     }
+
+                    // CRITICAL: release the turn here. Leaving it armed is what made this surface
+                    // minutes later at push-to-talk release instead of now.
+                    AbortActiveTurn("SessionStart could not be sent");
                     yield break;
                 }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using Tsc.AIBridge.WebSocket;
@@ -8,32 +9,41 @@ using UnityEngine.TestTools;
 namespace Tsc.AIBridge.Tests.Editor
 {
     /// <summary>
-    /// BUSINESS REQUIREMENT: WebSocket connection errors must not interrupt users during recoverable failures
+    /// BUSINESS REQUIREMENT: WebSocketConnection is a transport. It reports failures, it never
+    /// decides that a failure is final — and it never reconnects on its own.
     ///
-    /// WHY: The ErrorHandler shows a popup to the user whenever Debug.LogError is called.
-    /// Transient network issues (DNS hiccups, server cold starts, brief disconnections) are
-    /// recoverable via the auto-reconnect mechanism. Showing error popups during these
-    /// recoverable situations disrupts the training session and confuses users.
+    /// WHY: This class used to run its own auto-reconnect loop (10 attempts, exponential backoff),
+    /// and that loop could not work. HandleClose starts the loop and THEN raises OnDisconnected,
+    /// which makes WebSocketClient.CleanupConnection() unsubscribe from this connection and null its
+    /// reference. So even a successful reconnect was invisible: nobody was listening any more,
+    /// WebSocketClient.IsConnected stayed false, and the reopened socket sat unread on the backend
+    /// occupying one of Kestrel's 100 upgraded-connection slots. Worse, the loop reused the ORIGINAL
+    /// JWT — valid for exactly one hour, ClockSkew.Zero server-side — so after an hour every attempt
+    /// failed on auth, and attempt 10 called UserErrorLogger.LogError("Connection lost … restart"),
+    /// which the host ErrorHandler turns into "the application needs to be restarted". That is how a
+    /// recoverable hiccup ended a live training session (customer HMC, IVA bedrijfsartsen).
     ///
-    /// WHAT: Tests that WebSocketConnection uses the correct log severity based on recovery state:
-    /// - LogWarning when auto-reconnect can still recover the connection
-    /// - LogError only when all recovery options are exhausted
-    /// - Diagnostics (DNS checks, network state) never trigger LogError
-    /// - Cleanup and disconnect errors never trigger LogError
+    /// Reconnection now has exactly ONE owner: WebSocketClient.EnsureConnectionAsync, which every
+    /// SendXAsync calls first. It fetches a FRESH JWT, disposes the stale socket, builds a new
+    /// WebSocketConnection and re-subscribes to it. That path was always there and always correct.
     ///
-    /// HOW: Uses reflection to set internal reconnection state, then invokes error handlers
-    /// and verifies log output via LogAssert.
+    /// WHAT: Tests that failures from this class are reported as warnings (never as errors, which
+    /// would raise the fatal popup), that OnError still fires so callers can react, and that no
+    /// reconnect state remains on the type.
+    ///
+    /// HOW: Reflection to reach private handlers, LogAssert to pin log severity. LogAssert fails a
+    /// test on any unexpected LogError, which is what makes "never LogError" enforceable.
     ///
     /// SUCCESS CRITERIA:
-    /// - Users see zero error popups during recoverable connection failures
-    /// - Users see exactly one clear error popup when connection is truly lost
-    /// - Diagnostic logging never triggers user-visible errors
-    /// - All transient errors are still logged as warnings for developer debugging
+    /// - Connection errors log a warning and raise OnError; they never log an error
+    /// - Errors during shutdown log nothing at all
+    /// - Cleanup never logs an error
+    /// - No auto-reconnect fields survive on WebSocketConnection
     ///
     /// BUSINESS IMPACT:
-    /// - Failure = users see error popups during every brief network hiccup in VR training
-    /// - Frustrated users, interrupted training sessions, support tickets
-    /// - Especially critical in VR where popups are highly disruptive
+    /// - A LogError here reaches the user as "app must restart" and throws away their session.
+    /// - A second reconnect authority silently leaks backend sockets and re-introduces the
+    ///   expired-token retry storm.
     /// </summary>
     [TestFixture]
     public class WebSocketConnectionTests
@@ -42,14 +52,15 @@ namespace Tsc.AIBridge.Tests.Editor
         private MonoBehaviour _owner;
         private WebSocketConnection _connection;
 
-        private const int MaxReconnectAttempts = 10;
+        private static readonly System.Text.RegularExpressions.Regex ConnectionErrorWarning =
+            new(@"\[WebSocketConnection\] Connection error:");
 
         [SetUp]
         public void SetUp()
         {
             _ownerObject = new GameObject("TestWebSocketOwner");
             _owner = _ownerObject.AddComponent<TestMonoBehaviour>();
-            _connection = new WebSocketConnection(_owner, maxReconnectAttempts: MaxReconnectAttempts);
+            _connection = new WebSocketConnection(_owner);
         }
 
         [TearDown]
@@ -62,136 +73,98 @@ namespace Tsc.AIBridge.Tests.Editor
             }
         }
 
-        #region HandleError - Log Severity Tests
+        #region HandleError - severity is always Warning
 
-        [Test]
-        public void HandleError_WhenReconnectPossible_LogsWarningNotError()
+        /// <summary>
+        /// Every transport error is recoverable from this class's point of view, because the next
+        /// send re-runs EnsureConnectionAsync. There is no longer any state in which this class may
+        /// escalate to LogError — doing so would surface the fatal restart popup for a hiccup.
+        /// </summary>
+        [TestCase("Unable to connect to the remote server")]
+        [TestCase("Connection refused")]
+        [TestCase("Server unreachable")]
+        public void HandleError_AlwaysLogsWarning_NeverError(string error)
         {
-            // Arrange - auto-reconnect enabled, zero attempts used
-            SetPrivateField("_autoReconnectEnabled", true);
-            SetPrivateField("_reconnectAttempts", 0);
+            LogAssert.Expect(LogType.Warning, ConnectionErrorWarning);
 
-            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[WebSocketConnection\] Connection error \(reconnecting\):"));
+            InvokePrivateMethod("HandleError", error);
 
-            // Act
-            InvokePrivateMethod("HandleError", "Unable to connect to the remote server");
-
-            // Assert - LogAssert validates no unexpected LogError was emitted
-        }
-
-        [Test]
-        public void HandleError_WhenAtMaxAttempts_LogsError()
-        {
-            // Arrange - all reconnect attempts exhausted
-            SetPrivateField("_autoReconnectEnabled", true);
-            SetPrivateField("_reconnectAttempts", MaxReconnectAttempts);
-
-            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex(@"\[WebSocketConnection\] Connection error:"));
-
-            // Act
-            InvokePrivateMethod("HandleError", "Unable to connect to the remote server");
-
-            // Assert - LogAssert validates LogError was emitted
-        }
-
-        [Test]
-        public void HandleError_WhenAutoReconnectDisabled_LogsError()
-        {
-            // Arrange - auto-reconnect disabled (manual disconnect scenario)
-            SetPrivateField("_autoReconnectEnabled", false);
-            SetPrivateField("_reconnectAttempts", 0);
-
-            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex(@"\[WebSocketConnection\] Connection error:"));
-
-            // Act
-            InvokePrivateMethod("HandleError", "Connection refused");
-
-            // Assert - LogAssert validates LogError was emitted
-        }
-
-        [Test]
-        public void HandleError_WhenOneAttemptBeforeMax_LogsWarning()
-        {
-            // Arrange - one attempt remaining
-            SetPrivateField("_autoReconnectEnabled", true);
-            SetPrivateField("_reconnectAttempts", MaxReconnectAttempts - 1);
-
-            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[WebSocketConnection\] Connection error \(reconnecting\):"));
-
-            // Act
-            InvokePrivateMethod("HandleError", "Server unreachable");
-
-            // Assert - still warns because < max, not >=
+            // LogAssert fails the test if any LogError was emitted.
         }
 
         [Test]
         public void HandleError_DuringShutdown_LogsNothing()
         {
-            // Arrange - component is shutting down
+            // A manual disconnect (scene unload, app quit) is not a failure worth reporting.
             SetPrivateField("_isDisconnecting", true);
 
-            // Act
             InvokePrivateMethod("HandleError", "Connection lost");
 
-            // Assert - no logs expected at all (LogAssert would fail if any LogError/LogWarning appeared)
+            // No log of any severity expected.
         }
 
         [Test]
-        public void HandleError_WhenReconnectPossible_StillInvokesOnErrorEvent()
+        public void HandleError_StillInvokesOnErrorEvent()
         {
-            // Arrange
-            SetPrivateField("_autoReconnectEnabled", true);
-            SetPrivateField("_reconnectAttempts", 0);
-
             string receivedError = null;
             _connection.OnError += error => receivedError = error;
 
-            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[WebSocketConnection\] Connection error \(reconnecting\):"));
+            LogAssert.Expect(LogType.Warning, ConnectionErrorWarning);
 
-            // Act
             InvokePrivateMethod("HandleError", "Unable to connect to the remote server");
 
-            // Assert - OnError event is still raised so other components can react
             Assert.AreEqual("Unable to connect to the remote server", receivedError,
-                "OnError event should still fire even when using LogWarning, so components can update their state");
+                "OnError must still fire so callers can update their state even though we only warn.");
         }
-
-        #endregion
-
-        #region HandleError - Error Handler Exception Tests
 
         [Test]
         public void HandleError_WhenErrorHandlerThrows_LogsWarningNotError()
         {
-            // Arrange - subscribe a handler that throws
-            SetPrivateField("_autoReconnectEnabled", true);
-            SetPrivateField("_reconnectAttempts", 0);
             _connection.OnError += _ => throw new InvalidOperationException("Handler crashed");
 
-            // Expect warning for the connection error itself
-            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[WebSocketConnection\] Connection error \(reconnecting\):"));
-            // Expect warning (not error) for the handler exception
-            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(@"\[WebSocketConnection\] Error in error handler:"));
+            LogAssert.Expect(LogType.Warning, ConnectionErrorWarning);
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(
+                @"\[WebSocketConnection\] Error in error handler:"));
 
-            // Act
             InvokePrivateMethod("HandleError", "Network timeout");
 
-            // Assert - handler exception logged as warning, not error popup
+            // A crashing subscriber must not escalate into a fatal popup either.
         }
 
         #endregion
 
-        #region Cleanup - Never LogError
+        #region Cleanup - never LogError
 
         [Test]
         public void Cleanup_WhenNoWebSocket_DoesNotLogError()
         {
-            // Arrange - no WebSocket connected (fresh instance)
-
-            // Act
             InvokePrivateMethod("Cleanup");
+        }
 
-            // Assert - LogAssert would fail if any LogError was emitted
+        #endregion
+
+        #region Single reconnect authority
+
+        /// <summary>
+        /// Guards the architectural decision, not an implementation detail: reconnection lives in
+        /// WebSocketClient.EnsureConnectionAsync only. This test exists because the bug was HAVING a
+        /// second authority here — one that raced with the first, leaked backend sockets and retried
+        /// with an expired token. If someone re-adds reconnect state to this class, this fails and
+        /// points them at the reasoning in the fixture summary above.
+        /// </summary>
+        [Test]
+        public void WebSocketConnection_HasNoAutoReconnectState()
+        {
+            var reconnectFields = typeof(WebSocketConnection)
+                .GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public)
+                .Where(f => f.Name.IndexOf("reconnect", StringComparison.OrdinalIgnoreCase) >= 0)
+                .Select(f => f.Name)
+                .ToArray();
+
+            Assert.IsEmpty(reconnectFields,
+                "Reconnection must be owned solely by WebSocketClient.EnsureConnectionAsync (fresh JWT, " +
+                "re-subscribed handlers). Found reconnect state on WebSocketConnection: " +
+                string.Join(", ", reconnectFields));
         }
 
         #endregion

@@ -11,22 +11,38 @@ namespace Tsc.AIBridge.WebSocket
 {
     /// <summary>
     /// Low-level WebSocket connection handler using NativeWebSocket library.
-    /// Manages WebSocket lifecycle, authentication, message transport, and reconnection logic.
+    /// Manages the lifecycle of ONE socket: connect, message transport, close, cleanup.
     /// Key features:
     /// - JWT authentication via query parameters
-    /// - Automatic reconnection with exponential backoff
     /// - Binary and text message handling
     /// - Thread-safe message dispatch to Unity main thread
     /// - Connection state tracking and error handling
     /// - Proper resource cleanup on disposal
     /// </summary>
+    /// <remarks>
+    /// This class does NOT reconnect. Reconnection is owned solely by
+    /// <see cref="WebSocketClient"/>.EnsureConnectionAsync, which every SendXAsync calls first: it
+    /// fetches a FRESH JWT, disposes the stale socket, constructs a new WebSocketConnection and
+    /// re-subscribes to its events.
+    ///
+    /// There used to be a second auto-reconnect loop here (10 attempts, exponential backoff) and it
+    /// could not work. HandleClose started the loop and then raised OnDisconnected, on which
+    /// WebSocketClient.CleanupConnection() unsubscribed from this instance and nulled its reference —
+    /// so a successful reconnect was invisible to the app, while the reopened socket stayed unread on
+    /// the backend holding one of Kestrel's 100 upgraded-connection slots. It also retried with the
+    /// ORIGINAL JWT (valid one hour, ClockSkew.Zero server-side), so after an hour every attempt
+    /// failed on auth and the final attempt reported "Connection lost … restart" as a FATAL error,
+    /// ending live training sessions over a recoverable hiccup (customer HMC, IVA bedrijfsartsen).
+    ///
+    /// Consequence for callers: after a close, the socket stays down until the next send. That is
+    /// intentional — event-driven rather than polling, and a warm socket before a lesson is the job
+    /// of the lesson-start connection check, not of a background retry loop.
+    /// </remarks>
     public class WebSocketConnection : IWebSocketConnection, IDisposable
     {
         private EnhancedWebSocket _webSocket;
         private CancellationTokenSource _cancellationTokenSource;
         private readonly MonoBehaviour _owner;
-        //private readonly string _apiBaseUrl;
-        private string _jwtToken;
         private bool _isDisconnecting;
         private readonly bool _isVerboseLogging;
 
@@ -43,43 +59,30 @@ namespace Tsc.AIBridge.WebSocket
 
         // Static events removed - were unused and causing compiler warnings
 
-        // Configuration
-        private readonly float _reconnectBaseDelay;
-        private readonly float _reconnectMaxDelay;
-        private readonly int _maxReconnectAttempts;
-        private float _currentReconnectDelay;
-        private int _reconnectAttempts;
-        private bool _autoReconnectEnabled = true;
-        private bool _isReconnecting;
-
-        // Session preservation
+        // Last URL, kept for diagnostics only (sanitized in logs — it carries the JWT).
         private string _lastWsUrl;
-        private string _lastPersonaName;
 
         // Message tracking
         private int _binaryMessageCount;
         private DateTime _connectionStartTime;
 
-        public WebSocketConnection(MonoBehaviour owner, /*string apiBaseUrl,*/ float reconnectBaseDelay = 1f, float reconnectMaxDelay = 30f, bool isVerboseLogging = false, int maxReconnectAttempts = 10)
+        public WebSocketConnection(MonoBehaviour owner, bool isVerboseLogging = false)
         {
             _isVerboseLogging = isVerboseLogging;
             _owner = owner;
-            //_apiBaseUrl = apiBaseUrl;
-            _reconnectBaseDelay = reconnectBaseDelay;
-            _reconnectMaxDelay = reconnectMaxDelay;
-            _maxReconnectAttempts = maxReconnectAttempts;
-            _currentReconnectDelay = reconnectBaseDelay;
         }
 
         /// <summary>
         /// Establishes WebSocket connection to the specified URL with JWT authentication.
         /// Waits for connection to complete with a 10-second timeout.
         /// </summary>
-        /// <param name="wsUrl">Full WebSocket URL including query parameters</param>
-        /// <param name="personaName">Name of the persona for logging</param>
-        /// <param name="jwtToken">JWT token for authentication</param>
+        /// <param name="wsUrl">
+        /// Full WebSocket URL including the <c>?token=</c> query parameter. The caller
+        /// (<see cref="WebSocketClient"/>.EnsureConnectionAsync) owns JWT acquisition and builds this
+        /// URL; this class never handles the token separately.
+        /// </param>
         /// <returns>True if connection was successfully established, false otherwise</returns>
-        public async Task<bool> ConnectAsync(string wsUrl, string personaName, string jwtToken)
+        public async Task<bool> ConnectAsync(string wsUrl)
         {
             if (IsConnected || IsConnecting)
             {
@@ -87,12 +90,10 @@ namespace Tsc.AIBridge.WebSocket
                 return false;
             }
 
-            // Store for reconnection
+            // Kept for diagnostics only
             _lastWsUrl = wsUrl;
-            _lastPersonaName = personaName;
 
             IsConnecting = true;
-            _jwtToken = jwtToken;
 
             var connectionStartTime = DateTime.UtcNow;
 
@@ -149,19 +150,13 @@ namespace Tsc.AIBridge.WebSocket
                 var finalState = ws?.State.ToString() ?? "null (cleaned up)";
                 var totalElapsed = (DateTime.UtcNow - connectionStartTime).TotalSeconds;
 
-                // Log as warning when auto-reconnect will handle it, error only when all options exhausted
-                var willReconnect = _autoReconnectEnabled && _reconnectAttempts < _maxReconnectAttempts;
-                var message = $"[WebSocketConnection] Connection failed\n" +
-                              $"  URL: {sanitizedUrl}\n" +
-                              $"  Final State: {finalState}\n" +
-                              $"  Time Elapsed: {totalElapsed:F2}s\n" +
-                              $"  Reconnect Attempt: #{_reconnectAttempts}/{_maxReconnectAttempts}\n" +
-                              $"  Will reconnect: {(willReconnect ? "YES" : "NO")}";
-
-                if (willReconnect)
-                    Debug.LogWarning(message);
-                else
-                    Debug.LogError(message);
+                // Always a warning, never an error: the caller (EnsureConnectionAsync) decides how to
+                // report this, and a LogError from the transport layer would raise the host's fatal
+                // "app must restart" popup for what is a retryable failure.
+                Debug.LogWarning($"[WebSocketConnection] Connection failed\n" +
+                                 $"  URL: {sanitizedUrl}\n" +
+                                 $"  Final State: {finalState}\n" +
+                                 $"  Time Elapsed: {totalElapsed:F2}s");
 
                 // Trigger health check to diagnose if backend is reachable
                 _ = DiagnoseConnectionFailure(sanitizedUrl);
@@ -176,11 +171,7 @@ namespace Tsc.AIBridge.WebSocket
                 // Don't log errors if we're shutting down
                 if (!_isDisconnecting && _owner && _owner.gameObject)
                 {
-                    var willRetry = _autoReconnectEnabled && _reconnectAttempts < _maxReconnectAttempts;
-                    if (willRetry)
-                        Debug.LogWarning($"[WebSocketConnection] Connection error (will reconnect): {ex.Message}");
-                    else
-                        Debug.LogError($"[WebSocketConnection] Connection error: {ex.Message}");
+                    Debug.LogWarning($"[WebSocketConnection] Connection error: {ex.Message}");
                     OnError?.Invoke(ex.Message);
                 }
                 return false;
@@ -197,7 +188,6 @@ namespace Tsc.AIBridge.WebSocket
             // Prevent multiple simultaneous disconnect calls
             if (_isDisconnecting) return;
             _isDisconnecting = true;
-            _autoReconnectEnabled = false; // Disable auto-reconnect for manual disconnects
 
             if (_webSocket != null)
             {
@@ -309,9 +299,6 @@ namespace Tsc.AIBridge.WebSocket
             //Debug.Log($"[WebSocketConnection] Connected successfully");
 
             IsConnecting = false;
-            _currentReconnectDelay = _reconnectBaseDelay; // Reset reconnect delay
-            _reconnectAttempts = 0; // Reset attempt counter
-            _isReconnecting = false; // Clear reconnecting flag
             _binaryMessageCount = 0; // Reset counter for new connection
             _connectionStartTime = DateTime.UtcNow; // Track connection start for diagnostics
             OnConnected?.Invoke();
@@ -343,13 +330,11 @@ namespace Tsc.AIBridge.WebSocket
             // Don't log errors during shutdown
             if (!_owner || !_owner.gameObject || _isDisconnecting) return;
 
-            // Only escalate to LogError when reconnection cannot save us.
-            // LogError triggers the ErrorHandler popup — users should not see transient network hiccups.
-            var canRecover = _autoReconnectEnabled && _reconnectAttempts < _maxReconnectAttempts;
-            if (canRecover)
-                Debug.LogWarning($"[WebSocketConnection] Connection error (reconnecting): {error}");
-            else
-                Debug.LogError($"[WebSocketConnection] Connection error: {error}");
+            // Never LogError here: that triggers the host ErrorHandler's fatal "app must restart"
+            // popup, and from this layer every failure is retryable — the next send re-runs
+            // EnsureConnectionAsync with a fresh JWT. Deciding that a failure is final is the
+            // caller's job, not the transport's.
+            Debug.LogWarning($"[WebSocketConnection] Connection error: {error}");
 
             try
             {
@@ -372,19 +357,16 @@ namespace Tsc.AIBridge.WebSocket
                 var timeSinceConnect = DateTime.UtcNow - _connectionStartTime;
                 var messagesSent = _binaryMessageCount;
 
+                // DIAGNOSTIC: this is the log line that tells you, in a field report, whether the
+                // socket ever opened at all (network blocks wss) or opened and later dropped.
                 Debug.Log($"[WebSocketConnection] 🔌 DISCONNECTED\n" +
                          $"  Code: {code}\n" +
                          $"  Duration: {timeSinceConnect.TotalSeconds:F1}s\n" +
                          $"  Messages sent: {messagesSent}\n" +
-                         $"  Auto-reconnect: {_autoReconnectEnabled}\n" +
-                         $"  Will reconnect: {(_autoReconnectEnabled && ShouldReconnect(code) ? "YES" : "NO")}\n" +
                          $"  URL: {SanitizeUrl(_lastWsUrl ?? "null")}");
 
-                // Check if we should attempt reconnection
-                if (_autoReconnectEnabled && ShouldReconnect(code))
-                {
-                    _ = AttemptReconnectAsync();
-                }
+                // No reconnect here by design — WebSocketClient.EnsureConnectionAsync reconnects on
+                // the next send, with a fresh JWT and re-subscribed handlers. See the class remarks.
             }
 
             OnDisconnected?.Invoke();
@@ -392,123 +374,6 @@ namespace Tsc.AIBridge.WebSocket
             // Cleanup
             Cleanup();
         }
-
-        private static bool ShouldReconnect(WebSocketCloseCode code)
-        {
-            return code switch
-            {
-                WebSocketCloseCode.Normal => true,     // Auto-reconnect on idle timeout (backend sends Normal)
-                WebSocketCloseCode.Abnormal => true,
-                WebSocketCloseCode.Away => true,
-                //WebSocketCloseCode.ProtocolError => false,
-                //WebSocketCloseCode.UnsupportedData => false,
-                _ => false
-            };
-        }
-
-        /// <summary>
-        /// Attempts to reconnect to the WebSocket server with exponential backoff.
-        /// Implements retry logic with configurable maximum attempts and delay limits.
-        /// CRITICAL: Uses OLD JWT token - consider refreshing for long-running sessions
-        /// </summary>
-        /// <returns>Task representing the asynchronous reconnection attempt</returns>
-        private async Task AttemptReconnectAsync()
-        {
-            if (_isReconnecting || _reconnectAttempts >= _maxReconnectAttempts)
-            {
-                if (_reconnectAttempts >= _maxReconnectAttempts)
-                {
-                    Debug.LogWarning($"[WebSocketConnection] Max reconnect attempts ({_maxReconnectAttempts}) reached - abandoning reconnection");
-                }
-                return;
-            }
-
-            // Validate we have the necessary connection info
-            if (string.IsNullOrEmpty(_lastWsUrl))
-            {
-                UserErrorLogger.LogError(
-                    "Connection configuration error. Please restart the session.",
-                    "[WebSocketConnection] Cannot reconnect - missing WebSocket URL");
-                return;
-            }
-
-            _isReconnecting = true;
-            _reconnectAttempts++;
-
-            try
-            {
-                Debug.Log($"[WebSocketConnection] 🔄 Attempting reconnect #{_reconnectAttempts}/{_maxReconnectAttempts} after {_currentReconnectDelay}s delay");
-
-                // Wait for the current delay
-                await Task.Delay((int)(_currentReconnectDelay * 1000));
-
-                // Check if we should still reconnect (avoid race conditions)
-                if (_isDisconnecting || !_owner || !_owner.gameObject)
-                {
-                    Debug.Log($"[WebSocketConnection] Reconnect cancelled - component shutting down");
-                    return;
-                }
-
-                // CRITICAL FIX: Check if JWT token might be expired
-                // For now, we reuse the old token, but log a warning if reconnect happens after long duration
-                // TODO: Add JWT refresh mechanism for long-running sessions
-                if (string.IsNullOrEmpty(_jwtToken))
-                {
-                    UserErrorLogger.LogError(
-                        "Your session has expired. Please restart the session.",
-                        "[WebSocketConnection] Cannot reconnect - JWT token is null. This should not happen!");
-                    return;
-                }
-
-                // Try to reconnect with existing token
-                // NOTE: If token expired (>55min old), this will fail and user needs to restart session
-                var success = await ConnectAsync(_lastWsUrl, _lastPersonaName, _jwtToken);
-
-                if (success)
-                {
-                    //Debug.Log($"[WebSocketConnection] Reconnection successful on attempt #{_reconnectAttempts}");
-                    // Reset delay and attempts on success (handled in HandleOpen)
-                }
-                else
-                {
-                    Debug.LogWarning($"[WebSocketConnection] Reconnect attempt #{_reconnectAttempts} failed");
-
-                    // Exponential backoff with maximum limit
-                    var newDelay = _currentReconnectDelay * 2;
-                    _currentReconnectDelay = newDelay > _reconnectMaxDelay ? _reconnectMaxDelay : newDelay;
-
-                    // Schedule next attempt if we haven't reached max attempts
-                    if (_reconnectAttempts < _maxReconnectAttempts)
-                    {
-                        //Debug.Log($"[WebSocketConnection] Scheduling next reconnect attempt with {_currentReconnectDelay}s delay");
-                        _ = AttemptReconnectAsync();
-                    }
-                    else
-                    {
-                        UserErrorLogger.LogError(
-                            "Connection lost. Please check your internet connection and restart.",
-                            "[WebSocketConnection] All reconnect attempts exhausted - connection lost");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[WebSocketConnection] Error during reconnect attempt: {ex.Message}");
-            }
-            finally
-            {
-                _isReconnecting = false;
-            }
-        }
-
-        // Not used anymore - URL is built in StreamingApiClient
-        //private string BuildWebSocketUrl(string endpoint)
-        //{
-        //    var wsScheme = _apiBaseUrl.StartsWith("https://") ? "wss" : "ws";
-        //    var wsBaseUrl = _apiBaseUrl.Replace("http://", "").Replace("https://", "");
-
-        //    return $"{wsScheme}://{wsBaseUrl.TrimEnd('/')}{endpoint}?token={_jwtToken}";
-        //}
 
         /// <summary>
         /// Removes sensitive information (JWT tokens) from WebSocket URL for safe logging.
@@ -585,9 +450,6 @@ namespace Tsc.AIBridge.WebSocket
                 }
 
                 // Log current reconnection state
-                Debug.Log($"[WebSocketConnection] 🔄 Reconnection state: Attempts={_reconnectAttempts}/{_maxReconnectAttempts}, " +
-                         $"Delay={_currentReconnectDelay:F1}s, IsReconnecting={_isReconnecting}, AutoReconnect={_autoReconnectEnabled}");
-
             }
             catch (Exception ex)
             {

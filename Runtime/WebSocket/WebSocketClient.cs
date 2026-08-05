@@ -353,7 +353,7 @@ namespace Tsc.AIBridge.WebSocket
                 Debug.Log($"[UnifiedWebSocket] Ensuring connection before SessionStart for RequestId: {message.RequestId}");
             if (!await EnsureConnectionAsync(cancellationToken))
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Failed to establish connection for SessionStart");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Failed to establish connection for SessionStart");
                 throw new InvalidOperationException("Failed to establish WebSocket connection");
             }
             if (enableVerboseLogging)
@@ -366,7 +366,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for SessionStart");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for SessionStart");
                 throw new InvalidOperationException("Connection lost after establishing WebSocket connection");
             }
 
@@ -390,7 +390,7 @@ namespace Tsc.AIBridge.WebSocket
 
             if (!await EnsureConnectionAsync(CancellationToken.None))
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Cannot send audio - failed to establish connection!");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Cannot send audio - failed to establish connection!");
                 return;
             }
 
@@ -398,7 +398,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for SendBinary");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for SendBinary");
                 return;
             }
 
@@ -416,7 +416,7 @@ namespace Tsc.AIBridge.WebSocket
 
             if (!await EnsureConnectionAsync(CancellationToken.None))
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Cannot send EndOfSpeech - failed to establish connection!");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Cannot send EndOfSpeech - failed to establish connection!");
                 return;
             }
 
@@ -424,7 +424,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for EndOfSpeech");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for EndOfSpeech");
                 return;
             }
 
@@ -448,7 +448,7 @@ namespace Tsc.AIBridge.WebSocket
 
             if (!await EnsureConnectionAsync(CancellationToken.None))
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Cannot send EndOfAudio - failed to establish connection!");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Cannot send EndOfAudio - failed to establish connection!");
                 return;
             }
 
@@ -456,7 +456,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for EndOfAudio");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for EndOfAudio");
                 return;
             }
 
@@ -477,7 +477,7 @@ namespace Tsc.AIBridge.WebSocket
             // Ensure connection before sending (follows WebSocketClient pattern)
             if (!await EnsureConnectionAsync())
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Failed to establish connection for SessionCancel");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Failed to establish connection for SessionCancel");
                 return;
             }
 
@@ -485,7 +485,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for SessionCancel");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for SessionCancel");
                 return;
             }
 
@@ -502,7 +502,7 @@ namespace Tsc.AIBridge.WebSocket
             // Ensure connection before sending (follows WebSocketClient pattern)
             if (!await EnsureConnectionAsync())
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Failed to establish connection for InterruptionOccurred");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Failed to establish connection for InterruptionOccurred");
                 return;
             }
 
@@ -510,7 +510,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for InterruptionOccurred");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for InterruptionOccurred");
                 return;
             }
 
@@ -535,7 +535,7 @@ namespace Tsc.AIBridge.WebSocket
             // Ensure connection before sending (follows WebSocketClient pattern)
             if (!await EnsureConnectionAsync())
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Failed to establish connection for TextInput");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Failed to establish connection for TextInput");
                 return;
             }
 
@@ -543,7 +543,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for TextInput");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for TextInput");
                 return;
             }
 
@@ -560,7 +560,7 @@ namespace Tsc.AIBridge.WebSocket
             // Ensure connection before sending (follows WebSocketClient pattern)
             if (!await EnsureConnectionAsync())
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Failed to establish connection for DirectTTS");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Failed to establish connection for DirectTTS");
                 return;
             }
 
@@ -568,7 +568,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for DirectTTS");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for DirectTTS");
                 return;
             }
 
@@ -585,7 +585,7 @@ namespace Tsc.AIBridge.WebSocket
             // Ensure connection before sending (follows WebSocketClient pattern)
             if (!await EnsureConnectionAsync())
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Failed to establish connection for AnalysisRequest");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Failed to establish connection for AnalysisRequest");
                 return;
             }
 
@@ -593,7 +593,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for AnalysisRequest");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for AnalysisRequest");
                 return;
             }
 
@@ -610,7 +610,7 @@ namespace Tsc.AIBridge.WebSocket
             // Ensure connection before sending
             if (!await EnsureConnectionAsync())
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Failed to establish connection for PauseStream");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Failed to establish connection for PauseStream");
                 return;
             }
 
@@ -618,7 +618,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for PauseStream");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for PauseStream");
                 return;
             }
 
@@ -635,7 +635,7 @@ namespace Tsc.AIBridge.WebSocket
             // Ensure connection before sending
             if (!await EnsureConnectionAsync())
             {
-                UserErrorLogger.LogError("Connection lost. Please wait or restart the session.", "[UnifiedWebSocket] Failed to establish connection for ResumeStream");
+                UserErrorLogger.LogRecoverableError("Connection lost. Please try again.", "[UnifiedWebSocket] Failed to establish connection for ResumeStream");
                 return;
             }
 
@@ -643,7 +643,7 @@ namespace Tsc.AIBridge.WebSocket
             var webSocket = _webSocket;
             if (webSocket == null || !webSocket.IsConnected)
             {
-                UserErrorLogger.LogError("Connection interrupted. Please wait or restart the session.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for ResumeStream");
+                UserErrorLogger.LogRecoverableError("Connection interrupted. Please try again.", "[UnifiedWebSocket] Connection lost after EnsureConnectionAsync for ResumeStream");
                 return;
             }
 
@@ -706,7 +706,7 @@ namespace Tsc.AIBridge.WebSocket
                     }
 
                     // Create WebSocket connection
-                    _webSocket = new WebSocketConnection(this, 1f, 30f, enableVerboseLogging);
+                    _webSocket = new WebSocketConnection(this, enableVerboseLogging);
 
                     // Subscribe to events
                     _webSocket.OnTextMessageReceived += HandleTextMessage;
@@ -715,7 +715,7 @@ namespace Tsc.AIBridge.WebSocket
 
                     // Connect
                     var wsStartTime = System.DateTime.Now;
-                    var connected = await _webSocket.ConnectAsync(fullUrl, "UnifiedConnection", jwtToken);
+                    var connected = await _webSocket.ConnectAsync(fullUrl);
                     var wsDuration = (System.DateTime.Now - wsStartTime).TotalMilliseconds;
                     if (enableVerboseLogging)
                         Debug.Log($"[UnifiedWebSocket] WebSocket handshake took {wsDuration:F0}ms");
@@ -731,14 +731,22 @@ namespace Tsc.AIBridge.WebSocket
                     }
                     else
                     {
-                        Debug.LogError("[UnifiedWebSocket] Failed to establish connection");
+                        // Recoverable: the caller's next send re-enters this method with a fresh JWT.
+                        // Untagged this used to be the FIRST fatal error of a failing turn, so it won
+                        // the "first fatal wins" race in the host ErrorHandler and showed the generic
+                        // "app must restart" popup — the visible symptom reported from the field.
+                        UserErrorLogger.LogRecoverableError(
+                            "Connection lost. Please try again.",
+                            "[UnifiedWebSocket] Failed to establish connection");
                         CleanupConnection();
                         return false;
                     }
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[UnifiedWebSocket] Connection error: {ex.Message}");
+                    UserErrorLogger.LogRecoverableError(
+                        "Connection lost. Please try again.",
+                        $"[UnifiedWebSocket] Connection error: {ex.Message}");
                     CleanupConnection();
                     return false;
                 }
