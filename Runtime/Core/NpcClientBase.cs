@@ -721,8 +721,15 @@ namespace Tsc.AIBridge.Core
             //   - re-arms the player via ResumePlaybackForLateChunks so late chunks can play
             //   - schedules a coroutine that polls for server signal OR hard timeout, then
             //     runs the deferred teardown.
+            //
+            // A locally played scripted reaction raises the same OnPlaybackComplete but never
+            // opens a backend stream, so both inputs above look like "premature safety-net" and
+            // the defer would burn its full hard timeout waiting for a signal that cannot come —
+            // blocking any Queue-mode scripted reaction behind it. IsStreamingAudio is the
+            // discriminator: no open stream, nothing to wait for, tear down now.
             var serverStreamEnd = AudioPlayer?.IsServerStreamEnd ?? true;
-            if (!StreamEndDecision.ShouldTearDownAudioStream(wasInterrupted, serverStreamEnd))
+            var streamIsOpen = DownstreamAudioProcessor?.IsStreamingAudio ?? false;
+            if (!StreamEndDecision.ShouldTearDownAudioStream(wasInterrupted, serverStreamEnd, streamIsOpen))
             {
                 Debug.LogWarning($"[{NpcName}] Playback complete fired before server signalled AudioStreamEnd — " +
                                  "deferring EndAudioStream/Reset so late chunks can continue into the open stream. " +

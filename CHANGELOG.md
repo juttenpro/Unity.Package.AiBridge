@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-08-07
+
+### Fixed
+- **A scripted reaction no longer waits out the teardown defer that only streaming audio needs.**
+  `NpcClientBase.ResetAudioStateForNextTurn` decided whether to defer from two inputs — "was
+  interrupted" and "server signalled AudioStreamEnd". A locally played reaction .wav raises the
+  same `OnPlaybackComplete` but never opens a backend stream, so both were false and the defer
+  engaged, burning its full `DeferExpiry.DefaultMaxDeferSeconds` hard timeout waiting for a signal
+  that can never arrive. A Queue-mode scripted reaction sat blocked behind it in the host project's
+  `NpcAudioPlayer.ProcessAudioQueue`. Observed on Quest 2026-08-05 in the Leefstijlgesprekken intro:
+  ~6 seconds of silence between two spoken instructions, with `Total received: 0 samples (0.00s)`
+  and `EndAudioStream called without active stream` in the same log proving no stream existed.
+  The decision now also takes `AudioStreamProcessor.IsStreamingAudio`: no open stream means there
+  are no late chunks to wait for, so teardown runs immediately. A genuine premature safety-net
+  still has its stream open and still defers, so the 2026-05-18 late-chunk recovery is unchanged.
+
+### Changed
+- **`StreamEndDecision.ShouldTearDownAudioStream` takes a third argument, `streamIsOpen`.** Callers
+  outside this package must pass `AudioStreamProcessor.IsStreamingAudio` (or `false` when there is
+  no processor). No compatibility overload is provided — the two-argument form cannot express the
+  scripted-audio case and would silently reintroduce the gap.
+
 ## [1.29.0] - 2026-08-05
 
 ### Fixed

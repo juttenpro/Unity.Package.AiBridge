@@ -34,6 +34,18 @@ namespace Tsc.AIBridge.Core
     /// (e.g., server crash), the stream remains "logically open" until the next user turn,
     /// at which point <c>StartAudioStream</c> resets everything cleanly. Acceptable: better
     /// to keep state alive briefly than to truncate real audio.
+    ///
+    /// <para>Scripted audio (added 2026-08-07):</para> the same <c>OnPlaybackComplete</c> event
+    /// also fires for locally played reaction .wav files, where no backend stream exists at all.
+    /// "Not interrupted" and "no server signal" are both true there, so the original two-input
+    /// policy deferred — waiting up to <see cref="DeferExpiry.DefaultMaxDeferSeconds"/> seconds
+    /// for a signal that can never arrive, while a Queue-mode scripted reaction sat blocked
+    /// behind it in <c>NpcAudioPlayer.ProcessAudioQueue</c>. Observed on Quest 2026-08-05: ~6s of
+    /// silence between two intro instructions, with <c>Total received: 0 samples (0.00s)</c> and
+    /// <c>EndAudioStream called without active stream</c> proving no stream ever existed.
+    /// The <c>streamIsOpen</c> input is that missing discriminator: no open stream means there
+    /// is nothing to wait for, so tear down immediately. A genuine premature safety-net still has
+    /// its stream open and still defers, so the 2026-05-18 recovery is unaffected.
     /// </remarks>
     public static class StreamEndDecision
     {
@@ -51,13 +63,19 @@ namespace Tsc.AIBridge.Core
         /// The server only emits that signal after its TTS pipeline has finished,
         /// so this is the authoritative "stream is truly done" indicator.
         /// </param>
+        /// <param name="streamIsOpen">
+        /// True if a backend audio stream is actually open for this turn
+        /// (<see cref="Audio.Processing.AudioStreamProcessor.IsStreamingAudio"/>).
+        /// False means no stream was ever started, so there are no late chunks that could
+        /// still arrive and nothing to defer for — see the scripted-audio note in the remarks.
+        /// </param>
         /// <returns>
         /// True → call EndAudioStream + handler Reset (normal teardown).
         /// False → safety-net fired prematurely; keep stream state intact so late
         /// chunks via <see cref="Handlers.AudioMessageHandler.ProcessBinaryMessage"/>
         /// flow into the still-open stream instead of re-triggering StartAudioStream.
         /// </returns>
-        public static bool ShouldTearDownAudioStream(bool wasInterrupted, bool serverStreamEnd)
-            => wasInterrupted || serverStreamEnd;
+        public static bool ShouldTearDownAudioStream(bool wasInterrupted, bool serverStreamEnd, bool streamIsOpen)
+            => wasInterrupted || serverStreamEnd || !streamIsOpen;
     }
 }
