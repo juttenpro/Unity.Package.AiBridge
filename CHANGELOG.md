@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.30.1] - 2026-08-19
+
+### Fixed
+- **`AudioSource.isPlaying` is cached every frame again instead of once per 60 frames.**
+  `StreamingAudioPlayer.Update` sampled it behind `if (Time.frameCount % 60 == 0)` as a
+  micro-optimisation ("expensive Unity API call"). That cache backs `IsPlaybackActive`, which is
+  what arbitrates scripted-vs-streaming audio in `AudioFilterRelay.OnAudioFilterRead` and in the
+  host project's `NpcAudioPlayer` queue — so the arbitration ran on state up to ~0.7s (90fps VR)
+  to ~2s (30fps mobile) out of date. Two field symptoms, both reported from the
+  Leefstijlgesprekken intro on VR *and* Mobile:
+  - a stale FALSE let a scripted reaction be started on top of a live stream. The relay then sees
+    a non-dummy clip while streaming is active, takes its unity-gain spatial fallback (weights
+    forced to `1.0f` instead of the real sub-1.0 distance/pan attenuation) and plays that whole
+    utterance unattenuated — *"the coach suddenly answers at double volume, the next sentence is
+    normal again"*, with the scripted line itself inaudible;
+  - a stale TRUE let the relay claim the stream while a scripted clip was still audible, so
+    `AudioFilterRelay.StartPlayback` swapped its looping dummy clip in underneath and the line was
+    cut off mid-word with no `Stop()` and no pause — *"you hear 'Bedankt' and then she is suddenly
+    talking about something else, with almost no gap"*.
+  One property read per NPC per frame does not justify either. The fallback in
+  `AudioFilterRelay.OnAudioFilterRead` is deliberately left in place: it exists to prevent the
+  1.1.6 `× 1,000,000` oversaturation and is still the correct last resort.
+
+### Added
+- **`StreamingAudioPlayerPrimingWindowTests`** — pins the fact that `IsStreamActive` and
+  `IsPlaybackActive` genuinely disagree while a stream fills its 250ms priming buffer, because the
+  defect above was picking the wrong one of the two. Callers deciding "may scripted audio take the
+  AudioSource?" must use `IsStreamActive`.
+
 ## [1.30.0] - 2026-08-07
 
 ### Fixed

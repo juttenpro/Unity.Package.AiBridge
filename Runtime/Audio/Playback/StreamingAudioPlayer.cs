@@ -1299,18 +1299,25 @@ namespace Tsc.AIBridge.Audio.Playback
                 }
             }
 
-            // OPTIMIZATION: Cache AudioSource.isPlaying check (expensive Unity API call)
-            // Check once per second instead of every frame at 60fps
-            if (Time.frameCount % 60 == 0)
+            // Cache AudioSource.isPlaying so the audio thread can read it (it cannot touch Unity
+            // APIs itself). Refreshed EVERY frame on purpose: this flag feeds IsPlaybackActive,
+            // which arbitrates scripted-vs-streaming audio in AudioFilterRelay.OnAudioFilterRead
+            // and in NpcAudioPlayer's queue. It used to be sampled once per 60 frames as a
+            // micro-optimisation, which left that arbitration up to ~0.7s (90fps VR) to ~2s
+            // (30fps mobile) out of date:
+            // - a stale FALSE let a scripted reaction be started on top of a live stream, after
+            //   which the relay hits its unity-gain spatial fallback (reported as "the coach
+            //   suddenly speaks one sentence at double volume, the next one is normal again");
+            // - a stale TRUE let the relay claim the stream while a scripted clip was still
+            //   audible, cutting that clip off mid-word with no pause.
+            // One property read per NPC per frame does not justify either.
+            if (audioFilterRelay != null && audioFilterRelay.AudioSource != null)
             {
-                if (audioFilterRelay != null && audioFilterRelay.AudioSource != null)
-                {
-                    _cachedIsPlaying = audioFilterRelay.AudioSource.isPlaying;
-                }
-                else
-                {
-                    _cachedIsPlaying = false;
-                }
+                _cachedIsPlaying = audioFilterRelay.AudioSource.isPlaying;
+            }
+            else
+            {
+                _cachedIsPlaying = false;
             }
 
             // CRITICAL: Editor pause detection
