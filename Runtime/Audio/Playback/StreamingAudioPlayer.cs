@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using UnityEngine;
@@ -146,6 +146,14 @@ namespace Tsc.AIBridge.Audio.Playback
         // AND the buffer is empty, finalize immediately. Cleared on every StartStream so a stale
         // signal from turn N never leaks into turn N+1.
         private volatile bool _serverStreamEnd;
+
+        // True while an OnPlaybackStarted has been reported that has not been closed yet by
+        // OnPlaybackComplete/OnPlaybackInterrupted. Consumers read those events as a turn boundary
+        // (the rule system's ReactionStarted/ReactionFinished, NpcClientBase's IsTalking), so the
+        // pairing must hold even though four methods mutate the underlying playback flags. Kept
+        // separate from _isPlaybackStarted on purpose: that one drives the audio mechanics and is
+        // deliberately re-armed mid-turn by ResumePlaybackForLateChunks.
+        private bool _playbackStartedReported;
 
         /// <summary>True once the orchestrator has signalled end-of-audio for the current turn.</summary>
         public bool IsServerStreamEnd => _serverStreamEnd;
@@ -630,6 +638,14 @@ namespace Tsc.AIBridge.Audio.Playback
                     StopPlaybackInternal(wasInterrupted: true);
                 }
 
+                // A turn can still be open here even though the branch above did not run: EndStream()
+                // clears _isStreamActive without ending playback, so the previous turn's
+                // OnPlaybackStarted would be abandoned when the flags below are reset. Closing it here
+                // is what stops the rule system waiting for a ReactionFinished that can never arrive
+                // (HAN 2026-08-26: the trainee started the next turn before the player's auto-complete
+                // heuristic got around to it).
+                CloseReportedPlayback(wasInterrupted: true);
+
                 // Reset force stop and pause flags when starting new stream
                 // CRITICAL: Clear any stale pause state to prevent stuck audio
                 // (e.g., VR headset power off/on cycle leaving a pause reason set without a matching resume)
@@ -956,7 +972,25 @@ namespace Tsc.AIBridge.Audio.Playback
                 }
             }
 
-            // Fire appropriate event based on stop reason
+            // Fire appropriate event based on stop reason — but only when a turn is actually open.
+            // StopPlayback runs on teardown paths that may never have played anything, and it can run
+            // twice for one turn (interruption followed by shutdown).
+            CloseReportedPlayback(wasInterrupted);
+        }
+
+        /// <summary>
+        /// Closes the reported playback, firing the end event that matches the open OnPlaybackStarted.
+        /// No-op when no turn is open, so repeated stops and teardown-without-audio stay silent.
+        /// </summary>
+        /// <param name="wasInterrupted">True to report an interruption, false for a natural end.</param>
+        /// <returns>True when an event was fired.</returns>
+        private bool CloseReportedPlayback(bool wasInterrupted)
+        {
+            if (!_playbackStartedReported)
+                return false;
+
+            _playbackStartedReported = false;
+
             if (wasInterrupted)
             {
                 OnPlaybackInterrupted?.Invoke();
@@ -965,6 +999,8 @@ namespace Tsc.AIBridge.Audio.Playback
             {
                 OnPlaybackComplete?.Invoke();
             }
+
+            return true;
         }
 
         /// <summary>
@@ -1112,6 +1148,17 @@ namespace Tsc.AIBridge.Audio.Playback
             if(enableVerboseLogging)
                 Debug.Log($"[{_cachedGameObjectName}] Playback started with {BufferLevel:F2}s buffered");
 
+            // A late-chunk re-arm runs through here again for the SAME turn (see
+            // ResumePlaybackForLateChunks). Reporting that as a fresh start would leave the previous
+            // one unmatched, which strands the rule system's ReactionStarted and keeps IsTalking true.
+            if (_playbackStartedReported)
+            {
+                if (enableVerboseLogging)
+                    Debug.Log($"[{_cachedGameObjectName}] Playback re-armed mid-turn — not reporting a second start");
+                return;
+            }
+
+            _playbackStartedReported = true;
             OnPlaybackStarted?.Invoke();
             OnPlaybackStartedStatic?.Invoke();
         }

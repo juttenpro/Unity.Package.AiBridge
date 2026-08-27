@@ -6,6 +6,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.31.0] - 2026-08-27
+
+### Fixed
+- **`OnPlaybackStarted` is now always matched by exactly one `OnPlaybackComplete`/`OnPlaybackInterrupted`.**
+  Consumers read this pair as a turn boundary, not as audio bookkeeping: the host project's rule system
+  maps it onto its `ReactionStarted`/`ReactionFinished` inputs (which gate scoring and phase progress),
+  and `NpcClientBase` toggles `IsTalking`, which decides whether the push-to-talk button counts as an
+  interruption attempt. But four methods mutate the underlying playback flags — `StartPlayback`,
+  `StopPlaybackInternal`, `ResumePlaybackForLateChunks` and `StartStream` — and nothing enforced the
+  pairing across them. Four ways it broke, all observed at the HAN test session of 2026-08-26:
+  - a late-chunk re-arm (`ResumePlaybackForLateChunks`, the recovery for TTS-provider chunk-rate dips)
+    resets `_isPlaybackStarted`, so the next chunk fired a **second** `OnPlaybackStarted` for the same
+    turn. The first one was then never matched;
+  - `StartStream` reset the flags without closing a turn that was still open, abandoning it silently.
+    Sessions 714084 and 714206 show exactly this: the trainee began the next turn 2.2s and 2.7s later,
+    inside the 3s auto-complete window, so the close never happened;
+  - `StopPlayback` fired an end event even when nothing had ever played, reporting a reaction that did
+    not exist;
+  - two `StopPlayback` calls for one turn (interruption followed by teardown) reported the end twice,
+    double-firing whatever the consumer hangs off it.
+  With an unmatched `OnPlaybackStarted`, `IsTalking` stays true and every press of the talk button is
+  treated as an interruption attempt — session 714244 sat dead for 176 seconds while the trainee picked
+  the form up and put it down again. A new `_playbackStartedReported` flag now tracks the open turn,
+  deliberately separate from `_isPlaybackStarted` (which drives the audio mechanics and is *meant* to be
+  re-armed mid-turn), and `CloseReportedPlayback` is the single place that closes it.
+
+### Known limitation
+- A safety-net stop followed by a late-chunk re-arm still produces **two** Started/Finished pairs for one
+  spoken reaction rather than one. The safety-net's end event is a guess that cannot be retracted once
+  fired, and suppressing it would require the player to know whether `NpcClientBase` is about to defer
+  teardown — a layer inversion. Both pairs now close, which is what removes the hang and the dead talk
+  button; collapsing them into one is a separate change.
+
 ## [1.30.1] - 2026-08-19
 
 ### Fixed
