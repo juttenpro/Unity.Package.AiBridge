@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.31.1] - 2026-08-28
+
+### Fixed
+- **A late-chunk re-arm no longer opens a second turn.** 1.31.0 guaranteed that every `OnPlaybackStarted`
+  gets exactly one end event, but only suppressed the duplicate start while the turn was still open. In
+  the field the safety-net stop almost always fires first — it closes the turn, and the re-arm that
+  follows then legitimately opens a new one. Nothing could close that turn: it waits for the next stream,
+  and the trainee cannot start one while `IsTalking` says the NPC is still speaking. Reported from
+  Agressietraining (24-27 Aug 2026) as "reactions stop, I can still press the talk button but nothing
+  reaches the log", with `IsNPCTalking` visibly stuck on true; the same shape as HAN session 714244,
+  where it sat dead for 176 seconds.
+
+  `ResumePlaybackForLateChunks` now marks the replay as a continuation, so the audio plays out but the
+  turn boundary stays where it was. `StartStream` clears the mark, so a genuine next turn still reports
+  its own start.
+
+  The 1.31.0 note calling this a separate quality question was wrong: closing both pairs was not enough,
+  because the second pair never got its chance to close.
+
 ## [1.31.0] - 2026-08-27
 
 ### Fixed
@@ -34,10 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known limitation
 - A safety-net stop followed by a late-chunk re-arm still produces **two** Started/Finished pairs for one
-  spoken reaction rather than one. The safety-net's end event is a guess that cannot be retracted once
-  fired, and suppressing it would require the player to know whether `NpcClientBase` is about to defer
-  teardown — a layer inversion. Both pairs now close, which is what removes the hang and the dead talk
-  button; collapsing them into one is a separate change.
+  spoken reaction rather than one. **This turned out to be the bug itself, not a cosmetic detail — fixed
+  in 1.31.1.**
 
 ## [1.30.1] - 2026-08-19
 

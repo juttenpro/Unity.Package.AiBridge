@@ -155,6 +155,13 @@ namespace Tsc.AIBridge.Audio.Playback
         // deliberately re-armed mid-turn by ResumePlaybackForLateChunks.
         private bool _playbackStartedReported;
 
+        // Set by ResumePlaybackForLateChunks: the next StartPlayback is the tail of the turn that just
+        // played, not a new one. Needed on top of _playbackStartedReported because the safety-net stop
+        // that precedes the re-arm has usually already closed that turn — and a turn opened by the tail
+        // can only be closed by the NEXT turn, which the trainee cannot start while the system believes
+        // the NPC is still speaking.
+        private bool _playbackIsContinuation;
+
         /// <summary>True once the orchestrator has signalled end-of-audio for the current turn.</summary>
         public bool IsServerStreamEnd => _serverStreamEnd;
 
@@ -646,6 +653,10 @@ namespace Tsc.AIBridge.Audio.Playback
                 // heuristic got around to it).
                 CloseReportedPlayback(wasInterrupted: true);
 
+                // A genuine new stream ends any continuation the previous turn left pending, so the turn
+                // below reports its own start instead of being swallowed as a tail.
+                _playbackIsContinuation = false;
+
                 // Reset force stop and pause flags when starting new stream
                 // CRITICAL: Clear any stale pause state to prevent stuck audio
                 // (e.g., VR headset power off/on cycle leaving a pause reason set without a matching resume)
@@ -742,6 +753,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 _forceStop = false;
                 _isStreamActive = true;
                 _isPlaybackStarted = false; // re-arm so AddAudioData → StartPlayback can re-trigger
+                _playbackIsContinuation = true; // ...but that replay continues the turn, it does not open one
                 _streamComplete = false;
                 _shouldStop = false;
                 _isReceivingResponse = true;
@@ -1149,12 +1161,14 @@ namespace Tsc.AIBridge.Audio.Playback
                 Debug.Log($"[{_cachedGameObjectName}] Playback started with {BufferLevel:F2}s buffered");
 
             // A late-chunk re-arm runs through here again for the SAME turn (see
-            // ResumePlaybackForLateChunks). Reporting that as a fresh start would leave the previous
-            // one unmatched, which strands the rule system's ReactionStarted and keeps IsTalking true.
-            if (_playbackStartedReported)
+            // ResumePlaybackForLateChunks). Reporting that as a fresh start would leave a turn unmatched,
+            // which strands the rule system's ReactionStarted and keeps IsTalking true.
+            if (_playbackStartedReported || _playbackIsContinuation)
             {
+                _playbackIsContinuation = false;
+
                 if (enableVerboseLogging)
-                    Debug.Log($"[{_cachedGameObjectName}] Playback re-armed mid-turn — not reporting a second start");
+                    Debug.Log($"[{_cachedGameObjectName}] Playback re-armed for the same turn — not reporting a second start");
                 return;
             }
 

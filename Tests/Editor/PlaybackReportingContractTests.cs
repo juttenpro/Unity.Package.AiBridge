@@ -107,28 +107,47 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         /// <summary>
-        /// THE REGRESSION, as the invariant that actually matters: the client safety-net stops playback
-        /// while the TTS provider is still sending (a chunk-rate dip), NpcClientBase defers teardown and
-        /// re-arms so the rest of the audio plays. Every Started this produces must end up matched —
-        /// that is what keeps the microphone usable and IsReactionPending from sticking.
+        /// THE REGRESSION (Agressietraining, 24-27 Aug 2026; HAN session 714244 before it).
         ///
-        /// Note this sequence still yields TWO pairs rather than one: the safety-net's Finished is a guess
-        /// that cannot be taken back once fired. Suppressing it would require the player to know whether
-        /// NpcClientBase is about to defer, which is a layer inversion. Pairs closing is what removes the
-        /// hang; collapsing them into one is a separate quality question (see CHANGELOG).
+        /// The client safety-net stops playback while the TTS provider is still sending — a chunk-rate
+        /// dip, not an ending. That stop closes the turn, NpcClientBase defers teardown and re-arms so
+        /// the rest of the audio still plays, and the next chunk then opened a SECOND turn. Nothing ever
+        /// closed that one: the trainee cannot speak while the system believes the NPC is talking, so no
+        /// next turn arrives to close it either. The log goes quiet with IsNPCTalking stuck on true and
+        /// the talk button dead — 110s in "stopt met praten", 176s in HAN 714244.
+        ///
+        /// A late-chunk re-arm is the tail of the turn that just played, never a new one.
         /// </summary>
         [Test]
-        public void SafetyNetStopThenLateChunkReArm_LeavesEveryStartedMatched()
+        public void SafetyNetStopThenLateChunkReArm_ReportsOnlyTheOneTurn()
         {
             PlayOneTurn();
+            Assert.AreEqual(1, _started, "Precondition: one turn played.");
+            Assert.AreEqual(1, Finished, "Precondition: the safety-net closed it.");
 
             _player.ResumePlaybackForLateChunks();
             _player.AddAudioData(new float[SamplesAbovePrimingThreshold]);
-            _player.StopPlayback(wasInterrupted: false);
 
-            Assert.AreEqual(_started, Finished,
-                $"Every Started must be matched. Got {_started} started and {Finished} finished — an " +
-                "unmatched Started is what left session 714244 dead for 176 seconds.");
+            Assert.AreEqual(1, _started,
+                "The late audio belongs to the turn that just ended. Opening a second turn here strands " +
+                "it forever: it can only be closed by a next turn, which the trainee can no longer start.");
+            Assert.AreEqual(1, Finished, "And no second ending either.");
+        }
+
+        /// <summary>
+        /// After a genuine new stream the continuation no longer applies — the next turn must report
+        /// its own start, or the NPC's next reaction is invisible to the rule system.
+        /// </summary>
+        [Test]
+        public void NewStreamAfterALateChunkReArm_ReportsItsOwnStart()
+        {
+            PlayOneTurn();
+            _player.ResumePlaybackForLateChunks();
+
+            _player.StartStream(SampleRate);
+            _player.AddAudioData(new float[SamplesAbovePrimingThreshold]);
+
+            Assert.AreEqual(2, _started, "A real new stream is a new turn.");
         }
 
         /// <summary>
