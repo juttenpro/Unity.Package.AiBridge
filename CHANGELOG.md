@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-08-31
+
+### Added
+- **Routing by message type, for messages the conversation turn does not own.** `WebSocketClient` could
+  answer exactly one question — "which NPC owns this requestId" — backed by a dictionary with one
+  handler per id. Not every inbound frame belongs to that turn: `prosodyresult` measures the PLAYER's
+  voice and carries the turn's requestId only because the player's audio travelled on that session.
+  With no second slot, the only place to consume it was the active NpcClient, which then needed a scene
+  reference to reach the rule system. In Agressietraining that reference pointed into a `FeatureFilter`
+  container; on AI-coach builds the container is destroyed at load, the field went fake-null, and every
+  vocal-delivery result was dropped without a single log line for a week (reported 2026-08-31 for the
+  2026-08-28 sessions — the backend logs showed perfect values throughout).
+
+  `SubscribeToMessageType` / `UnsubscribeFromMessageType` let a capability claim a wire type outright.
+  Claimed types are consulted after the protocol-level cases (bufferHint broadcast, error logging) and
+  before requestId routing, so a subscriber can neither hijack the protocol nor be starved by it, and
+  an unclaimed type falls through completely unchanged. The cheap substring scan that nominates a
+  candidate type is always confirmed against the real `type` field, so a transcript quoting a type name
+  cannot steal the frame.
+
+- **`ProsodyBaselineStore.AdoptServerCopy`.** The freeze flag is the one part of the baseline the client
+  owns; the copy returned by the stateless server only reflects the state that was sent, so a freeze
+  applied while the turn was in flight was lost by a plain assignment. The merge now lives with the
+  state it belongs to instead of being a rule every call site has to remember.
+
 ## [1.31.2] - 2026-08-28
 
 ### Added

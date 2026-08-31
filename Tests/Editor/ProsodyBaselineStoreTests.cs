@@ -124,5 +124,47 @@ namespace Tsc.AIBridge.Tests.Editor
                 "State is read on every SessionStart build; null would be a NullReferenceException on the hot path.");
             Assert.IsTrue(IsEmpty(ProsodyBaselineStore.State));
         }
+
+        [Test]
+        public void AdoptServerCopy_ReplacesStateWithTheServersRunningStats()
+        {
+            var fromServer = AccumulatedBaseline();
+
+            ProsodyBaselineStore.AdoptServerCopy(fromServer);
+
+            Assert.AreSame(fromServer, ProsodyBaselineStore.State,
+                "The server's folded state is what the next SessionStart must carry.");
+        }
+
+        /// <summary>
+        /// The freeze is client-owned: the rule node can set it while a turn is already in flight, and
+        /// the copy coming back reflects only the state we SENT. A plain assignment would silently drop
+        /// it, so the reference would keep absorbing the escalation it is supposed to be measured against.
+        /// </summary>
+        [Test]
+        public void AdoptServerCopy_LocalFreezeSetDuringTheTurn_SurvivesTheServerCopy()
+        {
+            ProsodyBaselineStore.State.Frozen = true;
+
+            var fromServer = AccumulatedBaseline();
+            fromServer.Frozen = false; // the server echoes the pre-freeze state it received
+
+            ProsodyBaselineStore.AdoptServerCopy(fromServer);
+
+            Assert.IsTrue(ProsodyBaselineStore.State.Frozen,
+                "A freeze applied mid-turn must not be undone by the reply to that same turn.");
+        }
+
+        [Test]
+        public void AdoptServerCopy_Null_KeepsTheExistingBaseline()
+        {
+            var accumulated = AccumulatedBaseline();
+            ProsodyBaselineStore.State = accumulated;
+
+            ProsodyBaselineStore.AdoptServerCopy(null);
+
+            Assert.AreSame(accumulated, ProsodyBaselineStore.State,
+                "A backend that sends no baseline must not wipe a usable one.");
+        }
     }
 }

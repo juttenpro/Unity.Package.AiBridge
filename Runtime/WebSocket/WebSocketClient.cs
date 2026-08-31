@@ -99,9 +99,13 @@ namespace Tsc.AIBridge.WebSocket
         // Prevents multiple simultaneous connection attempts (race condition guard)
         private readonly SemaphoreSlim _connectionSemaphore = new(1, 1);
 
-        // NPC message routing (RequestId -> handler)
+        // NPC message routing (RequestId -> handler). Exactly one owner per turn.
         private readonly Dictionary<string, INpcMessageHandler> _npcHandlers = new();
         private readonly object _routingLock = new();
+
+        // Capability routing (wire type -> consumers), for messages that are NOT the turn's to own.
+        // See MessageTypeRouter for why this second dimension exists.
+        private readonly MessageTypeRouter _typeRouter = new();
 
         // Authentication services
         private IAuthenticationService _authService;
@@ -268,6 +272,26 @@ namespace Tsc.AIBridge.WebSocket
                     Debug.Log($"[UnifiedWebSocket] Registered NPC for RequestId: {requestId}");
             }
         }
+
+        /// <summary>
+        /// Claim every inbound message of one wire type for a capability that owns it, regardless of
+        /// which conversation turn carries it. Use this for player- or session-scoped side channels
+        /// (e.g. <c>prosodyresult</c>, which measures the PLAYER and is meaningless to the NPC whose
+        /// requestId it rides on); use <see cref="RegisterNpc"/> for anything the turn owns.
+        ///
+        /// Claimed types are consulted after the protocol-level cases (bufferHint, error) and before
+        /// requestId routing, so a subscriber can neither hijack the protocol nor be starved by it.
+        /// Always pair with <see cref="UnsubscribeFromMessageType"/> on teardown.
+        /// </summary>
+        public void SubscribeToMessageType(string messageType, Action<string> handler)
+            => _typeRouter.Subscribe(messageType, handler);
+
+        /// <summary>
+        /// Release a claim made with <see cref="SubscribeToMessageType"/>. Once the last consumer for
+        /// a type is gone the type falls back to requestId routing.
+        /// </summary>
+        public void UnsubscribeFromMessageType(string messageType, Action<string> handler)
+            => _typeRouter.Unsubscribe(messageType, handler);
 
         /// <summary>
         /// Unregister an NPC from receiving messages
@@ -872,6 +896,11 @@ namespace Tsc.AIBridge.WebSocket
                 if (enableVerboseLogging)
                     Debug.Log($"[UnifiedWebSocket] RECEIVED MESSAGE: {json.Substring(0, Math.Min(200, json.Length))}...");
             }
+
+            // Capability-owned types first: these describe the player or the session, not the turn,
+            // so they must not be delivered to whichever NPC happens to hold this requestId.
+            if (_typeRouter.TryDispatch(json))
+                return;
 
             // Extract RequestId from message
             var requestId = ExtractRequestId(json);

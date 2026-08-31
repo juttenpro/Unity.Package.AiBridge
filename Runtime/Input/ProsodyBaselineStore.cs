@@ -46,6 +46,26 @@ namespace Tsc.AIBridge.Input
             Debug.Log($"[Prosody] Vocal baseline reset — new lesson scope '{lessonId}'.");
         }
 
+        /// <summary>
+        /// Adopt the server's updated copy of the baseline (the state-out of one analysed turn).
+        ///
+        /// The freeze is the one field the CLIENT owns: the rule node sets it locally, and the copy
+        /// coming back only reflects the state we SENT — so a freeze applied while the turn was in
+        /// flight would be lost by a plain assignment. Merging here rather than at the call site means
+        /// a future second consumer cannot reintroduce that hole by forgetting the rule.
+        ///
+        /// A null copy is ignored: an older backend that sends no baseline must not wipe a good one.
+        /// </summary>
+        public static void AdoptServerCopy(ProsodyBaselineState serverCopy)
+        {
+            if (serverCopy == null) return;
+
+            if (_state != null && _state.Frozen)
+                serverCopy.Frozen = true;
+
+            _state = serverCopy;
+        }
+
         /// <summary>Drop the baseline and its lesson scope. Call on logout / player change.</summary>
         public static void Reset()
         {
