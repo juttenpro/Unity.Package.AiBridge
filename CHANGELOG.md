@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.31.2] - 2026-08-28
+
+### Added
+- **A warning when incoming TTS audio can no longer reach playback.** `AudioMessageHandler` opens a
+  stream only on the first OGG header of a turn; later headers are continuations, which is correct while
+  a stream is open. If the counter was not reset between turns, the next reaction's header lands in that
+  same branch with nothing open, `StartAudioStream` is never reached, and `AudioStreamProcessor` discards
+  every byte as "after stream end" — a silent NPC with a perfectly good LLM response in the log.
+  That branch only logged under `enableVerboseLogging`, so a report of this class ("coach has no audio
+  after closing and reopening the orb", 2026-08-20, 186 KB discarded across three reactions) showed the
+  consequence and never the cause. It now warns once per turn and names the stream counter, the
+  requestId, and both gates that can suppress a stream start, so the candidate causes can be told apart
+  from a normal session log.
+
+  Diagnostics only — no behaviour change. The underlying reset gap is not fixed yet.
+
 ## [1.31.1] - 2026-08-28
 
 ### Fixed

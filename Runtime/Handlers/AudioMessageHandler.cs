@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using Tsc.AIBridge.Audio.Processing;
 
@@ -29,6 +29,9 @@ namespace Tsc.AIBridge.Handlers
         private readonly bool _enableVerboseLogging;
         
         private int _receivedStreamCount = 0;
+
+        // Guards the streamless-audio warning below so one broken turn logs once instead of per chunk.
+        private bool _reportedStreamlessAudio = false;
         private bool _interruptionOccurredThisSession = false;
         private string _currentRequestId = null;
         private string _interruptedRequestId = null; // Track which RequestId was interrupted
@@ -141,6 +144,25 @@ namespace Tsc.AIBridge.Handlers
                         _audioProcessor.StartBufferingForQueue();
                     }
                 }
+                else if (!_audioProcessor.IsStreamingAudio)
+                {
+                    // Several OGG containers within ONE reaction are normal (providers split per
+                    // sentence) — but only while a stream is open to receive them. Arriving here with
+                    // no open stream means nothing will ever open one: StartAudioStream is reached
+                    // only on count == 1, so every byte from here on is discarded as "after stream
+                    // end" and the reaction is silent. That is the state behind the "coach has no
+                    // audio after closing and reopening the orb" reports, and it was invisible in
+                    // production because this branch only logged in verbose mode.
+                    if (!_reportedStreamlessAudio)
+                    {
+                        _reportedStreamlessAudio = true;
+                        Debug.LogWarning(
+                            $"[{_personaName}] OGG header #{_receivedStreamCount} arrived with NO open audio stream — " +
+                            $"this reaction will be silent and its audio dropped (requestId: {_currentRequestId ?? "none"}, " +
+                            $"waitingForNewSession: {_waitingForNewSession}, bufferingForQueue: {_isBufferingForQueue}). " +
+                            "The stream counter was not reset between turns.");
+                    }
+                }
                 else if (_enableVerboseLogging)
                 {
                     // ElevenLabs may send multiple OGG containers per sentence for streaming efficiency
@@ -213,6 +235,7 @@ namespace Tsc.AIBridge.Handlers
 
             _isBufferingForQueue = false;
             _receivedStreamCount = 0;
+            _reportedStreamlessAudio = false;
 
             // Tell AudioStreamProcessor to discard buffered data
             _audioProcessor.ClearBufferedAudio();
@@ -260,6 +283,7 @@ namespace Tsc.AIBridge.Handlers
                 Debug.Log($"[{_personaName}] AudioMessageHandler reset - Previous stream count: {_receivedStreamCount}");
 
             _receivedStreamCount = 0;
+            _reportedStreamlessAudio = false;
 
             // Reset interruption flag to allow new audio
             if (_interruptionOccurredThisSession)
