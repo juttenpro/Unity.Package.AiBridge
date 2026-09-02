@@ -6,6 +6,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.33.0] - 2026-09-02
+
+### Added
+- **A turn can run without speech output.** `SessionStartMessage.EnableTts` (default `true`) and
+  `SessionStartMessage.ResponseFormat` reach the backend's matching fields, and
+  `ConversationRequest` carries both so the rule system can set them per turn.
+
+  `EnableTts = false` runs the turn as STT -> LLM only: the backend starts no TTS pipeline, sends
+  no `SentenceMetadata` and no audio, bills no TTS provider, and no longer requires a `VoiceId`.
+  The reply arrives once, as `AiResponse`; read it from `RawResponseText`, which is the model's
+  output verbatim (`Text` has the animation markers stripped). Pair it with
+  `ResponseFormat = "json_object"` for a machine-readable answer.
+
+  The case this exists for: a PromptComposer graph that classifies what the player just said —
+  intent detection driving a SCRIPTED NPC reaction — where a synthesised reply would be both a
+  wasted TTS call and the wrong thing to play. Before this, the audio path always ran
+  STT -> LLM -> TTS and `responseFormat` was reachable only from the analysis and text-input
+  flows, so an audio-driven turn could not ask for JSON at all.
+
+  Both fields are optional and default to the previous behaviour: a caller that omits `EnableTts`
+  keeps its spoken answer, and an omitted `ResponseFormat` is left off the wire entirely.
+
+
 ## [1.32.0] - 2026-08-31
 
 ### Added
