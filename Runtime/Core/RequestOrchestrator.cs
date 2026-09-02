@@ -1545,6 +1545,12 @@ namespace Tsc.AIBridge.Core
                     TtsModel = parameters.Model,
                     TtsOutputFormat = parameters.AudioFormat,
                     TtsStreamingMode = parameters.TtsStreamingMode,
+                    // Speech opt-out for this turn. False = STT -> LLM only (no TTS pipeline, no
+                    // audio, no TTS cost) — a PromptComposer scoring turn. Absent request keeps
+                    // the spoken answer every existing scenario expects.
+                    EnableTts = _currentConversationRequest?.EnableTts ?? true,
+                    // Optional "json_object" for a machine-readable reply. Null = free text.
+                    ResponseFormat = _currentConversationRequest?.ResponseFormat,
                     // ElevenLabs voice settings (from ConversationRequest, set by RuleSystem)
                     VoiceStability = _currentConversationRequest?.TtsStability ?? 0.5f,
                     VoiceSimilarityBoost = _currentConversationRequest?.TtsSimilarityBoost ?? 0.75f,

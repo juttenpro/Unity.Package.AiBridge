@@ -120,6 +120,28 @@ namespace Tsc.AIBridge.Messages
         public string TtsStreamingMode { get; set; } = "batch";
 
         /// <summary>
+        /// Whether this turn speaks its reply. True (the default) is the normal NPC dialogue turn.
+        ///
+        /// False runs the turn as STT -> LLM only: the backend starts no TTS pipeline, sends no
+        /// SentenceMetadata and no audio, bills no TTS provider, and does not require a
+        /// <see cref="VoiceId"/>. Used by a PromptComposer graph that scores what the player just
+        /// said (PlayerAudio entry + JsonAnalysis exit) — usually together with
+        /// <see cref="ResponseFormat"/> = "json_object". The reply then arrives only as
+        /// AiResponse; read it from RawResponseText.
+        /// </summary>
+        [JsonProperty("enableTts")]
+        public bool EnableTts { get; set; } = true;
+
+        /// <summary>
+        /// Optional LLM output format for this turn: "json_object" for clean JSON. Null (the
+        /// default) = free text, and the key is omitted from the payload so a dialogue turn is
+        /// byte-identical to before this field existed. Honoured by Vertex AI, OpenAI,
+        /// Azure OpenAI and Mistral.
+        /// </summary>
+        [JsonProperty("responseFormat", NullValueHandling = NullValueHandling.Ignore)]
+        public string ResponseFormat { get; set; }
+
+        /// <summary>
         /// LLM provider to use ("vertexai", "openai", "azure-openai")
         /// </summary>
         [JsonProperty("llmProvider")]

@@ -71,6 +71,21 @@ namespace Tsc.AIBridge.Core
         public Messages.LlmFallbackConfig LlmFallback { get; set; }
 
         public string VoiceId { get; set; }  // TTS voice identifier
+
+        /// <summary>
+        /// Whether this turn speaks its reply. True (default) = normal dialogue. False = the
+        /// player's speech is transcribed and reasoned about but nothing is synthesised; pair it
+        /// with <see cref="ResponseFormat"/> = "json_object" for a scoring turn. Forwarded to
+        /// <see cref="Messages.SessionStartMessage.EnableTts"/> by RequestOrchestrator.
+        /// </summary>
+        public bool EnableTts { get; set; } = true;
+
+        /// <summary>
+        /// Optional LLM output format ("json_object"). Null = free text. Forwarded to
+        /// <see cref="Messages.SessionStartMessage.ResponseFormat"/> by RequestOrchestrator.
+        /// </summary>
+        public string ResponseFormat { get; set; }
+
         public string TtsStreamingMode { get; set; } = "batch";
         public float TtsStability { get; set; } = 0.5f;
         public float TtsSimilarityBoost { get; set; } = 0.75f;
