@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-03
+
+### Changed (breaking)
+- **The transcription events now carry the RequestId of the turn they belong to.**
+  `ConversationMetadataHandler.OnTranscription`, `RequestOrchestrator.OnTranscriptionReceived` and
+  `RaiseTranscriptionReceived` are `(transcript, requestId)`; `NpcClientBase.HandleTranscription`
+  takes the id as a second parameter. Subscribers and overrides must be updated — inside this repo
+  there is exactly one of each, in `AIBridgeRulesHandler`.
+
+  A transcript with no id can only be attributed to "the newest turn for this NPC", which is wrong
+  the moment two turns overlap.
+
+### Added
+- **`ConversationRequest.RequestId`** — the caller may now supply the id of a turn instead of
+  discovering it afterwards. `StartAudioRequest` and `StartTextRequest` take it as an optional
+  argument and fall back to minting a GUID, so existing callers are unaffected.
+
+  Why: the id is what every message and audio frame of a turn is tagged with, and what
+  `WebSocketClient` routes on. A caller that wants to attribute a transcript, an answer or a
+  finished playback back to the turn that produced it therefore needs the id *at start time*. For
+  an audio turn it could already be read straight after the call (`GetCurrentSessionId()`), but a
+  text/NPC-initiated turn is queued and only gets its id once the queue is drained — leaving a
+  window in which the caller has no key. With two turns for one NPC in flight (an accidental short
+  PTT tap, a barge-in, two NPCs talking over each other) that window is exactly where results get
+  attributed to the wrong turn.
+
 ## [1.34.0] - 2026-09-03
 
 ### Fixed

@@ -24,7 +24,8 @@ namespace Tsc.AIBridge.WebSocket
         private readonly bool _enableVerboseLogging;
 
         // Events for different message types
-        public event Action<string> OnTranscription;
+        /// <summary>(transcript, requestId) — the id names the turn this transcript belongs to.</summary>
+        public event Action<string, string> OnTranscription;
         public event Action<Messages.LlmResponseData> OnAIResponse; // Typed LLM response with text, rawResponseText, and intents
         public event Action<string> OnError;
         // AudioStreamStart removed - audio starts automatically on first chunk
@@ -161,7 +162,7 @@ namespace Tsc.AIBridge.WebSocket
                         {
                             _latencyTracker.MarkSttComplete(transcMsg.Text, transcMsg.Timing);
                         }
-                        OnTranscription?.Invoke(transcMsg.Text);
+                        OnTranscription?.Invoke(transcMsg.Text, transcMsg.RequestId);
                         OnMetadataReceived?.Invoke(new ConversationTurnResponse { PlayerText = transcMsg.Text });
                     }
                     else

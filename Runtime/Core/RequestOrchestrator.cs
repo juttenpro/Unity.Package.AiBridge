@@ -111,7 +111,8 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Fired when STT transcription is received
         /// </summary>
-        public event Action<string> OnTranscriptionReceived;
+        /// <summary>(transcript, requestId) — the id names the turn this transcript belongs to.</summary>
+        public event Action<string, string> OnTranscriptionReceived;
 
         /// <summary>
         /// Fired when STT fails (timeout, error, etc.)
@@ -475,21 +476,21 @@ namespace Tsc.AIBridge.Core
                 // NPC-initiated: Skip STT, go directly to text input flow (with empty text)
                 if (enableVerboseLogging)
                     Debug.Log("[RequestOrchestrator] Using text input flow for NPC-initiated conversation");
-                StartTextRequest(config, ""); // Empty text = NPC initiates based on system prompt/history
+                StartTextRequest(config, "", request.RequestId); // Empty text = NPC initiates based on system prompt/history
             }
             else
             {
                 // Player-initiated: Use normal audio/STT flow
                 if (enableVerboseLogging)
                     Debug.Log("[RequestOrchestrator] Using audio request flow for player-initiated conversation");
-                StartAudioRequest(config);
+                StartAudioRequest(config, request.RequestId);
             }
         }
 
         /// <summary>
         /// Start an audio request with NPC configuration
         /// </summary>
-        public void StartAudioRequest(INpcConfiguration npcConfig)
+        public void StartAudioRequest(INpcConfiguration npcConfig, string requestId = null)
         {
             if (npcConfig == null)
             {
@@ -545,7 +546,7 @@ namespace Tsc.AIBridge.Core
             // before ProcessAudioRequest() has created the session. Without this, EndOfSpeech/EndOfAudio
             // messages are never sent, causing backend to never process the audio.
             // This issue is especially likely after WebSocket reconnects when queue processing may be delayed.
-            var requestId = Guid.NewGuid().ToString();
+            requestId ??= Guid.NewGuid().ToString();
             var npcName = _activeNpcClient?.NpcName ?? npcConfig.Name;
             _currentSession = new ConversationSession(npcName, requestId);
 
@@ -608,7 +609,7 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Start a text-based request (NPC-initiated or system)
         /// </summary>
-        public void StartTextRequest(INpcConfiguration npcConfig, string text)
+        public void StartTextRequest(INpcConfiguration npcConfig, string text, string requestId = null)
         {
             // Note: text can be empty string for NPC-initiated conversations (NPC speaks first without player input)
             if (npcConfig == null || text == null)
@@ -654,7 +655,7 @@ namespace Tsc.AIBridge.Core
             {
                 NpcConfig = npcConfig,
                 Text = text,
-                RequestId = Guid.NewGuid().ToString()
+                RequestId = requestId ?? Guid.NewGuid().ToString()
             };
 
             _textRequestQueue.Enqueue(request);
@@ -1039,7 +1040,7 @@ namespace Tsc.AIBridge.Core
         /// Raise the OnTranscriptionReceived event
         /// Called by NpcClientBase when transcription is received from WebSocket
         /// </summary>
-        public void RaiseTranscriptionReceived(string transcript)
+        public void RaiseTranscriptionReceived(string transcript, string requestId)
         {
             // A transcript is proof of backend life for the current turn — ends the turn
             // watchdog's first-signal window.
@@ -1048,7 +1049,7 @@ namespace Tsc.AIBridge.Core
                 _turnSignalSeenForRequestId = _currentSession.RequestId;
             }
 
-            OnTranscriptionReceived?.Invoke(transcript);
+            OnTranscriptionReceived?.Invoke(transcript, requestId);
         }
 
         /// <summary>

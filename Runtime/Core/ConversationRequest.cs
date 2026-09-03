@@ -11,6 +11,15 @@ namespace Tsc.AIBridge.Core
         // NPC identification
         public string NpcId { get; set; }
 
+        /// <summary>
+        /// Id for this turn, supplied by the caller. It becomes the session RequestId and is echoed on
+        /// every message and audio frame of the turn, so the caller can attribute a transcript, an
+        /// answer or a finished playback to the turn that produced it. Null = the orchestrator mints
+        /// one (previous behaviour), but then the caller cannot know the id up front: for a text /
+        /// NPC-initiated turn it is only assigned once the queue is drained.
+        /// </summary>
+        public string RequestId { get; set; }
+
         // Conversation content (determined by RuleSystem)
         // Messages array includes system prompt as first message with role="system"
         public List<Messages.ChatMessage> Messages { get; set; }

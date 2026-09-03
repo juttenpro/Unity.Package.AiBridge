@@ -188,7 +188,7 @@ namespace Tsc.AIBridge.Tests.Editor
         {
             SetField("_currentSession", new ConversationSession("TestNpc", "turn-1"));
 
-            _orchestrator.RaiseTranscriptionReceived("hallo");
+            _orchestrator.RaiseTranscriptionReceived("hallo", "turn-1");
 
             Assert.AreEqual("turn-1", GetField<string>("_turnSignalSeenForRequestId"),
                 "a transcript is the first proof of life for an audio turn");

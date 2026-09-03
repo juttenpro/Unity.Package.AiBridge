@@ -328,7 +328,7 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Handle transcription received from WebSocket
         /// </summary>
-        protected virtual void HandleTranscription(string transcript)
+        protected virtual void HandleTranscription(string transcript, string requestId)
         {
             if (enableVerboseLogging)
             {
@@ -340,7 +340,7 @@ namespace Tsc.AIBridge.Core
             // Forward to RequestOrchestrator if it exists
             if (RequestOrchestrator.HasInstance)
             {
-                RequestOrchestrator.Instance.RaiseTranscriptionReceived(transcript);
+                RequestOrchestrator.Instance.RaiseTranscriptionReceived(transcript, requestId);
             }
 
             // Fire static event for test UI (LatencyLogUI)
