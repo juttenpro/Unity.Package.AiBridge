@@ -82,11 +82,23 @@ namespace Tsc.AIBridge.Audio.Playback
         // Volume control should be done via AudioSource.volume, not with gain multipliers!
         // Buffering is now handled by centralized AdaptiveBufferManager
 
-        [Header("Playback Detection")]
-        [SerializeField]
-        [Tooltip("Safety-net timeout: complete playback if the orchestrator never sends an AudioStreamEnd message AND the buffer stays empty this long. Primary completion is driven by the explicit AudioStreamEnd signal — this is only a fallback for server crashes.")]
-        [Range(1.0f, 10.0f)]
-        private float playbackCompleteTimeout = 3.0f;
+        // Safety net for one case: the orchestrator never sends AudioStreamEnd, so nothing else
+        // will ever close the turn. Deliberately a constant and NOT a [SerializeField]: it was
+        // serialized back when this timeout WAS the end-of-speech detector (v1.0.22 cut it to
+        // 0.15s to reach scripted audio ~850ms sooner), and per-NPC tuning made sense then. Once
+        // AudioStreamEnd took that job the knob had no purpose left, but 27 NPC prefabs kept
+        // their old serialized value and an Inspector value beats a code default — so raising
+        // the default to 3s fixed nothing in the field, and Sollicitatietrainer/Rebecca still ran
+        // on 1s. Reported 2026-09-03: Rebecca spoke "Dat is fijn om te horen..." and dropped the
+        // remaining three sentences, because a TTS provider pausing on an ellipsis outlasts 1s.
+        //
+        // Chosen high on purpose. The backend sends AudioStreamEnd from a finally block on every
+        // exit path (success, interruption, cancellation, error), so any value low enough to fire
+        // on a live turn is measuring provider jitter rather than a dead server. What this value
+        // trades is how long a genuinely hung turn keeps the talk button disabled — 15s is well
+        // past every observed provider gap and still far short of the 176s dead session that
+        // motivated having a safety net at all.
+        private const float SafetyNetCompletionTimeout = 15.0f;
 
         [Header("Debug Settings")]
         [SerializeField]
@@ -168,9 +180,9 @@ namespace Tsc.AIBridge.Audio.Playback
         /// <summary>
         /// Safety-net timeout (seconds): how long to keep the stream open after the buffer empties
         /// when no AudioStreamEnd has arrived. Set deliberately high so normal inter-sentence
-        /// network jitter cannot trip it; only a server crash should reach this fallback.
+        /// network jitter cannot trip it; only a missing server signal should reach this fallback.
         /// </summary>
-        public float SafetyNetCompletionTimeoutSeconds => playbackCompleteTimeout;
+        public float SafetyNetCompletionTimeoutSeconds => SafetyNetCompletionTimeout;
 
         /// <summary>
         /// Marks the audio stream as ended by an explicit server signal (AudioStreamEnd message).
@@ -205,7 +217,7 @@ namespace Tsc.AIBridge.Audio.Playback
                 return true;
             }
 
-            return timeSinceLastData > playbackCompleteTimeout;
+            return timeSinceLastData > SafetyNetCompletionTimeout;
         }
 
         // Cached values
@@ -1403,22 +1415,31 @@ namespace Tsc.AIBridge.Audio.Playback
 #endif
 
             // Finalize playback when the orchestrator's AudioStreamEnd signal has arrived AND
-            // the buffer has drained. The safety-net timeout (3s default) only kicks in if the
-            // server signal never arrives — covers the rare server-crash scenario without
-            // firing during normal multi-sentence streaming under network jitter (the original
-            // OpusHead-parse bug was caused by a 0.15s timeout firing mid-response).
+            // the buffer has drained. The safety-net timeout only kicks in if the server signal
+            // never arrives — covers a lost signal or a dead socket without firing during normal
+            // multi-sentence streaming under network jitter (the original OpusHead-parse bug was
+            // caused by a 0.15s timeout firing mid-response).
             if (!_shouldStop)
             {
                 float timeSinceLastData = Time.realtimeSinceStartup - _lastDataReceivedTime;
                 if (EvaluateAutoComplete(_isPlaybackStarted, _audioBuffer.Count == 0, timeSinceLastData))
                 {
-                    if (enableVerboseLogging)
+                    if (_serverStreamEnd)
                     {
-                        var trigger = _serverStreamEnd
-                            ? "server signal + empty buffer"
-                            : $"safety-net timeout ({timeSinceLastData:F2}s with no data, no server signal)";
-                        Debug.Log($"[{_cachedGameObjectName}] Auto-detected playback complete — {trigger}");
+                        if (enableVerboseLogging)
+                            Debug.Log($"[{_cachedGameObjectName}] Auto-detected playback complete — server signal + empty buffer");
                     }
+                    else
+                    {
+                        // Not verbose-gated on purpose: this is the turn being closed on a guess,
+                        // and it is what a truncated-audio report looks like from the inside. The
+                        // 2026-09-03 report took a full investigation to attribute because the gap
+                        // that triggered it was never written down anywhere.
+                        Debug.LogWarning($"[{_cachedGameObjectName}] Closing the turn on the safety net: " +
+                                         $"no audio for {timeSinceLastData:F2}s (limit {SafetyNetCompletionTimeout:F0}s) and no " +
+                                         "AudioStreamEnd from the server. If the NPC was cut off mid-response, this is why.");
+                    }
+
                     _shouldStop = true;
                 }
             }

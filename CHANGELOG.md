@@ -6,6 +6,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.34.0] - 2026-09-03
+
+### Fixed
+- **The NPC no longer stops after its first sentence because a prefab set its own safety-net
+  timeout.** `playbackCompleteTimeout` was a `[SerializeField]`, and a serialized value beats a
+  code default. 27 NPC prefabs in the host project still carried the value from before this
+  timeout became a safety net — 26 at 1s, one at 0.15s — so raising the default to 3s in 1.16.0
+  changed nothing for any of them. Reported 2026-09-03 from Sollicitatietrainer: Rebecca spoke
+  "Dat is fijn om te horen..." and dropped the remaining three sentences. The log shows the stop
+  1,5s after the first audio, which is only reachable with a sub-2s timeout; the gap it measured
+  was the pause a TTS provider takes on the ellipsis.
+
+  The knob is gone. The timeout is now a constant, raised to 15s.
+
+  Why it was ever tunable: in 1.0.22 this timeout *was* the end-of-speech detector, cut from 1s
+  to 0.15s to reach scripted audio ~850ms sooner, and per-NPC tuning was a real latency lever.
+  Since 1.16.0 the explicit `AudioStreamEnd` signal does that job and the timeout only covers the
+  case where that signal never arrives. Nothing about one NPC makes a lost server signal arrive
+  differently than for another, so there was no decision left for a content creator to make —
+  only a value they could get wrong without ever seeing the consequence.
+
+  Why 15s and not 3s: the backend sends `AudioStreamEnd` from a `finally` block on every exit
+  path (success, interruption, cancellation, error), so any value low enough to fire on a live
+  turn is measuring provider jitter, not a dead server. What the number actually trades is how
+  long a genuinely hung turn keeps the talk button disabled. 15s sits past every observed
+  provider gap (Voxtral chunk-rate dips up to ~2s, plus a guardrail split-retry round trip) and
+  still far short of the 176s dead session that motivated having a safety net at all.
+
+  The 1.17.4 bounded defer still does its job when the safety net *does* fire — but it runs after
+  `OnPlaybackComplete` has already closed the turn, so the rule system sees `ReactionFinished`
+  early even when the audio is recovered. Not firing in the first place is the fix; the defer
+  stays as the backstop it was designed to be.
+
+### Changed
+- **A safety-net stop now logs a warning naming the gap that triggered it**, instead of a
+  verbose-only `Debug.Log`. This line is what a truncated-audio report looks like from the
+  inside, and its absence is why attributing the 2026-09-03 report took a full investigation.
+  The server-signal path stays verbose-only — that one is the normal case.
+
+### Migration
+- Delete the `playbackCompleteTimeout` value from any prefab or scene that serialized it. Unity
+  drops the orphaned property on the next save either way; removing it deliberately keeps the
+  diff readable and prevents it reappearing through a prefab copy.
+
 ## [1.33.0] - 2026-09-02
 
 ### Added

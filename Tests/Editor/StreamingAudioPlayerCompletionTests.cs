@@ -16,8 +16,9 @@ namespace Tsc.AIBridge.Tests.Editor
     /// audio packet — proof the parser was looking at audio while expecting headers).
     ///
     /// WHAT: The player completes playback when the orchestrator explicitly signals "stream end"
-    /// via MarkServerStreamEnd() AND the audio buffer has drained. A long safety-net timeout
-    /// (3s) covers the rare server-crash scenario without firing during normal jitter.
+    /// via MarkServerStreamEnd() AND the audio buffer has drained. A long, fixed safety-net
+    /// timeout covers the case where that signal never arrives, without firing during normal
+    /// jitter — and it is deliberately not tunable per NPC (see the 2026-09-03 regression below).
     ///
     /// HOW: We exercise the new pure decision function EvaluateAutoComplete(...) directly. It
     /// takes all inputs as parameters so the test does not need to reach into private state or
@@ -25,8 +26,9 @@ namespace Tsc.AIBridge.Tests.Editor
     ///
     /// SUCCESS CRITERIA:
     /// - Server signal + empty buffer → completes immediately (no waiting)
-    /// - No signal + empty buffer + jitter (&lt;3s) → does NOT complete
-    /// - No signal + empty buffer + 3s elapsed → completes via safety net
+    /// - No signal + empty buffer + a real provider gap → does NOT complete
+    /// - No signal + empty buffer + safety net elapsed → completes as a last resort
+    /// - The safety net is a constant, not a serialized field
     /// - Server signal + non-empty buffer → does NOT complete (wait for drain)
     /// - StartStream() resets the server-signal flag so a previous turn's flag never leaks
     ///   into the next turn
@@ -34,6 +36,11 @@ namespace Tsc.AIBridge.Tests.Editor
     /// BUSINESS IMPACT: Without this fix, every multi-sentence ElevenLabs response with mild
     /// network jitter logs "Failed to parse OpusHead" and produces audible glitches between
     /// sentences. End users hear cuts; the log noise masks real bugs.
+    ///
+    /// 2026-09-03: the same symptom came back through the Inspector rather than the code. The
+    /// timeout was serialized, 27 NPC prefabs still carried the pre-fix value, and a serialized
+    /// value wins over a code default — so the turn was cut off after the first sentence again.
+    /// The knob is gone; these tests pin both the floor and its absence from serialization.
     /// </summary>
     [TestFixture]
     public class StreamingAudioPlayerCompletionTests
@@ -43,6 +50,14 @@ namespace Tsc.AIBridge.Tests.Editor
 
         // Inter-sentence gap that the old 150ms timeout misidentified as end-of-stream.
         private const float JitterToleranceSeconds = 0.5f;
+
+        // A chunk gap that production has actually produced on a healthy turn: the TTS provider
+        // pausing on an ellipsis on top of a Voxtral chunk-rate dip.
+        private const float ObservedProviderGapSeconds = 3.5f;
+
+        // Floor for the safety net, chosen to sit above every observed gap while still closing a
+        // genuinely hung turn well inside a trainee's patience.
+        private const float MinimumSafeSafetyNetSeconds = 10f;
 
         [SetUp]
         public void SetUp()
@@ -152,13 +167,48 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
-        public void SafetyNetTimeout_IsAtLeast1Second()
+        public void SafetyNetTimeout_OutlastsTheWorstObservedProviderGap()
         {
-            // The whole point of the architectural fix is that the timeout is no longer
-            // aggressive enough to fire during normal inter-sentence jitter. Lock that in
-            // with a sanity check.
-            Assert.GreaterOrEqual(_player.SafetyNetCompletionTimeoutSeconds, 1.0f,
-                "Safety-net timeout must be at least 1s (was 0.15s — the original bug)");
+            // The timeout exists for one case only: the server never sends AudioStreamEnd, so
+            // without it the turn never closes and the trainee is left with a dead talk button.
+            // The backend sends that signal from a finally block on every exit path (success,
+            // interruption, cancellation, error), so any value short enough to fire on a live
+            // turn is measuring provider jitter, not a dead server. Observed gaps to clear:
+            // Voxtral chunk-rate dips up to ~2s, plus a guardrail split-retry round trip on top.
+            Assert.GreaterOrEqual(_player.SafetyNetCompletionTimeoutSeconds, MinimumSafeSafetyNetSeconds,
+                $"Safety-net timeout must be at least {MinimumSafeSafetyNetSeconds}s so provider gaps cannot trip it");
+        }
+
+        [Test]
+        public void EvaluateAutoComplete_BufferEmptyForObservedProviderGap_DoesNotComplete()
+        {
+            // Sollicitatietrainer, 2026-09-03 12:40:27: Rebecca spoke "Dat is fijn om te horen..."
+            // and went silent for the remaining three sentences. The safety net fired 1,5s after
+            // the first audio, during the pause the TTS provider takes on the ellipsis. A gap of
+            // this size is normal streaming, not a dead server.
+            var shouldComplete = _player.EvaluateAutoComplete(
+                isPlaybackStarted: true,
+                bufferEmpty: true,
+                timeSinceLastData: ObservedProviderGapSeconds);
+
+            Assert.IsFalse(shouldComplete,
+                $"A {ObservedProviderGapSeconds}s provider gap must not be mistaken for end-of-stream");
+        }
+
+        [Test]
+        public void SafetyNetTimeout_IsNotSerialized_SoItCannotBeTunedPerNpc()
+        {
+            // This is the regression that caused the 2026-09-03 report. The timeout was a
+            // [SerializeField] from the days when it WAS the end-of-speech detector and shaving
+            // it saved latency. Once AudioStreamEnd took that job the knob lost its purpose, but
+            // 27 NPC prefabs kept their serialized 1s (one still had 0.15s) and Inspector values
+            // win over code defaults — so raising the default fixed nothing in the field.
+            using (var serialized = new UnityEditor.SerializedObject(_player))
+            {
+                Assert.IsNull(serialized.FindProperty("playbackCompleteTimeout"),
+                    "The safety-net timeout must not be serialized: a per-NPC value silently " +
+                    "overrides the code default and reintroduces mid-response audio cut-off");
+            }
         }
     }
 }
