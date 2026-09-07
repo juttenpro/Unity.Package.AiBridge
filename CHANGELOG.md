@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.1] - 2026-09-09
+
+### Fixed
+- **The backend is now told to stop the TTS of the turn that was actually interrupted.** The
+  notification was the last thing in the interruption path still taken from the orchestrator's current
+  session, while everything else already decided on the NPC that was talked over. In a room with several
+  speakers that meant the client silenced one NPC locally and asked the backend to stop a different
+  turn — so the interrupted NPC kept being synthesised at cost, and an unrelated turn got cut.
+
+  Resolution goes through `NpcMessageRouter`, which knows which turn belongs to which NPC. When it
+  cannot be resolved nothing is sent: the local stop has already happened, and a wrong id is worse than
+  none. Also a prerequisite — narrowing the current session to the microphone's turn in the next step
+  would otherwise have turned this into a regression rather than leaving it merely wrong.
 ## [5.2.0] - 2026-09-09
 
 ### Added

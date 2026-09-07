@@ -688,23 +688,48 @@ namespace Tsc.AIBridge.Audio.Interruption
             // Stop the NPC's audio playback (stops playback, clears buffer)
             interrupted.StopAudio();
 
-            // Mark interruption in RequestOrchestrator and notify backend
+            // Tell the backend to stop the TTS of the turn we just silenced locally.
+            var interruptedRequestId = ResolveInterruptedTurnId(interrupted);
+            if (string.IsNullOrEmpty(interruptedRequestId))
+            {
+                // The local StopAudio has already happened, so the player hears the right thing; the
+                // backend just keeps generating speech nobody will play. Sending the wrong id would be
+                // worse: it stops a turn that was never interrupted.
+                Debug.LogWarning($"[InterruptionManager] Interrupted {interrupted.NpcName} but could not resolve " +
+                                 "its turn id — not notifying the backend. Its TTS will run to completion unheard.");
+                return;
+            }
+
             if (RequestOrchestrator.HasInstance)
             {
-                var orchestrator = RequestOrchestrator.Instance;
-                // Get the RequestId of the session being interrupted
-                string interruptedRequestId = orchestrator.GetCurrentSessionId();
-
                 // Notify backend: InterruptionOccurred (stop TTS, keep LLM for metadata)
-                if (!string.IsNullOrEmpty(interruptedRequestId))
+                RequestOrchestrator.Instance.SendInterruptionOccurredToBackend(interruptedRequestId, "User interrupted NPC");
+                if (enableVerboseLogging)
                 {
-                    orchestrator.SendInterruptionOccurredToBackend(interruptedRequestId, "User interrupted NPC");
-                    if (enableVerboseLogging)
-                    {
-                        Debug.Log($"[InterruptionManager] Sent InterruptionOccurred to backend for session {interruptedRequestId}");
-                    }
+                    Debug.Log($"[InterruptionManager] Sent InterruptionOccurred to backend for session {interruptedRequestId}");
                 }
             }
+        }
+
+        /// <summary>
+        /// The turn id of the NPC that was actually talked over.
+        ///
+        /// WHY not the orchestrator's current session: everything else in this method already decides on
+        /// the addressed NPC — the comment above says the request NPC "in a room with several speakers is
+        /// a bystander" — and only the backend notification still came from the microphone's session. That
+        /// is about to mean strictly "the player's own turn", which would tell the backend to stop TTS on
+        /// the player's turn while the client silenced a different NPC.
+        ///
+        /// The router knows which turn belongs to which NPC, and one live turn per NPC is the enforced
+        /// invariant, so this lookup is unambiguous. Returns null when it cannot be resolved; the caller
+        /// then sends nothing rather than guessing.
+        /// </summary>
+        internal static string ResolveInterruptedTurnId(NpcClientBase interrupted)
+        {
+            if (interrupted == null || !NpcMessageRouter.HasInstance)
+                return null;
+
+            return NpcMessageRouter.Instance.GetActiveRequestForNpc(interrupted.NpcName);
         }
     }
 }
