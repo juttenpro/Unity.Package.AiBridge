@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-09-09
+
+MINOR, not MAJOR: this changes public C# signatures but not the wire protocol, and the one consumer
+moves in the same changeset. MAJOR is reserved for protocol changes an external integrator would feel.
+
+### Changed
+- **The completion event names the turn that completed.**
+  `ConversationMetadataHandler.OnConversationComplete` is `(string requestId, bool audioReceived)`,
+  `RequestOrchestrator.HandleConversationCompleted` takes the id, and
+  `GetCurrentSessionStreamsReceived()` / `CompleteCurrentSession()` are replaced by
+  `GetStreamsReceived(requestId)` / `CompleteSession(requestId)`. Two subscribers to update in a
+  consumer.
+
+  **Behaviour is deliberately unchanged.** The `currentSessionId == completeRequestId` gate stays
+  exactly as it was — it encodes the 2026-06-12 client-critical C4 incident, where a late turn-N
+  completion wiped turn N+1's state and the player's next push-to-talk found no active request. This
+  step only removes the reason the turn had to be *inferred*; dropping the gate is a later step and was
+  not implementable before the event carried an id.
+
+### Fixed
+- **A `conversationComplete` without a `requestId` is now ignored with a warning.** It could be
+  matched to no turn, yet the gate compared `null` to `null` — true whenever there was also no current
+  session — so such a message was accepted on every listening NPC. A warning, not an error: an error
+  ends the session in the host app.
 ## [5.0.0] - 2026-09-09
 
 ### Changed (breaking)

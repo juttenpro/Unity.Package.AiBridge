@@ -48,7 +48,11 @@ namespace Tsc.AIBridge.WebSocket
 
         public event Action<BufferHintMessage> OnBufferHint;
         public event Action<SentenceMetadataMessage> OnSentenceMetadata;
-        public event Action<bool> OnConversationComplete;  // bool indicates if audio was received
+        /// <summary>
+        /// (requestId, audioReceived) — the id names the turn that completed. Subscribers used to get
+        /// only the bool and had to infer the turn from shared state, which is why the gate below exists.
+        /// </summary>
+        public event Action<string, bool> OnConversationComplete;
         
         // Track last NPC response for interruption handling
         public string LastNpcResponse { get; private set; }
@@ -276,6 +280,17 @@ namespace Tsc.AIBridge.WebSocket
                     var completeMsg = JsonConvert.DeserializeObject<ConversationCompleteMessage>(json);
                     var completeRequestId = completeMsg?.RequestId;
 
+                    if (string.IsNullOrEmpty(completeRequestId))
+                    {
+                        // Cannot be matched to a turn. Warning, not error: an error ends the session in
+                        // the host app. Without this the gate below compares null to null, which is TRUE
+                        // whenever there is no current session either, so the completion was accepted on
+                        // every NPC that happened to be listening.
+                        Debug.LogWarning($"[{_personaName}] conversationComplete arrived without a requestId — " +
+                                         "cannot tell which turn completed. Ignoring.");
+                        break;
+                    }
+
                     // Check if audio was received via RequestOrchestrator
                     // Use HasInstance to avoid FindFirstObjectByType when orchestrator is already destroyed
                     // (e.g., after leaving a lesson scene while WebSocket is still connected)
@@ -294,7 +309,7 @@ namespace Tsc.AIBridge.WebSocket
                         var currentSessionId = orchestrator.GetCurrentSessionId();
                         if (currentSessionId == completeRequestId)
                         {
-                            var audioReceived = orchestrator.GetCurrentSessionStreamsReceived() > 0;
+                            var audioReceived = orchestrator.GetStreamsReceived(completeRequestId) > 0;
 
                             // If no audio was received (e.g. NoTranscript case), we need to clean up the session
                             // With audio, AudioStreamEnd handles cleanup. Without audio, we do it here.
@@ -302,15 +317,15 @@ namespace Tsc.AIBridge.WebSocket
                             {
                                 if(_enableVerboseLogging)
                                     Debug.Log($"[{_personaName}] No audio received for session {completeRequestId} - completing session now");
-                                orchestrator.CompleteCurrentSession();
+                                orchestrator.CompleteSession(completeRequestId);
                             }
                             else if(_enableVerboseLogging)
                             {
-                                Debug.Log($"[{_personaName}] Audio was received ({orchestrator.GetCurrentSessionStreamsReceived()} streams) for session {completeRequestId} - AudioStreamEnd will handle cleanup");
+                                Debug.Log($"[{_personaName}] Audio was received ({orchestrator.GetStreamsReceived(completeRequestId)} streams) for session {completeRequestId} - AudioStreamEnd will handle cleanup");
                             }
 
                             // Notify listeners — only for the turn that is actually current.
-                            OnConversationComplete?.Invoke(audioReceived);
+                            OnConversationComplete?.Invoke(completeRequestId, audioReceived);
                         }
                         else if(_enableVerboseLogging)
                         {
@@ -321,7 +336,7 @@ namespace Tsc.AIBridge.WebSocket
                     {
                         // No orchestrator (left the lesson scene with the socket still open): keep the
                         // legacy unconditional notification so remaining listeners can settle.
-                        OnConversationComplete?.Invoke(false);
+                        OnConversationComplete?.Invoke(completeRequestId, false);
                     }
                     break;
                     

@@ -168,12 +168,12 @@ namespace Tsc.AIBridge.Tests.Editor
             return (T)field.GetValue(_orchestrator);
         }
 
-        private void InvokeConversationCompleted(bool audioReceived)
+        private void InvokeConversationCompleted(bool audioReceived, string requestId = "test-request-id")
         {
             var method = typeof(RequestOrchestrator).GetMethod("HandleConversationCompleted", PrivateInstance);
             Assert.IsNotNull(method,
                 "HandleConversationCompleted method not found on RequestOrchestrator — fix not yet implemented");
-            method.Invoke(_orchestrator, new object[] { audioReceived });
+            method.Invoke(_orchestrator, new object[] { requestId, audioReceived });
         }
 
         #endregion

@@ -1,8 +1,10 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using Tsc.AIBridge.Core;
 using Tsc.AIBridge.WebSocket;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Tsc.AIBridge.Tests.Editor
 {
@@ -75,7 +77,7 @@ namespace Tsc.AIBridge.Tests.Editor
             // Arrange: turn-2 is the ACTIVE session; turn-1's completion arrives late.
             SetCurrentSession("turn-2");
             var raised = false;
-            _handler.OnConversationComplete += _ => raised = true;
+            _handler.OnConversationComplete += (_, __) => raised = true;
 
             // Act
             _handler.ProcessMessage(CompleteJson("turn-1"));
@@ -93,7 +95,7 @@ namespace Tsc.AIBridge.Tests.Editor
         {
             SetCurrentSession("turn-1");
             bool? audioReceived = null;
-            _handler.OnConversationComplete += received => audioReceived = received;
+            _handler.OnConversationComplete += (_, received) => audioReceived = received;
 
             _handler.ProcessMessage(CompleteJson("turn-1"));
 
@@ -109,7 +111,7 @@ namespace Tsc.AIBridge.Tests.Editor
             var session = SetCurrentSession("turn-1");
             session.StreamsReceived = 2;
             bool? audioReceived = null;
-            _handler.OnConversationComplete += received => audioReceived = received;
+            _handler.OnConversationComplete += (_, received) => audioReceived = received;
 
             _handler.ProcessMessage(CompleteJson("turn-1"));
 
@@ -127,7 +129,7 @@ namespace Tsc.AIBridge.Tests.Editor
             _orchestratorObject = null;
 
             bool? audioReceived = null;
-            _handler.OnConversationComplete += received => audioReceived = received;
+            _handler.OnConversationComplete += (_, received) => audioReceived = received;
 
             _handler.ProcessMessage(CompleteJson("turn-1"));
 
@@ -144,6 +146,34 @@ namespace Tsc.AIBridge.Tests.Editor
             Assert.IsNotNull(field, "Field '_currentSession' not found on RequestOrchestrator");
             field.SetValue(_orchestrator, session);
             return session;
+        }
+
+        [Test]
+        public void ConversationCompleteWithoutARequestId_IsIgnored()
+        {
+            // The dangerous shape: no id in the message AND no current session. The gate compares
+            // currentSessionId to completeRequestId, and null == null is TRUE, so the completion used to
+            // be accepted — on every NPC listening to this handler at once.
+            var raised = false;
+            _handler.OnConversationComplete += (_, __) => raised = true;
+
+            LogAssert.Expect(LogType.Warning, new Regex("without a requestId"));
+            _handler.ProcessMessage("{\"type\":\"conversationComplete\"}");
+
+            Assert.IsFalse(raised,
+                "A completion that names no turn must not be delivered as if it named this one.");
+        }
+
+        [Test]
+        public void ConversationCompleteWithoutARequestId_LeavesAnActiveTurnAlone()
+        {
+            SetCurrentSession("turn-1");
+            LogAssert.Expect(LogType.Warning, new Regex("without a requestId"));
+
+            _handler.ProcessMessage("{\"type\":\"conversationComplete\"}");
+
+            Assert.AreEqual("turn-1", _orchestrator.GetCurrentSessionId(),
+                "An unidentifiable completion must never release the turn that is actually running.");
         }
 
         private static string CompleteJson(string requestId) =>

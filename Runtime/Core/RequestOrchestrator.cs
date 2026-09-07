@@ -819,11 +819,16 @@ namespace Tsc.AIBridge.Core
 
 
         /// <summary>
-        /// Get the number of audio streams received in the current session
+        /// Audio streams received for <paramref name="requestId"/>, or 0 when that turn is not the one
+        /// this orchestrator is tracking. Addressed by id rather than by "the current one", so a
+        /// completion for another turn cannot read this turn's count.
         /// </summary>
-        public int GetCurrentSessionStreamsReceived()
+        public int GetStreamsReceived(string requestId)
         {
-            return _currentSession?.StreamsReceived ?? 0;
+            if (string.IsNullOrEmpty(requestId) || _currentSession?.RequestId != requestId)
+                return 0;
+
+            return _currentSession.StreamsReceived;
         }
 
         /// <summary>
@@ -857,16 +862,23 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// Complete the current session (used when no audio received)
+        /// Completes <paramref name="requestId"/> (used when no audio was received, so nothing else will
+        /// clean the turn up). Addressed by id: a completion arriving for a turn this orchestrator is no
+        /// longer tracking must not release the turn it IS tracking.
         /// </summary>
-        public void CompleteCurrentSession()
+        public void CompleteSession(string requestId)
         {
-            if (_currentSession != null)
+            if (string.IsNullOrEmpty(requestId) || _currentSession?.RequestId != requestId)
             {
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Session {_currentSession.RequestId} completed");
-                _currentSession = null;
+                    Debug.Log($"[RequestOrchestrator] Not completing '{requestId ?? "(none)"}' — it is not the tracked session.");
+                return;
             }
+
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Session {requestId} completed");
+
+            _currentSession = null;
         }
 
         #region Turn Watchdog
@@ -1321,10 +1333,13 @@ namespace Tsc.AIBridge.Core
         /// NpcAudioPlayer.SendPauseStream / SendResumeStream and must not point at the
         /// completed turn after cleanup.
         /// </summary>
-        private void HandleConversationCompleted(bool audioReceived)
+        private void HandleConversationCompleted(string requestId, bool audioReceived)
         {
-            // Snapshot before clearing so we can address the router cleanup.
-            var completedRequestId = _currentSession?.RequestId;
+            // The completing turn now names itself instead of being inferred from shared state. Behaviour
+            // is unchanged in this step: the caller still only raises this for the tracked turn, so the
+            // clears below are the same clears. Removing that gate is a later step, and it needs this
+            // parameter to exist first.
+            var completedRequestId = requestId;
             var completedNpcName = _activeNpcClient?.NpcName;
 
             _currentSession = null;
