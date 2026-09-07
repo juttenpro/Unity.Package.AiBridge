@@ -129,6 +129,14 @@ namespace Tsc.AIBridge.Core
 
         private WebSocketClient _webSocketClient;
         private ConversationSession _currentSession;
+
+        // Every turn that has been started and not yet ended, keyed on its RequestId. Introduced
+        // alongside _currentSession on purpose: this step changes no meaning and no behaviour, it only
+        // makes the set of live turns addressable and — the actual work — forces the inventory of exits
+        // to be complete before the watchdog and the mic/turn split start depending on it.
+        // See Docs/Architecture/Concurrent-Turns-Plan.md, steps 6, 8, 11 and 12.
+        private readonly Dictionary<string, ConversationSession> _liveSessions =
+            new Dictionary<string, ConversationSession>();
         private INpcConfiguration _activeNpcConfig;
         private NpcClientBase _activeNpcClient; // Cache to avoid FindObjectsByType
         private bool _isProcessingRequest; // Queue management - prevents concurrent request STARTS
@@ -292,6 +300,7 @@ namespace Tsc.AIBridge.Core
             // symptom: user tries again with the same NPC and nothing happens, only switching to a
             // different NPC (which triggers CancelCurrentSession) recovers. _isProcessingRequest is
             // cleared defensively in case a ProcessXxxRequest coroutine did not reach its finally.
+            ReleaseLiveSession(_currentSession?.RequestId);
             _currentSession = null;
             _isProcessingRequest = false;
         }
@@ -565,7 +574,7 @@ namespace Tsc.AIBridge.Core
             // This issue is especially likely after WebSocket reconnects when queue processing may be delayed.
             requestId ??= Guid.NewGuid().ToString();
             var npcName = npcClient.NpcName;
-            _currentSession = new ConversationSession(npcName, requestId);
+            SetTrackedSession(new ConversationSession(npcName, requestId));
 
             if (enableVerboseLogging)
                 Debug.Log($"[RequestOrchestrator] Created session immediately: {requestId} for {npcName}");
@@ -725,6 +734,7 @@ namespace Tsc.AIBridge.Core
                 UnregisterConversationCompletionHandler();
 
                 // Clear session
+                ReleaseLiveSession(requestIdToCancel);
                 _currentSession = null;
                 _activeNpcConfig = null;
                 _activeNpcClient = null;
@@ -819,6 +829,42 @@ namespace Tsc.AIBridge.Core
 
 
         /// <summary>
+        /// Whether this turn has been started and not yet completed, cancelled, failed or displaced.
+        /// </summary>
+        public bool IsTurnLive(string requestId)
+            => !string.IsNullOrEmpty(requestId) && _liveSessions.ContainsKey(requestId);
+
+        /// <summary>
+        /// Makes <paramref name="session"/> the tracked session and adds it to the live set.
+        ///
+        /// A session it displaces is released here, because nothing else will: a re-press on the same NPC
+        /// replaces the tracked session deliberately and sends no backend cancel — ten rapid presses are
+        /// one continuous session by design (RequestOrchestratorAudioTests.RapidPTTPresses_HandlesGracefully).
+        /// Without this the live set would fill with turns no exit path ever visits.
+        /// </summary>
+        private void SetTrackedSession(ConversationSession session)
+        {
+            if (_currentSession != null && _currentSession.RequestId != session.RequestId)
+            {
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Session {_currentSession.RequestId} displaced by " +
+                              $"{session.RequestId} (no backend cancel — same-NPC re-press) — releasing the displaced turn.");
+
+                ReleaseLiveSession(_currentSession.RequestId);
+            }
+
+            _currentSession = session;
+            _liveSessions[session.RequestId] = session;
+        }
+
+        /// <summary>Drops a turn from the live set. Safe to call for a turn that is already gone.</summary>
+        private void ReleaseLiveSession(string requestId)
+        {
+            if (!string.IsNullOrEmpty(requestId))
+                _liveSessions.Remove(requestId);
+        }
+
+        /// <summary>
         /// Audio streams received for <paramref name="requestId"/>, or 0 when that turn is not the one
         /// this orchestrator is tracking. Addressed by id rather than by "the current one", so a
         /// completion for another turn cannot read this turn's count.
@@ -878,6 +924,7 @@ namespace Tsc.AIBridge.Core
             if (enableVerboseLogging)
                 Debug.Log($"[RequestOrchestrator] Session {requestId} completed");
 
+            ReleaseLiveSession(requestId);
             _currentSession = null;
         }
 
@@ -1002,6 +1049,7 @@ namespace Tsc.AIBridge.Core
                 NpcMessageRouter.Instance.ClearRequest(requestId);
             }
 
+            ReleaseLiveSession(requestId);
             _currentSession = null;
             _isProcessingRequest = false;
         }
@@ -1342,6 +1390,7 @@ namespace Tsc.AIBridge.Core
             var completedRequestId = requestId;
             var completedNpcName = _activeNpcClient?.NpcName;
 
+            ReleaseLiveSession(completedRequestId);
             _currentSession = null;
             _isRequestActive = false;
             _isProcessingRequest = false;
@@ -1484,7 +1533,12 @@ namespace Tsc.AIBridge.Core
                 // Verify it exists and matches the request ID
                 if (_currentSession == null || _currentSession.RequestId != request.RequestId)
                 {
+                    // This turn is abandoned here. It used to leave its live entry behind, which is one of
+                    // the two exits the first design of this refactor missed. The LogError itself is
+                    // deliberately left alone in this step — turning it into a recoverable per-turn
+                    // failure belongs with the mic/turn split, where a mismatch stops being fatal.
                     Debug.LogError($"[RequestOrchestrator] Session mismatch! Expected {request.RequestId}, got {_currentSession?.RequestId ?? "null"}");
+                    ReleaseLiveSession(request.RequestId);
                     yield break;
                 }
 
@@ -1713,7 +1767,12 @@ namespace Tsc.AIBridge.Core
 
                 // Start WebSocket session with text input
                 var npcName = request.NpcClient.NpcName;
-                _currentSession = new ConversationSession(npcName, request.RequestId);
+                SetTrackedSession(new ConversationSession(npcName, request.RequestId));
+
+                // The audio path has always done this; the text path never did, so an NPC-initiated turn
+                // was not resolvable by the router at all — which also broke NpcAudioPlayer's
+                // pause/resume-stream lookup for those turns.
+                NpcMessageRouter.Instance.SetActiveRequest(request.RequestId, npcName);
 
                 // CRITICAL: Register the NPC handler with WebSocketClient to receive responses
                 if (request.NpcClient is INpcMessageHandler textHandler)

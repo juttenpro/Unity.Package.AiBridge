@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-09-09
+
+### Added
+- **A live-turn store, addressable by RequestId.** `_liveSessions` sits alongside `_currentSession` and
+  changes no meaning and no behaviour; `IsTurnLive(requestId)` exposes it. The point of the step is the
+  inventory: every path that ends a turn now releases it, including the two that released nothing —
+  a same-NPC re-press that DISPLACES the tracked session without a backend cancel (ten rapid presses are
+  one continuous session by design, so no completion, cancel or failure ever arrives for the displaced
+  one), and the session-mismatch abandon in `ProcessAudioRequest`.
+
+  Both matter because two later changes depend on it and fail silently if it is incomplete: the turn
+  watchdog is about to ask "is this turn still live?" instead of "is this the current turn?", so a turn
+  that ends through a forgotten path would look healthy and then be failed ~120s later, raising sttFailed
+  into whatever turn is running by then.
+
+### Fixed
+- **An NPC-initiated turn is now registered with `NpcMessageRouter`.** Only the audio path called
+  `SetActiveRequest`, so a character-speaks-first turn was not resolvable by the router at all — which
+  also left `NpcAudioPlayer`'s pause/resume-stream lookup unable to find it.
 ## [5.1.0] - 2026-09-09
 
 MINOR, not MAJOR: this changes public C# signatures but not the wire protocol, and the one consumer
