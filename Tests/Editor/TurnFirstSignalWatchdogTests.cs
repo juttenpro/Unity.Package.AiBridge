@@ -30,11 +30,18 @@ namespace Tsc.AIBridge.Tests.Editor
     /// without PlayMode.
     ///
     /// SUCCESS CRITERIA:
-    /// - verdict logic: disabled → stop; turn ended/replaced → stop; signal seen → stop;
+    /// - verdict logic: disabled → stop; turn no longer live → stop; signal seen → stop;
     ///   paused → wait without consuming budget; budget exhausted → fail.
     /// - failing the turn clears _micSession/_isRequestActive/_isProcessingRequest and raises
     ///   OnSttFailed with a recognizable reason, exactly like the disconnect recovery path.
-    /// - transcript and audio-start record themselves as a signal for the current turn.
+    /// - transcript and audio-start record a signal on THEIR OWN turn and on no other.
+    ///
+    /// STEP 11: both turn-specific inputs are now values read off that turn. They used to be ids
+    /// compared against single slots on the orchestrator — "the current request id" was the
+    /// MICROPHONE's, so from the moment NPC turns stopped writing that pointer (step 8) an
+    /// NPC-initiated turn was never "current", and its watchdog bowed out on its very first tick.
+    /// Those turns had no watchdog at all. And the player turn's budget started when SessionStart was
+    /// sent, so holding push-to-talk longer than the timeout failed a healthy turn from the inside.
     /// </summary>
     [TestFixture]
     public class TurnFirstSignalWatchdogTests
@@ -64,31 +71,29 @@ namespace Tsc.AIBridge.Tests.Editor
         public void Evaluate_TimeoutDisabled_StopsWatching()
         {
             var verdict = RequestOrchestrator.EvaluateTurnWatchdog(
-                watchedRequestId: "turn-1", currentRequestId: "turn-1", signalSeenForRequestId: null,
-                isPaused: false, elapsedSinceSendSeconds: 999f, timeoutSeconds: 0f);
+                isTurnStillLive: true, firstSignalSeen: false,
+                isPaused: false, elapsedSinceArmedSeconds: 999f, timeoutSeconds: 0f);
 
             Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.StopWatching, verdict,
                 "timeout 0 disables the watchdog entirely");
         }
 
         [Test]
-        public void Evaluate_TurnEndedOrReplaced_StopsWatching()
+        public void Evaluate_TurnNoLongerLive_StopsWatching()
         {
-            // conversationComplete / disconnect cleanup nulled the session, or a new turn started.
+            // Completed, cancelled, failed or displaced — all four are "not live", and all four mean
+            // someone else owns the outcome now.
             Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.StopWatching,
-                RequestOrchestrator.EvaluateTurnWatchdog("turn-1", null, null, false, 10f, 120f),
-                "a cleaned-up session means the turn is settled — nothing to watch");
-            Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.StopWatching,
-                RequestOrchestrator.EvaluateTurnWatchdog("turn-1", "turn-2", null, false, 10f, 120f),
-                "a replaced session means a new turn owns the state — this watchdog must bow out");
+                RequestOrchestrator.EvaluateTurnWatchdog(false, false, false, 10f, 120f),
+                "a released turn is settled — nothing to watch");
         }
 
         [Test]
-        public void Evaluate_SignalSeenForWatchedTurn_StopsWatching()
+        public void Evaluate_SignalSeen_StopsWatching()
         {
             var verdict = RequestOrchestrator.EvaluateTurnWatchdog(
-                "turn-1", "turn-1", signalSeenForRequestId: "turn-1",
-                isPaused: false, elapsedSinceSendSeconds: 119f, timeoutSeconds: 120f);
+                isTurnStillLive: true, firstSignalSeen: true,
+                isPaused: false, elapsedSinceArmedSeconds: 119f, timeoutSeconds: 120f);
 
             Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.StopWatching, verdict,
                 "any backend signal (transcript/audio/completion) proves the chain is alive — phase-1 ends, " +
@@ -96,22 +101,11 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
-        public void Evaluate_SignalSeenForOlderTurn_DoesNotSatisfyThisTurn()
-        {
-            var verdict = RequestOrchestrator.EvaluateTurnWatchdog(
-                "turn-2", "turn-2", signalSeenForRequestId: "turn-1",
-                isPaused: false, elapsedSinceSendSeconds: 130f, timeoutSeconds: 120f);
-
-            Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.FailTurn, verdict,
-                "a signal recorded for a PREVIOUS turn must not mask this turn's dead backend");
-        }
-
-        [Test]
         public void Evaluate_Paused_WaitsWithoutConsumingBudget()
         {
             var verdict = RequestOrchestrator.EvaluateTurnWatchdog(
-                "turn-1", "turn-1", null,
-                isPaused: true, elapsedSinceSendSeconds: 500f, timeoutSeconds: 120f);
+                isTurnStillLive: true, firstSignalSeen: false,
+                isPaused: true, elapsedSinceArmedSeconds: 500f, timeoutSeconds: 120f);
 
             Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.KeepWaitingPaused, verdict,
                 "PauseManager pauses backend streaming, so silence during pause is legitimate — " +
@@ -122,7 +116,7 @@ namespace Tsc.AIBridge.Tests.Editor
         public void Evaluate_WithinBudget_KeepsWaiting()
         {
             var verdict = RequestOrchestrator.EvaluateTurnWatchdog(
-                "turn-1", "turn-1", null, false, elapsedSinceSendSeconds: 60f, timeoutSeconds: 120f);
+                true, false, false, elapsedSinceArmedSeconds: 60f, timeoutSeconds: 120f);
 
             Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.KeepWaiting, verdict);
         }
@@ -131,10 +125,64 @@ namespace Tsc.AIBridge.Tests.Editor
         public void Evaluate_BudgetExhausted_FailsTurn()
         {
             var verdict = RequestOrchestrator.EvaluateTurnWatchdog(
-                "turn-1", "turn-1", null, false, elapsedSinceSendSeconds: 120f, timeoutSeconds: 120f);
+                true, false, false, elapsedSinceArmedSeconds: 120f, timeoutSeconds: 120f);
 
             Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.FailTurn, verdict,
                 "no signal of life within the budget: the turn is dead and must fail loudly");
+        }
+
+        #endregion
+
+        #region What the coroutine actually asks about (state -> verdict)
+
+        [Test]
+        public void AnNpcInitiatedTurnIsWatchedAtAll()
+        {
+            // THE regression this step exists for. Liveness used to be "is this the microphone's
+            // session?", and a character-speaks-first turn never is — so it was abandoned on the first
+            // tick and a dead backend for that NPC went completely unnoticed.
+            Register("esra-turn");
+
+            Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.FailTurn,
+                _orchestrator.EvaluateTurnWatchdogFor("esra-turn", 130f),
+                "An NPC-initiated turn with no sign of life must fail like any other. Judging it by the " +
+                "microphone's pointer meant it was never watched.");
+        }
+
+        [Test]
+        public void AForeignTurnsSignalDoesNotSatisfyThisTurn()
+        {
+            // The old single slot held "the id a signal was last seen for", so any turn's signal could
+            // answer for any other turn's watchdog. The flag now lives on each session.
+            Track("mic-turn");
+            Register("esra-turn");
+
+            _orchestrator.MarkAudioStreamReceived("esra-turn");
+
+            Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.StopWatching,
+                _orchestrator.EvaluateTurnWatchdogFor("esra-turn", 130f));
+            Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.FailTurn,
+                _orchestrator.EvaluateTurnWatchdogFor("mic-turn", 130f),
+                "Esra's audio says nothing about the player's turn — masking it is how a dead backend " +
+                "stayed invisible for the rest of the lesson.");
+        }
+
+        [Test]
+        public void AReleasedTurnIsNoLongerWatched()
+        {
+            Register("esra-turn");
+            _orchestrator.CompleteSession("esra-turn");
+
+            Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.StopWatching,
+                _orchestrator.EvaluateTurnWatchdogFor("esra-turn", 130f));
+        }
+
+        [Test]
+        public void AnUnknownTurnIsNoLongerWatched()
+        {
+            Assert.AreEqual(RequestOrchestrator.TurnWatchdogVerdict.StopWatching,
+                _orchestrator.EvaluateTurnWatchdogFor(null, 130f),
+                "A null id must not throw its way out of a coroutine that runs every second.");
         }
 
         #endregion
@@ -192,17 +240,17 @@ namespace Tsc.AIBridge.Tests.Editor
         [Test]
         public void RaiseTranscriptionReceived_RecordsSignalForTheTranscriptsOwnTurn()
         {
-            // The old version of this test set the current session to the SAME id it passed in, so it
-            // passed while the code credited _micSession instead of the transcript's own turn. Here
-            // the two differ: turn-2 is the session the orchestrator happens to be pointing at, turn-1 is
-            // the turn this transcript actually belongs to.
-            SetField("_micSession", new ConversationSession("TestNpc", "turn-2"));
+            // Two live turns: the microphone's, and the one this transcript belongs to.
+            var mic = Track("mic-turn");
+            var esra = Register("esra-turn");
 
-            _orchestrator.RaiseTranscriptionReceived("hallo", "turn-1");
+            _orchestrator.RaiseTranscriptionReceived("hallo", "esra-turn");
 
-            Assert.AreEqual("turn-1", GetField<string>("_turnSignalSeenForRequestId"),
-                "A transcript proves the backend is alive for ITS OWN turn. Crediting whatever session " +
-                "the orchestrator points at silences that turn's watchdog and masks the dead one.");
+            Assert.IsTrue(esra.FirstSignalSeen,
+                "A transcript proves the backend is alive for ITS OWN turn.");
+            Assert.IsFalse(mic.FirstSignalSeen,
+                "And for no other. Crediting whatever session the orchestrator points at silences that " +
+                "turn's watchdog and masks the dead one.");
         }
 
         [Test]
@@ -210,13 +258,25 @@ namespace Tsc.AIBridge.Tests.Editor
         {
             // A transcript with no id cannot prove anything about any particular turn, and guessing
             // "the current one" is what this fix removes. Warn and record nothing.
-            SetField("_micSession", new ConversationSession("TestNpc", "turn-1"));
+            var mic = Track("mic-turn");
 
             LogAssert.Expect(LogType.Warning, new Regex("without a RequestId"));
             _orchestrator.RaiseTranscriptionReceived("hallo", null);
 
-            Assert.IsNull(GetField<string>("_turnSignalSeenForRequestId"),
+            Assert.IsFalse(mic.FirstSignalSeen,
                 "No id means no proof of life for any turn — never fall back to the current session.");
+        }
+
+        [Test]
+        public void RaiseTranscriptionReceived_ForATurnThatIsGone_RecordsNothing()
+        {
+            // A late transcript for a cancelled or displaced turn must not resurrect it, and must not
+            // land on whatever turn happens to be live now.
+            var mic = Track("mic-turn");
+
+            _orchestrator.RaiseTranscriptionReceived("hallo", "already-finished");
+
+            Assert.IsFalse(mic.FirstSignalSeen);
         }
 
         [Test]
@@ -239,14 +299,15 @@ namespace Tsc.AIBridge.Tests.Editor
             // Two live turns, and the audio belongs to the one that is NOT the microphone's. The old
             // version set the microphone's session to the same id it implicitly used, so it passed while
             // the code credited whatever the microphone pointed at.
-            Track("mic-turn");
+            var mic = Track("mic-turn");
             var esra = Register("esra-turn");
 
             _orchestrator.MarkAudioStreamReceived("esra-turn");
 
-            Assert.AreEqual("esra-turn", GetField<string>("_turnSignalSeenForRequestId"),
+            Assert.IsTrue(esra.FirstSignalSeen,
                 "Audio proves the backend is alive for the turn whose audio it is — crediting the " +
                 "microphone's turn instead silences that turn's watchdog and masks the dead one.");
+            Assert.IsFalse(mic.FirstSignalSeen);
             Assert.AreEqual(1, esra.StreamsReceived);
             Assert.AreEqual(0, _orchestrator.GetStreamsReceived("mic-turn"),
                 "The microphone's turn produced no audio and must not be marked as if it had — that flag " +
@@ -256,12 +317,12 @@ namespace Tsc.AIBridge.Tests.Editor
         [Test]
         public void MarkAudioStreamReceived_WithoutARequestId_RecordsNothing()
         {
-            Track("mic-turn");
+            var mic = Track("mic-turn");
 
             LogAssert.Expect(LogType.Warning, new Regex("Audio started for an unnamed turn"));
             _orchestrator.MarkAudioStreamReceived(null);
 
-            Assert.IsNull(GetField<string>("_turnSignalSeenForRequestId"),
+            Assert.IsFalse(mic.FirstSignalSeen,
                 "No id means no proof of life for any particular turn — never fall back to the microphone's.");
             Assert.AreEqual(0, _orchestrator.GetStreamsReceived("mic-turn"));
         }
@@ -270,19 +331,21 @@ namespace Tsc.AIBridge.Tests.Editor
         public void MarkAudioStreamReceived_ForATurnThatIsGone_RecordsNothing()
         {
             // Late audio for a turn that was cancelled or displaced must not resurrect it.
-            Track("mic-turn");
+            var mic = Track("mic-turn");
 
             _orchestrator.MarkAudioStreamReceived("already-finished");
 
-            Assert.IsNull(GetField<string>("_turnSignalSeenForRequestId"));
+            Assert.IsFalse(mic.FirstSignalSeen);
             Assert.AreEqual(0, _orchestrator.GetStreamsReceived("mic-turn"));
         }
 
-        private void Track(string requestId)
+        private ConversationSession Track(string requestId)
         {
+            var session = new ConversationSession("TestNpc", requestId, "TestNpc");
             var method = typeof(RequestOrchestrator).GetMethod("SetMicSession", PrivateInstance);
             Assert.IsNotNull(method, "SetMicSession not found on RequestOrchestrator");
-            method.Invoke(_orchestrator, new object[] { new ConversationSession("TestNpc", requestId, "TestNpc") });
+            method.Invoke(_orchestrator, new object[] { session });
+            return session;
         }
 
         private ConversationSession Register(string requestId)

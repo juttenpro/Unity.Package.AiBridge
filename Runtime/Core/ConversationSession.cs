@@ -46,6 +46,17 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public int StreamsReceived { get; set; }
 
+        /// <summary>
+        /// Whether the backend has shown ANY sign of life for this turn — a transcript, or the first
+        /// audio chunk. Once true, this turn's watchdog is over for good, so it can never cut off a
+        /// long answer mid-stream.
+        ///
+        /// This was one field on the orchestrator holding "the id a signal was last seen for". With one
+        /// turn at a time that was the same thing; with several it is not. A signal for turn B silenced
+        /// turn A's watchdog, because A only ever compared its own id against that single slot.
+        /// </summary>
+        public bool FirstSignalSeen { get; set; }
+
         /// <param name="npcName">Name of the NPC</param>
         /// <param name="requestId">Optional request ID. If null, a new GUID will be generated</param>
         public ConversationSession(string npcName = null, string requestId = null, string npcId = null,

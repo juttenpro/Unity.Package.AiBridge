@@ -6,6 +6,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.0] - 2026-09-07
+
+### Changed
+- **The turn watchdog judges the turn, not the microphone.** `EvaluateTurnWatchdog` now takes
+  `(bool isTurnStillLive, bool firstSignalSeen, bool isPaused, float elapsed, float timeout)` instead of
+  three request ids. Liveness used to come from `_micSession`, and since 5.3.0 an NPC-initiated turn
+  never writes that pointer — so its watchdog stopped on its very first tick and those turns had **no
+  watchdog at all**. A dead backend for a character-speaks-first line went completely unnoticed.
+- **The player turn's budget starts at EndOfSpeech, not when SessionStart was sent.** The backend cannot
+  transcribe speech that is still being spoken, so holding push-to-talk longer than
+  `turnFirstSignalTimeoutSeconds` (default 120s) failed a perfectly healthy turn from inside the
+  watchdog. An NPC-initiated turn is still armed right after its TextInput send, which is its first
+  opportunity too.
+- **A second character-speaks-first turn for an NPC that already has one is refused**, not swapped in.
+  One live turn per NPC is structural — `AudioMessageHandler.OnNewRequest` calls `Reset()` when the
+  requestId changes, and there is one `AudioStreamProcessor`, one `StreamingAudioPlayer` and one
+  `ConversationMetadataHandler.LastRequestId` per `NpcClient` — so the second turn cannot be heard
+  either way. The running answer keeps the NPC and the caller is told, so nothing is sent. The player
+  pressing to talk at a speaking NPC still wins: that is barge-in.
+
+### Added
+- `ConversationSession.FirstSignalSeen` — whether the backend has shown any sign of life for **this**
+  turn. This was one field on the orchestrator holding "the id a signal was last seen for", so any
+  turn's transcript or first audio chunk could silence any other turn's watchdog.
+- `RequestOrchestrator.HasLiveTurnForNpc(string npcId)` — asked by the RuleSystem side *before* it mints
+  a turn id, so a refused line never registers a turn, adopts a request id, or flags the persona as
+  awaiting a response.
+
+### Fixed
+- **`WebSocketClient.UnregisterNpc` was never called from the conversation path.** Only `AnalysisService`
+  called it, so `_npcHandlers` grew one entry per turn for a whole lesson and kept routing late audio to
+  NPCs whose turns had already been cancelled or failed. `NpcMessageRouter.ClearRequest` was called on
+  the completion and timeout paths but not on cancel, so an abandoned turn stayed resolvable there too —
+  and that router is what `NpcAudioPlayer.SendPauseStream` / `SendResumeStream` consult. Both now happen
+  in `ReleaseLiveSession`, the single place a turn leaves the live set.
+- A late transcript for a turn that is no longer live no longer records a signal against a live turn.
+
 ## [5.5.0] - 2026-09-09
 
 ### Changed

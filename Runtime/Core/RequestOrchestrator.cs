@@ -101,7 +101,7 @@ namespace Tsc.AIBridge.Core
 
         [Header("Turn Watchdog")]
         [SerializeField]
-        [Tooltip("Fails the active turn when the backend shows no first sign of life (transcript, audio, completion) within this many seconds after the request was sent. Covers half-open connections and backend error paths that skip conversationComplete. 0 disables the watchdog.")]
+        [Tooltip("Fails a turn when the backend shows no first sign of life (transcript, audio, completion) within this many seconds after the turn could first have produced one — EndOfSpeech for a player turn, the TextInput send for an NPC-initiated one. Covers half-open connections and backend error paths that skip conversationComplete. 0 disables the watchdog.")]
         private float turnFirstSignalTimeoutSeconds = 120f;
 
         #endregion
@@ -158,10 +158,10 @@ namespace Tsc.AIBridge.Core
         private readonly Dictionary<NpcClientBase, ConversationMetadataHandler> _completionSubscriptions =
             new Dictionary<NpcClientBase, ConversationMetadataHandler>();
 
-        // Turn watchdog state: the RequestId for which a backend response signal (transcript or
-        // audio playback start) was recorded, and whether a pause is active — paused time must not
-        // count toward the watchdog budget because PauseManager pauses backend streaming too.
-        private string _turnSignalSeenForRequestId;
+        // Whether a pause is active — paused time must not count toward any turn's watchdog budget,
+        // because PauseManager pauses backend streaming too. App-wide on purpose: the pause is.
+        // The per-turn "has the backend shown a sign of life" flag lives on ConversationSession, where
+        // it can be true for one turn and false for another.
         private bool _isPauseActive;
 
         /// <summary>
@@ -921,6 +921,19 @@ namespace Tsc.AIBridge.Core
                 ReleaseLiveSession(_micSession.RequestId);
             }
 
+            // The player pressing to talk at an NPC who is already answering is barge-in, and the
+            // player's own action always wins: the older turn is released rather than the press refused.
+            // The mirror case in RegisterLiveSession goes the other way for exactly the same reason —
+            // there it is a background rule that loses, not the person holding the button.
+            var displaced = FindOtherLiveTurnForNpc(session.NpcId, session.RequestId);
+            if (displaced != null)
+            {
+                Debug.LogWarning($"[RequestOrchestrator] '{session.NpcId}' still had a live turn ({displaced}) " +
+                                 $"when the player pressed to talk ({session.RequestId}). Releasing the older one — " +
+                                 "one NPC cannot decode two turns at once, and the player's press wins.");
+                ReleaseLiveSession(displaced);
+            }
+
             _micSession = session;
             _liveSessions[session.RequestId] = session;
         }
@@ -930,41 +943,88 @@ namespace Tsc.AIBridge.Core
         /// character-speaks-first path: the player is not talking into it, so it must not touch the
         /// microphone's bookkeeping — that is the whole point of the mic/turn split.
         ///
-        /// One live turn per NPC is the target invariant. Enforcing it loudly comes later; releasing the
-        /// previous one here is what keeps the live set from growing a turn nothing will ever close,
-        /// which the watchdog would otherwise fail long after it actually succeeded.
+        /// Refuses a second live turn for an NPC that already has one, and returns false; the caller
+        /// must then not send anything. One live turn per NPC is a structural ceiling, not a policy
+        /// choice: AudioMessageHandler.OnNewRequest calls Reset() the moment the requestId changes, and
+        /// there is one decoding AudioStreamProcessor, one StreamingAudioPlayer and one
+        /// ConversationMetadataHandler.LastRequestId per NpcClient. A second turn cannot be heard.
+        ///
+        /// The NEW turn loses, not the running one. This used to release the older turn, which cut off
+        /// an answer already being spoken in favour of one the same NPC could not play either — and the
+        /// caller had no way to know, so it sent the request anyway. Both mistakes are gone.
+        ///
+        /// Deliberately NOT raising SttFailed for the refused turn, though the plan said to: OnSttFailed
+        /// is handled against _personaAddressed, so it would fire the "sorry, I didn't understand you"
+        /// rule at whoever the player is actually talking to and wipe their last recognised text. The
+        /// refusal is caught one level up, in AIBridgeRulesHandler.StartConversation, before the turn
+        /// exists at all — this is the backstop for anything that reaches the orchestrator directly.
         /// </summary>
-        private void RegisterLiveSession(ConversationSession session)
+        /// <returns>False when the turn was refused and must not be sent.</returns>
+        private bool RegisterLiveSession(ConversationSession session)
         {
-            if (!string.IsNullOrEmpty(session.NpcId))
+            var conflicting = FindOtherLiveTurnForNpc(session.NpcId, session.RequestId);
+            if (conflicting != null)
             {
-                string displaced = null;
-                foreach (var live in _liveSessions)
-                {
-                    if (live.Value.NpcId == session.NpcId && live.Key != session.RequestId)
-                    {
-                        displaced = live.Key;
-                        break;
-                    }
-                }
-
-                if (displaced != null)
-                {
-                    Debug.LogWarning($"[RequestOrchestrator] '{session.NpcId}' already had a live turn " +
-                                     $"({displaced}) when {session.RequestId} started. Releasing the older one — " +
-                                     "one NPC cannot decode two turns at once.");
-                    ReleaseLiveSession(displaced);
-                }
+                Debug.LogWarning($"[RequestOrchestrator] Refusing turn {session.RequestId}: '{session.NpcId}' " +
+                                 $"already has a live turn ({conflicting}) and cannot decode two at once. " +
+                                 "The running turn keeps the NPC; this one is dropped before anything is sent.");
+                return false;
             }
 
             _liveSessions[session.RequestId] = session;
+            return true;
         }
 
-        /// <summary>Drops a turn from the live set. Safe to call for a turn that is already gone.</summary>
+        /// <summary>
+        /// The RequestId of another live turn belonging to <paramref name="npcId"/>, or null. Null or
+        /// empty npcId means "cannot tell", which must never look like a conflict.
+        /// </summary>
+        private string FindOtherLiveTurnForNpc(string npcId, string exceptRequestId)
+        {
+            if (string.IsNullOrEmpty(npcId))
+                return null;
+
+            foreach (var live in _liveSessions)
+            {
+                if (live.Value.NpcId == npcId && live.Key != exceptRequestId)
+                    return live.Key;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Whether <paramref name="npcId"/> has a turn in flight right now. Asked by the RuleSystem side
+        /// BEFORE it mints a turn id, so a second character-speaks-first line for the same NPC is
+        /// dropped while nothing has been registered, adopted or flagged as awaiting a response yet.
+        /// </summary>
+        public bool HasLiveTurnForNpc(string npcId) => FindOtherLiveTurnForNpc(npcId, null) != null;
+
+        /// <summary>
+        /// Drops a turn from the live set and tears down everything else keyed on its RequestId. Safe to
+        /// call for a turn that is already gone — every step is idempotent.
+        ///
+        /// This is the ONLY place a turn leaves _liveSessions, which is why the teardown belongs here
+        /// rather than at each of the eight call sites. WebSocketClient.UnregisterNpc was never called
+        /// from the conversation path at all (only AnalysisService called it), so _npcHandlers grew one
+        /// entry per turn for the whole lesson and kept routing late audio to an NPC whose turn had
+        /// already been cancelled or failed. NpcMessageRouter.ClearRequest was called on the completion
+        /// and timeout paths but not on the cancel path, so an abandoned turn stayed resolvable there
+        /// too — and that router is what NpcAudioPlayer.SendPauseStream/SendResumeStream consult.
+        /// </summary>
         private void ReleaseLiveSession(string requestId)
         {
-            if (!string.IsNullOrEmpty(requestId))
-                _liveSessions.Remove(requestId);
+            if (string.IsNullOrEmpty(requestId))
+                return;
+
+            _liveSessions.Remove(requestId);
+
+            // Stop routing this turn's messages. Both are keyed on the RequestId the turn registered
+            // under, so this is the exact mirror of ProcessAudioRequest/ProcessTextRequest's setup.
+            _webSocketClient?.UnregisterNpc(requestId);
+
+            if (NpcMessageRouter.HasInstance)
+                NpcMessageRouter.Instance.ClearRequest(requestId);
         }
 
         /// <summary>
@@ -1008,7 +1068,7 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
-            _turnSignalSeenForRequestId = requestId;
+            session.FirstSignalSeen = true;
 
             if (session.StreamsReceived == 0)
             {
@@ -1067,45 +1127,72 @@ namespace Tsc.AIBridge.Core
         /// Decision logic for the per-turn first-signal watchdog, kept pure so the timing edges
         /// are unit-testable without PlayMode.
         ///
-        /// Phase-1-only by design: the watchdog only covers the window between sending a request
-        /// and the FIRST backend response signal (transcript, audio playback start, completion —
-        /// completion clears the session, which lands in the "turn ended" branch). Once any signal
-        /// proves the chain is alive it stops for good, so it can never cut off a long Full-mode
-        /// monologue mid-stream. Paused time does not consume budget: PauseManager pauses backend
-        /// streaming too, so silence while paused is legitimate (2026-06-12 audit, client H8).
+        /// Phase-1-only by design: the watchdog only covers the window between the turn becoming able
+        /// to produce a signal and the FIRST one arriving (transcript, audio playback start, completion
+        /// — completion releases the turn, which lands in the "not live" branch). Once any signal proves
+        /// the chain is alive it stops for good, so it can never cut off a long Full-mode monologue
+        /// mid-stream. Paused time does not consume budget: PauseManager pauses backend streaming too,
+        /// so silence while paused is legitimate (2026-06-12 audit, client H8).
+        ///
+        /// Both turn-specific inputs are now values read off THAT turn, not ids compared against shared
+        /// slots. The old signature took "the current request id" and "the id a signal was seen for",
+        /// which only described one turn at a time: liveness came from the microphone's pointer, so an
+        /// NPC-initiated turn was never live by that test and stopped being watched on its first tick.
         /// </summary>
         internal static TurnWatchdogVerdict EvaluateTurnWatchdog(
-            string watchedRequestId,
-            string currentRequestId,
-            string signalSeenForRequestId,
+            bool isTurnStillLive,
+            bool firstSignalSeen,
             bool isPaused,
-            float elapsedSinceSendSeconds,
+            float elapsedSinceArmedSeconds,
             float timeoutSeconds)
         {
             if (timeoutSeconds <= 0f)
                 return TurnWatchdogVerdict.StopWatching; // feature disabled via Inspector
 
-            if (currentRequestId != watchedRequestId)
-                return TurnWatchdogVerdict.StopWatching; // turn completed, cancelled or replaced
+            if (!isTurnStillLive)
+                return TurnWatchdogVerdict.StopWatching; // turn completed, cancelled, failed or displaced
 
-            if (signalSeenForRequestId == watchedRequestId)
+            if (firstSignalSeen)
                 return TurnWatchdogVerdict.StopWatching; // backend proved alive — phase 1 over
 
             if (isPaused)
                 return TurnWatchdogVerdict.KeepWaitingPaused;
 
-            return elapsedSinceSendSeconds >= timeoutSeconds
+            return elapsedSinceArmedSeconds >= timeoutSeconds
                 ? TurnWatchdogVerdict.FailTurn
                 : TurnWatchdogVerdict.KeepWaiting;
         }
 
         /// <summary>
+        /// Reads the watchdog's inputs for one turn out of live state and evaluates them. Separate from
+        /// the coroutine so a test can pin what the coroutine actually asks about: an NPC-initiated turn
+        /// used to be judged by the MICROPHONE's pointer and was therefore abandoned immediately.
+        /// </summary>
+        internal TurnWatchdogVerdict EvaluateTurnWatchdogFor(string requestId, float elapsedSinceArmedSeconds)
+        {
+            _liveSessions.TryGetValue(requestId ?? string.Empty, out var session);
+
+            return EvaluateTurnWatchdog(
+                session != null,
+                session != null && session.FirstSignalSeen,
+                _isPauseActive,
+                elapsedSinceArmedSeconds,
+                turnFirstSignalTimeoutSeconds);
+        }
+
+        /// <summary>
         /// Watches one turn for its first backend response signal and fails it when none arrives.
-        /// Started right after the request is sent (audio and text paths). Without this, a
-        /// half-open connection (WiFi drop without RST — no app-level keepalive exists in either
-        /// direction), a server hang, or a backend error path that skips conversationComplete left
-        /// _micSession armed forever: the NPC stayed silent until the TCP layer happened to
-        /// notice or the player switched NPCs.
+        /// Without this, a half-open connection (WiFi drop without RST — no app-level keepalive exists
+        /// in either direction), a server hang, or a backend error path that skips conversationComplete
+        /// left the turn armed forever: the NPC stayed silent until the TCP layer happened to notice or
+        /// the player switched NPCs.
+        ///
+        /// Armed when the turn could first produce a signal, which is NOT when its request was sent:
+        /// * player turn — at EndOfSpeech. The backend cannot transcribe speech that is still being
+        ///   spoken, so a push-to-talk hold longer than the timeout used to fail a perfectly healthy
+        ///   turn from inside the watchdog.
+        /// * NPC-initiated turn — right after the TextInput send, which is also its first opportunity.
+        ///   This one is unchanged, and also covers a silently failed send.
         /// </summary>
         private IEnumerator TurnFirstSignalWatchdog(string requestId)
         {
@@ -1118,13 +1205,7 @@ namespace Tsc.AIBridge.Core
                 // explicit pause branch (not timeScale) decides whether the budget is consumed.
                 yield return new WaitForSecondsRealtime(tickSeconds);
 
-                var verdict = EvaluateTurnWatchdog(
-                    requestId,
-                    _micSession?.RequestId,
-                    _turnSignalSeenForRequestId,
-                    _isPauseActive,
-                    elapsed,
-                    turnFirstSignalTimeoutSeconds);
+                var verdict = EvaluateTurnWatchdogFor(requestId, elapsed);
 
                 switch (verdict)
                 {
@@ -1168,11 +1249,7 @@ namespace Tsc.AIBridge.Core
                 });
             }
 
-            if (!string.IsNullOrEmpty(requestId) && NpcMessageRouter.HasInstance)
-            {
-                NpcMessageRouter.Instance.ClearRequest(requestId);
-            }
-
+            // Router and WebSocket routing are torn down by ReleaseLiveSession, for every path.
             ReleaseLiveSession(requestId);
 
             // An NPC turn's timeout must not disarm the microphone or tell the RuleSystem the player
@@ -1201,9 +1278,13 @@ namespace Tsc.AIBridge.Core
                 Debug.LogWarning("[RequestOrchestrator] Transcript arrived without a RequestId — cannot " +
                                  "credit any turn with proof of backend life. Not stamping the watchdog.");
             }
-            else
+            else if (_liveSessions.TryGetValue(requestId, out var transcribedTurn))
             {
-                _turnSignalSeenForRequestId = requestId;
+                transcribedTurn.FirstSignalSeen = true;
+            }
+            else if (enableVerboseLogging)
+            {
+                Debug.Log($"[RequestOrchestrator] Transcript for {requestId}, which is no longer a live turn.");
             }
 
             OnTranscriptionReceived?.Invoke(transcript, requestId);
@@ -1451,6 +1532,13 @@ namespace Tsc.AIBridge.Core
                 await _webSocketClient.SendEndOfAudioAsync(_micSession.RequestId);
                 if (enableVerboseLogging)
                     Debug.Log($"[RequestOrchestrator] EndOfAudio sent for session: {_micSession.RequestId}");
+
+                // NOW the turn can produce a signal, so now its budget starts. Read the id out of the
+                // session before starting the coroutine: an await may have let the turn be displaced,
+                // and watching an id nobody holds any more just stops on the first tick.
+                var speechEndedForRequestId = _micSession?.RequestId;
+                if (!string.IsNullOrEmpty(speechEndedForRequestId))
+                    StartCoroutine(TurnFirstSignalWatchdog(speechEndedForRequestId));
             }
             catch (Exception ex)
             {
@@ -1549,10 +1637,8 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Per-turn cleanup hook fired by the backend's conversationComplete message.
         /// Clears _micSession, _isRequestActive and _isProcessingRequest so the next
-        /// user-turn starts with a fresh RequestId. Also drops the NpcMessageRouter's
-        /// per-NPC entry — that router holds its own state slot consulted by
-        /// NpcAudioPlayer.SendPauseStream / SendResumeStream and must not point at the
-        /// completed turn after cleanup.
+        /// user-turn starts with a fresh RequestId. Releasing the turn also drops the
+        /// NpcMessageRouter and WebSocketClient routing entries keyed on its RequestId.
         /// </summary>
         private void HandleConversationCompleted(string requestId, bool audioReceived)
         {
@@ -1575,11 +1661,6 @@ namespace Tsc.AIBridge.Core
                 _micSession = null;
                 _isRequestActive = false;
                 _isProcessingRequest = false;
-            }
-
-            if (!string.IsNullOrEmpty(completedRequestId) && NpcMessageRouter.HasInstance)
-            {
-                NpcMessageRouter.Instance.ClearRequest(completedRequestId);
             }
 
             if (enableVerboseLogging)
@@ -1874,8 +1955,10 @@ namespace Tsc.AIBridge.Core
                 if (enableVerboseLogging)
                     Debug.Log($"[RequestOrchestrator] SessionStart message sent successfully");
 
-                // The request is now in flight: watch for the backend's first sign of life.
-                StartCoroutine(TurnFirstSignalWatchdog(request.RequestId));
+                // Deliberately NOT arming the watchdog here. The backend's first possible signal for a
+                // player turn is a transcript, and it cannot produce one while the player is still
+                // speaking — so a push-to-talk hold longer than turnFirstSignalTimeoutSeconds failed a
+                // healthy turn. HandleRecordingStopped arms it once EndOfSpeech is away.
 
                 // Wait for SessionStarted confirmation from backend before flushing
                 if (request.NpcClient != null)
@@ -1957,8 +2040,16 @@ namespace Tsc.AIBridge.Core
                 // NOT the microphone's turn: the player is not talking into a character-speaks-first
                 // turn, so this must not touch _micSession. Before the split it did, and a spontaneous
                 // NPC line therefore stole the pointer the push-to-talk release depends on.
-                RegisterLiveSession(new ConversationSession(npcName, request.RequestId,
-                    request.NpcConfig?.Id, request.Request.OnPlayerTurnsAway));
+                //
+                // A refusal means this NPC is already mid-turn and physically cannot play a second one.
+                // Bail out BEFORE the router entry and the NPC handler below, so nothing is registered
+                // for a turn that will never be sent.
+                if (!RegisterLiveSession(new ConversationSession(npcName, request.RequestId,
+                        request.NpcConfig?.Id, request.Request.OnPlayerTurnsAway)))
+                {
+                    _isProcessingRequest = false;
+                    yield break;
+                }
 
                 // The audio path has always done this; the text path never did, so an NPC-initiated turn
                 // was not resolvable by the router at all — which also broke NpcAudioPlayer's

@@ -131,18 +131,47 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
-        public void OneNpcCannotHoldTwoLiveTurns()
+        public void ASecondNpcInitiatedTurnForTheSameNpcIsRefused()
         {
             // There is one audio decoder per NPC, so a second concurrent turn for the same NPC cannot be
-            // played anyway. Releasing the older one keeps the live set honest; the watchdog would
-            // otherwise fail a turn that had actually succeeded.
+            // played anyway. The RUNNING turn keeps the NPC: cutting off an answer already being spoken,
+            // in favour of one that cannot be played either, is the worse of the two outcomes.
             RegisterNpcTurn("esra-turn-1", "Esra");
 
-            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("already had a live turn"));
-            RegisterNpcTurn("esra-turn-2", "Esra");
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("Refusing turn"));
+            var accepted = RegisterNpcTurn("esra-turn-2", "Esra");
 
-            Assert.IsFalse(_orchestrator.IsTurnLive("esra-turn-1"));
-            Assert.IsTrue(_orchestrator.IsTurnLive("esra-turn-2"));
+            Assert.IsFalse(accepted, "The caller must be told, so it does not send the request anyway.");
+            Assert.IsTrue(_orchestrator.IsTurnLive("esra-turn-1"), "The turn already being spoken survives.");
+            Assert.IsFalse(_orchestrator.IsTurnLive("esra-turn-2"));
+        }
+
+        [Test]
+        public void ThePlayersPressWinsOverThatNpcsRunningTurn()
+        {
+            // The mirror case, and it goes the other way on purpose: pressing to talk at an NPC who is
+            // still answering is barge-in, and refusing the player's own press would be absurd.
+            RegisterNpcTurn("esra-turn", "Esra");
+
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("the player pressed to talk"));
+            GiveMicTurn("mic-turn", "Esra");
+
+            Assert.IsFalse(_orchestrator.IsTurnLive("esra-turn"));
+            Assert.IsTrue(_orchestrator.IsTurnLive("mic-turn"));
+            Assert.AreEqual("mic-turn", _orchestrator.GetMicrophoneSessionId());
+        }
+
+        [Test]
+        public void HasLiveTurnForNpc_AnswersForTheNpcNotTheTurn()
+        {
+            Assert.IsFalse(_orchestrator.HasLiveTurnForNpc("Esra"));
+
+            RegisterNpcTurn("esra-turn", "Esra");
+
+            Assert.IsTrue(_orchestrator.HasLiveTurnForNpc("Esra"),
+                "This is what the RuleSystem side asks before minting a turn id.");
+            Assert.IsFalse(_orchestrator.HasLiveTurnForNpc("Marc"));
+            Assert.IsFalse(_orchestrator.HasLiveTurnForNpc(null), "Unknown identity is never a conflict.");
         }
 
         [Test]
@@ -185,11 +214,12 @@ namespace Tsc.AIBridge.Tests.Editor
             method.Invoke(_orchestrator, new object[] { new ConversationSession(npcId, requestId, npcId) });
         }
 
-        private void RegisterNpcTurn(string requestId, string npcId)
+        private bool RegisterNpcTurn(string requestId, string npcId)
         {
             var method = typeof(RequestOrchestrator).GetMethod("RegisterLiveSession", PrivateInstance);
             Assert.IsNotNull(method, "RegisterLiveSession not found on RequestOrchestrator");
-            method.Invoke(_orchestrator, new object[] { new ConversationSession(npcId, requestId, npcId) });
+            return (bool)method.Invoke(_orchestrator,
+                new object[] { new ConversationSession(npcId, requestId, npcId) });
         }
 
         private void SetField(string fieldName, object value)
