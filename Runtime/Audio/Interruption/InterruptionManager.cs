@@ -75,7 +75,7 @@ namespace Tsc.AIBridge.Audio.Interruption
         // The NPC the player is addressing, pushed by the client at the moment it resolves one.
         // See SetAddressedNpc for why this outranks the request NPC above.
         private NpcClientBase _addressedNpcClient;
-        private INpcConfiguration _addressedNpcConfig;
+        private InterruptionTarget _addressedPolicy = InterruptionTarget.None;
         private StreamingAudioPlayer _addressedAudioPlayer;
 
         /// <summary>
@@ -97,11 +97,18 @@ namespace Tsc.AIBridge.Audio.Interruption
         /// speaking, read AllowInterruption and InterruptionPersistenceTime off the wrong PersonaSO, and
         /// called StopAudio() on the wrong NPC - silencing a bystander while the NPC the player was
         /// talking over carried on.
+        ///
+        /// The policy is passed as values, not as an INpcConfiguration. 2.2.0 took a config and the one
+        /// caller had nothing to give it: AIBridgeRulesHandler.GetNpcConfiguration returns null
+        /// unconditionally ("configuration comes from ConversationConfig"), so the addressed policy was
+        /// always absent and AllowInterruption still came off the request NPC - half the fix was dead and
+        /// nothing said so. Two values also beat handing over a fifteen-member interface to read two
+        /// fields. Pass InterruptionTarget.None when no NPC is addressed.
         /// </summary>
-        public void SetAddressedNpc(NpcClientBase npcClient, INpcConfiguration npcConfig)
+        public void SetAddressedNpc(NpcClientBase npcClient, InterruptionTarget policy)
         {
             _addressedNpcClient = npcClient;
-            _addressedNpcConfig = npcConfig;
+            _addressedPolicy = policy;
 
             // Same reason as for the request NPC: GetComponent is too expensive for the Update loop.
             _addressedAudioPlayer = npcClient == null
@@ -467,11 +474,11 @@ namespace Tsc.AIBridge.Audio.Interruption
             // harder when config was unavailable. Now it matches the PersonaSO default and
             // logs a warning so the fallback is visible instead of silent.
             var target = ResolveInterruptionTarget(
-                TargetFrom(_addressedNpcConfig), TargetFrom(_activeNpcConfig), DefaultPersistenceTimeFallback);
+                _addressedPolicy, TargetFrom(_activeNpcConfig), DefaultPersistenceTimeFallback);
             var allowInterruption = target.AllowInterruption;
             var persistenceTime = target.PersistenceTime;
 
-            if (_addressedNpcConfig == null && _activeNpcConfig == null)
+            if (!_addressedPolicy.IsPresent && _activeNpcConfig == null)
             {
                 Debug.LogWarning(
                     $"[InterruptionManager] No NPC configuration for this turn — using fallback " +

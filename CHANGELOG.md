@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-09-09
+
+### Changed (breaking)
+- **`InterruptionManager.SetAddressedNpc` now takes an `InterruptionTarget` instead of an
+  `INpcConfiguration`.** One caller in this repo; update it to pass the addressed persona's
+  `allowInterruption` / `persistenceTime`.
+
+  Why this is a fix and not a tidy-up: 2.2.0 introduced the config parameter, and the only caller had
+  nothing to give it. `AIBridgeRulesHandler.GetNpcConfiguration` returns `null` unconditionally
+  ("Not needed for RuleSystem integration - configuration comes from ConversationConfig"), so
+  `_addressedNpcConfig` was permanently null, `ResolveInterruptionTarget` always fell through to the
+  request NPC, and `AllowInterruption` plus the persistence time still came off a bystander's
+  PersonaSO. Half of the 2.2.0 fix was dead on arrival and nothing reported it — a null config is
+  indistinguishable from "no NPC addressed yet". A persona configured as non-interruptible could
+  therefore still be cut off, and an interruptible one shielded.
+
+  Passing the two values also removes the need to hand over a fifteen-member interface to read two
+  fields. `InterruptionTarget.None` means "no NPC addressed", which keeps the fallback explicit.
 ## [2.2.0] - 2026-09-08
 
 ### Added
