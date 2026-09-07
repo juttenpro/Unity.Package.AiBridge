@@ -962,11 +962,18 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public void RaiseTranscriptionReceived(string transcript, string requestId)
         {
-            // A transcript is proof of backend life for the current turn — ends the turn
-            // watchdog's first-signal window.
-            if (_currentSession != null)
+            // A transcript is proof of backend life for THE TURN IT BELONGS TO — it ends that turn's
+            // first-signal window and no other. This used to credit _currentSession, so a transcript for
+            // turn A silenced turn B's watchdog whenever B had become the current session, and B's dead
+            // backend went unnoticed for the rest of the lesson.
+            if (string.IsNullOrEmpty(requestId))
             {
-                _turnSignalSeenForRequestId = _currentSession.RequestId;
+                Debug.LogWarning("[RequestOrchestrator] Transcript arrived without a RequestId — cannot " +
+                                 "credit any turn with proof of backend life. Not stamping the watchdog.");
+            }
+            else
+            {
+                _turnSignalSeenForRequestId = requestId;
             }
 
             OnTranscriptionReceived?.Invoke(transcript, requestId);

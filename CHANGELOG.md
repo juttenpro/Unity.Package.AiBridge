@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-09-09
+
+### Fixed
+- **A transcript now proves the backend is alive for its own turn, not for whatever session the
+  orchestrator happens to point at.** `RaiseTranscriptionReceived` received the transcript's RequestId
+  and threw it away, stamping the turn watchdog with `_currentSession.RequestId` instead. With two turns
+  in flight — which already happens, since the queue releases right after the request is sent — a
+  transcript for turn A silenced turn B's watchdog, so B's dead backend went unnoticed for the rest of
+  the lesson. A transcript with no id now logs a Warning and credits nothing; there is no fallback to
+  "the current turn".
+
+  The test that should have caught this set the current session to the same id it passed in, so it
+  passed either way. It now uses two different ids.
 ## [4.0.0] - 2026-09-09
 
 ### Removed (breaking)

@@ -1,7 +1,9 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using Tsc.AIBridge.Core;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Tsc.AIBridge.Tests.Editor
 {
@@ -184,14 +186,47 @@ namespace Tsc.AIBridge.Tests.Editor
         #region Signal tracking
 
         [Test]
-        public void RaiseTranscriptionReceived_RecordsSignalForCurrentTurn()
+        public void RaiseTranscriptionReceived_RecordsSignalForTheTranscriptsOwnTurn()
         {
-            SetField("_currentSession", new ConversationSession("TestNpc", "turn-1"));
+            // The old version of this test set the current session to the SAME id it passed in, so it
+            // passed while the code credited _currentSession instead of the transcript's own turn. Here
+            // the two differ: turn-2 is the session the orchestrator happens to be pointing at, turn-1 is
+            // the turn this transcript actually belongs to.
+            SetField("_currentSession", new ConversationSession("TestNpc", "turn-2"));
 
             _orchestrator.RaiseTranscriptionReceived("hallo", "turn-1");
 
             Assert.AreEqual("turn-1", GetField<string>("_turnSignalSeenForRequestId"),
-                "a transcript is the first proof of life for an audio turn");
+                "A transcript proves the backend is alive for ITS OWN turn. Crediting whatever session " +
+                "the orchestrator points at silences that turn's watchdog and masks the dead one.");
+        }
+
+        [Test]
+        public void RaiseTranscriptionReceived_WithoutARequestId_RecordsNothing()
+        {
+            // A transcript with no id cannot prove anything about any particular turn, and guessing
+            // "the current one" is what this fix removes. Warn and record nothing.
+            SetField("_currentSession", new ConversationSession("TestNpc", "turn-1"));
+
+            LogAssert.Expect(LogType.Warning, new Regex("without a RequestId"));
+            _orchestrator.RaiseTranscriptionReceived("hallo", null);
+
+            Assert.IsNull(GetField<string>("_turnSignalSeenForRequestId"),
+                "No id means no proof of life for any turn — never fall back to the current session.");
+        }
+
+        [Test]
+        public void RaiseTranscriptionReceived_StillForwardsTheTranscript()
+        {
+            // The stamp is a side effect; the event is the method's actual job and must not depend on it.
+            string forwardedTranscript = null;
+            string forwardedId = null;
+            _orchestrator.OnTranscriptionReceived += (t, id) => { forwardedTranscript = t; forwardedId = id; };
+
+            _orchestrator.RaiseTranscriptionReceived("hallo", "turn-1");
+
+            Assert.AreEqual("hallo", forwardedTranscript);
+            Assert.AreEqual("turn-1", forwardedId);
         }
 
         [Test]
