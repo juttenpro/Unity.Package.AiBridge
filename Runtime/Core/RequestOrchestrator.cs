@@ -128,10 +128,10 @@ namespace Tsc.AIBridge.Core
         private readonly Queue<TextRequest> _textRequestQueue = new();
 
         private WebSocketClient _webSocketClient;
-        private ConversationSession _currentSession;
+        private ConversationSession _micSession;
 
         // Every turn that has been started and not yet ended, keyed on its RequestId. Introduced
-        // alongside _currentSession on purpose: this step changes no meaning and no behaviour, it only
+        // alongside _micSession on purpose: this step changes no meaning and no behaviour, it only
         // makes the set of live turns addressable and — the actual work — forces the inventory of exits
         // to be complete before the watchdog and the mic/turn split start depending on it.
         // See Docs/Architecture/Concurrent-Turns-Plan.md, steps 6, 8, 11 and 12.
@@ -251,7 +251,7 @@ namespace Tsc.AIBridge.Core
                 _textRequestQueue.Clear();
             }
 
-            AbortActiveTurn($"WebSocket disconnected ({code})");
+            AbortAllLiveTurns($"WebSocket disconnected ({code})");
         }
 
         /// <summary>
@@ -277,31 +277,73 @@ namespace Tsc.AIBridge.Core
         /// <param name="context">Short reason for the abort, used in the log line.</param>
         private void AbortActiveTurn(string context)
         {
+            // The _isRequestActive guard keeps this idempotent: several paths can discover the same dead
+            // turn, and the RuleSystem must not evaluate the sttFailed rule twice for one utterance.
+            // Deliberately NOT conditional on the session pointer still being set: an armed recording
+            // whose session was already cleared elsewhere still has to be reported, or no STT result ever
+            // arrives and the NPC stays unresponsive for the rest of the lesson.
             if (_isRequestActive)
             {
                 Debug.LogWarning($"[RequestOrchestrator] Active turn aborted — {context}");
                 _isRequestActive = false;
 
-                // Read the id BEFORE the session field is cleared at the end of this method. The client
-                // releases a failed turn by this id; an unnamed failure leaves the turn registered, so
-                // that NPC keeps looking mid-request and its talk button holds every short press back.
                 RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage
                 {
-                    RequestId = _currentSession?.RequestId,
+                    RequestId = _micSession?.RequestId,
                     Reason = "ConnectionLost",
                     AudioDuration = 0,
                     SttProvider = "none"
                 });
             }
 
-            // Clear stale session state so the next PTT on the SAME NPC starts clean.
-            // Without this, _currentSession references the aborted session and StartAudioRequest's
-            // same-NPC path (line ~449) silently overwrites it without resetting downstream state —
-            // symptom: user tries again with the same NPC and nothing happens, only switching to a
-            // different NPC (which triggers CancelCurrentSession) recovers. _isProcessingRequest is
-            // cleared defensively in case a ProcessXxxRequest coroutine did not reach its finally.
-            ReleaseLiveSession(_currentSession?.RequestId);
-            _currentSession = null;
+            // Clear stale session state so the next PTT on the SAME NPC starts clean. Without this the
+            // mic pointer references the aborted session and the same-NPC start path silently overwrites
+            // it without resetting downstream state — symptom: the user tries again with the same NPC and
+            // nothing happens. _isProcessingRequest is cleared defensively in case a ProcessXxxRequest
+            // coroutine did not reach its finally.
+            ReleaseLiveSession(_micSession?.RequestId);
+            _micSession = null;
+            _isProcessingRequest = false;
+        }
+
+        /// <summary>
+        /// Fails ONE turn. The microphone's own turn goes through <see cref="AbortActiveTurn"/>, which
+        /// also disarms the microphone and notifies the RuleSystem. Any other turn must do neither: the
+        /// player may be mid-sentence into a turn of their own, and reporting "no transcript" for a
+        /// bystander would cut that live utterance short.
+        /// </summary>
+        private void FailTurn(string requestId, string context)
+        {
+            if (string.IsNullOrEmpty(requestId))
+                return;
+
+            if (_micSession != null && _micSession.RequestId == requestId)
+            {
+                AbortActiveTurn(context);
+                return;
+            }
+
+            if (_liveSessions.ContainsKey(requestId))
+            {
+                Debug.LogWarning($"[RequestOrchestrator] Turn {requestId} failed — {context}. " +
+                                 "The microphone's own turn is untouched.");
+                ReleaseLiveSession(requestId);
+            }
+        }
+
+        /// <summary>
+        /// Fails every live turn. A dead socket kills all of them, and each needs its own notification
+        /// with its own id — one shared flag cannot express which of several turns just died.
+        /// </summary>
+        private void AbortAllLiveTurns(string context)
+        {
+            foreach (var requestId in new List<string>(_liveSessions.Keys))
+                FailTurn(requestId, context);
+
+            // The microphone's turn last and unconditionally: it may not be in the live set if something
+            // other than the normal start path installed it. A no-op when it was already failed above.
+            AbortActiveTurn(context);
+
             _isProcessingRequest = false;
         }
 
@@ -512,12 +554,22 @@ namespace Tsc.AIBridge.Core
             if (enableVerboseLogging)
                 Debug.Log($"[RequestOrchestrator] Starting audio request for NPC: {npcConfig.Name}");
 
-            // Check if we're already in a session with a different NPC
-            if (_currentSession != null && _activeNpcConfig?.Id != npcConfig.Id)
+            // Addressing a different NPC than the microphone's current turn. Compare against the turn's
+            // own NpcId: _activeNpcConfig is written by the text path too, so it named whichever NPC
+            // started ANY turn last — a bystander's spontaneous line made the next press read as a switch.
+            if (_micSession != null && _micSession.NpcId != npcConfig.Id)
             {
+                // Two separate things used to happen here under one name. Closing the previous RECORDING
+                // is not a choice: one microphone turn may be live, whatever else happens. What becomes of
+                // the ABANDONED NPC's answer IS a choice, and content makes it per turn — falling silent,
+                // or finishing while the player already talks to someone else.
+                var cancelAbandonedAnswer = _micSession.OnPlayerTurnsAway == PlayerTurnsAwayPolicy.CancelAnswer;
+
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Switching from {_activeNpcConfig?.Name} to {npcConfig.Name}");
-                CancelCurrentSession("Switching to different NPC");
+                    Debug.Log($"[RequestOrchestrator] Player turns from {_micSession.NpcName} to {npcConfig.Name}; " +
+                              $"its answer is {(cancelAbandonedAnswer ? "cancelled" : "left to finish")}.");
+
+                CancelCurrentSession("Switching to different NPC", cancelAbandonedAnswer);
             }
 
             if (conversationRequest == null)
@@ -556,7 +608,7 @@ namespace Tsc.AIBridge.Core
             _activeNpcClient = npcClient;
 
             // Subscribe to per-turn completion so the next user-turn starts with a fresh session.
-            // Without this, _currentSession lingers after the backend cleans up its session,
+            // Without this, _micSession lingers after the backend cleans up its session,
             // and the next recording-stopped event sends EndOfSpeech for the stale RequestId.
             RegisterConversationCompletionHandler(npcClient);
 
@@ -574,7 +626,8 @@ namespace Tsc.AIBridge.Core
             // This issue is especially likely after WebSocket reconnects when queue processing may be delayed.
             requestId ??= Guid.NewGuid().ToString();
             var npcName = npcClient.NpcName;
-            SetTrackedSession(new ConversationSession(npcName, requestId));
+            SetMicSession(new ConversationSession(npcName, requestId, npcConfig.Id,
+                conversationRequest.OnPlayerTurnsAway));
 
             if (enableVerboseLogging)
                 Debug.Log($"[RequestOrchestrator] Created session immediately: {requestId} for {npcName}");
@@ -667,7 +720,7 @@ namespace Tsc.AIBridge.Core
             _activeNpcClient = npcClient;
 
             // Subscribe to per-turn completion so the next user-turn starts with a fresh session.
-            // Without this, _currentSession lingers after the backend cleans up its session,
+            // Without this, _micSession lingers after the backend cleans up its session,
             // and the next recording-stopped event sends EndOfSpeech for the stale RequestId.
             RegisterConversationCompletionHandler(npcClient);
 
@@ -708,12 +761,12 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Cancel the current session
         /// </summary>
-        public void CancelCurrentSession(string reason = "User cancelled")
+        public void CancelCurrentSession(string reason = "User cancelled", bool cancelBackendAnswer = true)
         {
-            if (_currentSession != null)
+            if (_micSession != null)
             {
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Cancelling session {_currentSession.RequestId}: {reason}");
+                    Debug.Log($"[RequestOrchestrator] Cancelling session {_micSession.RequestId}: {reason}");
 
                 // Discard any buffered audio (RuleSystem rejection or interruption)
                 if (speechInputHandler?.AudioStreamProcessor != null)
@@ -726,16 +779,27 @@ namespace Tsc.AIBridge.Core
                 // Stop any ongoing recording
                 speechInputHandler?.StopRecording();
 
-                // Cancel WebSocket session - notify backend to stop LLM/TTS generation
-                var requestIdToCancel = _currentSession.RequestId;
-                _ = CancelSessionOnBackendAsync(requestIdToCancel, reason);
+                var requestIdToCancel = _micSession.RequestId;
+
+                // Cancel WebSocket session - notify backend to stop LLM/TTS generation.
+                // Skipped when content wants the abandoned NPC to finish: then the turn is only released
+                // locally and the backend keeps generating, so the answer still arrives and plays.
+                if (cancelBackendAnswer)
+                {
+                    _ = CancelSessionOnBackendAsync(requestIdToCancel, reason);
+                }
+                else if (enableVerboseLogging)
+                {
+                    Debug.Log($"[RequestOrchestrator] Leaving turn {requestIdToCancel} running on the backend — " +
+                              "content asked for the abandoned answer to finish.");
+                }
 
                 // Unsubscribe from per-turn completion before clearing the NpcClient reference.
                 UnregisterConversationCompletionHandler();
 
                 // Clear session
                 ReleaseLiveSession(requestIdToCancel);
-                _currentSession = null;
+                _micSession = null;
                 _activeNpcConfig = null;
                 _activeNpcClient = null;
                 _isProcessingRequest = false;
@@ -820,40 +884,67 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// Check if currently processing a request
-        /// </summary>
-        public bool IsProcessingRequest()
-        {
-            return _isProcessingRequest || _currentSession != null;
-        }
-
-
-        /// <summary>
         /// Whether this turn has been started and not yet completed, cancelled, failed or displaced.
         /// </summary>
         public bool IsTurnLive(string requestId)
             => !string.IsNullOrEmpty(requestId) && _liveSessions.ContainsKey(requestId);
 
         /// <summary>
-        /// Makes <paramref name="session"/> the tracked session and adds it to the live set.
+        /// Makes <paramref name="session"/> the turn the MICROPHONE is feeding, and adds it to the live
+        /// set. There is exactly one of these: the player has one mouth, and upstream audio carries no
+        /// request id, so the backend can only attribute speech to the most recently opened session.
         ///
         /// A session it displaces is released here, because nothing else will: a re-press on the same NPC
-        /// replaces the tracked session deliberately and sends no backend cancel — ten rapid presses are
-        /// one continuous session by design (RequestOrchestratorAudioTests.RapidPTTPresses_HandlesGracefully).
-        /// Without this the live set would fill with turns no exit path ever visits.
+        /// replaces it deliberately and sends no backend cancel — ten rapid presses are one continuous
+        /// session by design (RequestOrchestratorAudioTests.RapidPTTPresses_HandlesGracefully).
         /// </summary>
-        private void SetTrackedSession(ConversationSession session)
+        private void SetMicSession(ConversationSession session)
         {
-            if (_currentSession != null && _currentSession.RequestId != session.RequestId)
+            if (_micSession != null && _micSession.RequestId != session.RequestId)
             {
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Session {_currentSession.RequestId} displaced by " +
+                    Debug.Log($"[RequestOrchestrator] Microphone turn {_micSession.RequestId} displaced by " +
                               $"{session.RequestId} (no backend cancel — same-NPC re-press) — releasing the displaced turn.");
 
-                ReleaseLiveSession(_currentSession.RequestId);
+                ReleaseLiveSession(_micSession.RequestId);
             }
 
-            _currentSession = session;
+            _micSession = session;
+            _liveSessions[session.RequestId] = session;
+        }
+
+        /// <summary>
+        /// Adds a turn to the live set WITHOUT making it the microphone's turn. This is the
+        /// character-speaks-first path: the player is not talking into it, so it must not touch the
+        /// microphone's bookkeeping — that is the whole point of the mic/turn split.
+        ///
+        /// One live turn per NPC is the target invariant. Enforcing it loudly comes later; releasing the
+        /// previous one here is what keeps the live set from growing a turn nothing will ever close,
+        /// which the watchdog would otherwise fail long after it actually succeeded.
+        /// </summary>
+        private void RegisterLiveSession(ConversationSession session)
+        {
+            if (!string.IsNullOrEmpty(session.NpcId))
+            {
+                string displaced = null;
+                foreach (var live in _liveSessions)
+                {
+                    if (live.Value.NpcId == session.NpcId && live.Key != session.RequestId)
+                    {
+                        displaced = live.Key;
+                        break;
+                    }
+                }
+
+                if (displaced != null)
+                {
+                    Debug.LogWarning($"[RequestOrchestrator] '{session.NpcId}' already had a live turn " +
+                                     $"({displaced}) when {session.RequestId} started. Releasing the older one — " +
+                                     "one NPC cannot decode two turns at once.");
+                    ReleaseLiveSession(displaced);
+                }
+            }
+
             _liveSessions[session.RequestId] = session;
         }
 
@@ -871,10 +962,10 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public int GetStreamsReceived(string requestId)
         {
-            if (string.IsNullOrEmpty(requestId) || _currentSession?.RequestId != requestId)
+            if (string.IsNullOrEmpty(requestId) || _micSession?.RequestId != requestId)
                 return 0;
 
-            return _currentSession.StreamsReceived;
+            return _micSession.StreamsReceived;
         }
 
         /// <summary>
@@ -886,25 +977,25 @@ namespace Tsc.AIBridge.Core
         {
             // Any audio for the current turn is proof of backend life — ends the turn watchdog's
             // first-signal window.
-            if (_currentSession != null)
+            if (_micSession != null)
             {
-                _turnSignalSeenForRequestId = _currentSession.RequestId;
+                _turnSignalSeenForRequestId = _micSession.RequestId;
             }
 
-            if (_currentSession != null && _currentSession.StreamsReceived == 0)
+            if (_micSession != null && _micSession.StreamsReceived == 0)
             {
-                _currentSession.StreamsReceived = 1;
+                _micSession.StreamsReceived = 1;
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Audio stream marked as received for session {_currentSession.RequestId}");
+                    Debug.Log($"[RequestOrchestrator] Audio stream marked as received for session {_micSession.RequestId}");
             }
         }
 
         /// <summary>
         /// Get the current session RequestId (null if no active session)
         /// </summary>
-        public string GetCurrentSessionId()
+        public string GetMicrophoneSessionId()
         {
-            return _currentSession?.RequestId;
+            return _micSession?.RequestId;
         }
 
         /// <summary>
@@ -914,7 +1005,7 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public void CompleteSession(string requestId)
         {
-            if (string.IsNullOrEmpty(requestId) || _currentSession?.RequestId != requestId)
+            if (string.IsNullOrEmpty(requestId) || _micSession?.RequestId != requestId)
             {
                 if (enableVerboseLogging)
                     Debug.Log($"[RequestOrchestrator] Not completing '{requestId ?? "(none)"}' — it is not the tracked session.");
@@ -925,7 +1016,7 @@ namespace Tsc.AIBridge.Core
                 Debug.Log($"[RequestOrchestrator] Session {requestId} completed");
 
             ReleaseLiveSession(requestId);
-            _currentSession = null;
+            _micSession = null;
         }
 
         #region Turn Watchdog
@@ -982,7 +1073,7 @@ namespace Tsc.AIBridge.Core
         /// Started right after the request is sent (audio and text paths). Without this, a
         /// half-open connection (WiFi drop without RST — no app-level keepalive exists in either
         /// direction), a server hang, or a backend error path that skips conversationComplete left
-        /// _currentSession armed forever: the NPC stayed silent until the TCP layer happened to
+        /// _micSession armed forever: the NPC stayed silent until the TCP layer happened to
         /// notice or the player switched NPCs.
         /// </summary>
         private IEnumerator TurnFirstSignalWatchdog(string requestId)
@@ -998,7 +1089,7 @@ namespace Tsc.AIBridge.Core
 
                 var verdict = EvaluateTurnWatchdog(
                     requestId,
-                    _currentSession?.RequestId,
+                    _micSession?.RequestId,
                     _turnSignalSeenForRequestId,
                     _isPauseActive,
                     elapsed,
@@ -1032,7 +1123,9 @@ namespace Tsc.AIBridge.Core
                 $"{turnFirstSignalTimeoutSeconds}s — failing the turn (half-open connection, server " +
                 "hang, or error path that skipped conversationComplete). The next PTT starts clean.");
 
-            if (_isRequestActive)
+            var isMicTurn = _micSession != null && _micSession.RequestId == requestId;
+
+            if (isMicTurn && _isRequestActive)
             {
                 _isRequestActive = false;
                 RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage
@@ -1050,8 +1143,14 @@ namespace Tsc.AIBridge.Core
             }
 
             ReleaseLiveSession(requestId);
-            _currentSession = null;
-            _isProcessingRequest = false;
+
+            // An NPC turn's timeout must not disarm the microphone or tell the RuleSystem the player
+            // said nothing — the player may be mid-sentence into a turn of their own.
+            if (isMicTurn)
+            {
+                _micSession = null;
+                _isProcessingRequest = false;
+            }
         }
 
         #endregion
@@ -1063,7 +1162,7 @@ namespace Tsc.AIBridge.Core
         public void RaiseTranscriptionReceived(string transcript, string requestId)
         {
             // A transcript is proof of backend life for THE TURN IT BELONGS TO — it ends that turn's
-            // first-signal window and no other. This used to credit _currentSession, so a transcript for
+            // first-signal window and no other. This used to credit _micSession, so a transcript for
             // turn A silenced turn B's watchdog whenever B had become the current session, and B's dead
             // backend went unnoticed for the rest of the lesson.
             if (string.IsNullOrEmpty(requestId))
@@ -1191,7 +1290,7 @@ namespace Tsc.AIBridge.Core
                 Debug.Log("[RequestOrchestrator] Recording stopped - sending EndOfSpeech and EndOfAudio");
 
             // Only send messages if there's an active request
-            if (!_isRequestActive || _currentSession == null)
+            if (!_isRequestActive || _micSession == null)
             {
                 if (enableVerboseLogging)
                     Debug.LogWarning("[RequestOrchestrator] Recording stopped but no active request - messages not sent");
@@ -1272,7 +1371,7 @@ namespace Tsc.AIBridge.Core
                         _isRequestActive = false;
                         RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage
                         {
-                            RequestId = _currentSession?.RequestId,
+                            RequestId = _micSession?.RequestId,
                             Reason = "ConnectionLost"
                         });
                         return;
@@ -1313,14 +1412,14 @@ namespace Tsc.AIBridge.Core
             try
             {
                 // Send EndOfSpeech - indicates user stopped speaking
-                await _webSocketClient.SendEndOfSpeechAsync(_currentSession.RequestId);
+                await _webSocketClient.SendEndOfSpeechAsync(_micSession.RequestId);
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] EndOfSpeech sent for session: {_currentSession.RequestId}");
+                    Debug.Log($"[RequestOrchestrator] EndOfSpeech sent for session: {_micSession.RequestId}");
 
                 // Send EndOfAudio - indicates all audio data has been transmitted
-                await _webSocketClient.SendEndOfAudioAsync(_currentSession.RequestId);
+                await _webSocketClient.SendEndOfAudioAsync(_micSession.RequestId);
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] EndOfAudio sent for session: {_currentSession.RequestId}");
+                    Debug.Log($"[RequestOrchestrator] EndOfAudio sent for session: {_micSession.RequestId}");
             }
             catch (Exception ex)
             {
@@ -1336,7 +1435,7 @@ namespace Tsc.AIBridge.Core
         /// Subscribe to the NPC client's ConversationMetadataHandler so the orchestrator
         /// can clear per-turn state when the backend signals conversationComplete.
         ///
-        /// Without this, _currentSession lingers after a successful turn — every subsequent
+        /// Without this, _micSession lingers after a successful turn — every subsequent
         /// recording-stopped event then sends EndOfSpeech for the stale RequestId, the
         /// backend answers "Session not found", and the NPC goes silent while animations
         /// keep running (incident 2026-05-11).
@@ -1375,7 +1474,7 @@ namespace Tsc.AIBridge.Core
 
         /// <summary>
         /// Per-turn cleanup hook fired by the backend's conversationComplete message.
-        /// Clears _currentSession, _isRequestActive and _isProcessingRequest so the next
+        /// Clears _micSession, _isRequestActive and _isProcessingRequest so the next
         /// user-turn starts with a fresh RequestId. Also drops the NpcMessageRouter's
         /// per-NPC entry — that router holds its own state slot consulted by
         /// NpcAudioPlayer.SendPauseStream / SendResumeStream and must not point at the
@@ -1389,11 +1488,20 @@ namespace Tsc.AIBridge.Core
             // parameter to exist first.
             var completedRequestId = requestId;
             var completedNpcName = _activeNpcClient?.NpcName;
+            var wasMicTurn = _micSession != null && _micSession.RequestId == completedRequestId;
 
             ReleaseLiveSession(completedRequestId);
-            _currentSession = null;
-            _isRequestActive = false;
-            _isProcessingRequest = false;
+
+            // Only the microphone's own turn may disarm the microphone. A character-speaks-first turn
+            // completing while the player is recording used to clear all of this, and the push-to-talk
+            // release then found no active request: no EndOfSpeech, no transcript, no sttFailed, and the
+            // NPC stayed mute until an NPC switch (2026-06-12 audit, client critical C4).
+            if (wasMicTurn)
+            {
+                _micSession = null;
+                _isRequestActive = false;
+                _isProcessingRequest = false;
+            }
 
             if (!string.IsNullOrEmpty(completedRequestId) && NpcMessageRouter.HasInstance)
             {
@@ -1531,19 +1639,24 @@ namespace Tsc.AIBridge.Core
 
                 // CRITICAL FIX: Session is already created in StartAudioRequest()
                 // Verify it exists and matches the request ID
-                if (_currentSession == null || _currentSession.RequestId != request.RequestId)
+                if (!_liveSessions.ContainsKey(request.RequestId))
                 {
-                    // This turn is abandoned here. It used to leave its live entry behind, which is one of
-                    // the two exits the first design of this refactor missed. The LogError itself is
-                    // deliberately left alone in this step — turning it into a recoverable per-turn
-                    // failure belongs with the mic/turn split, where a mismatch stops being fatal.
-                    Debug.LogError($"[RequestOrchestrator] Session mismatch! Expected {request.RequestId}, got {_currentSession?.RequestId ?? "null"}");
-                    ReleaseLiveSession(request.RequestId);
+                    // This turn stopped being live between being queued and being sent: it was cancelled
+                    // by an NPC switch, displaced by another press, or already failed. It is obsolete, not
+                    // broken — whichever turn replaced it owns the outcome now.
+                    //
+                    // Deliberately NOT a Debug.LogError (that ends the session in the host app) and
+                    // deliberately NOT a RaiseSttFailed: for a displaced turn the player is still
+                    // speaking, into the turn that displaced this one, so reporting "no speech" would cut
+                    // a live utterance short.
+                    Debug.LogWarning($"[RequestOrchestrator] Turn {request.RequestId} is no longer live — " +
+                                     "cancelled, displaced or already failed before its SessionStart was sent. " +
+                                     "Dropping this turn only.");
                     yield break;
                 }
 
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Using existing session: {_currentSession.RequestId}");
+                    Debug.Log($"[RequestOrchestrator] Using existing session: {_micSession.RequestId}");
 
                 // Create session parameters
                 var parameters = BuildSessionParameters(request.NpcConfig);
@@ -1731,10 +1844,10 @@ namespace Tsc.AIBridge.Core
                 }
 
                 // Session might have been completed already (race condition with conversationComplete)
-                if (_currentSession != null)
+                if (_micSession != null)
                 {
                     if (enableVerboseLogging)
-                        Debug.Log($"[RequestOrchestrator] Audio request started. Session: {_currentSession.RequestId}");
+                        Debug.Log($"[RequestOrchestrator] Audio request started. Session: {_micSession.RequestId}");
                 }
                 else
                 {
@@ -1767,7 +1880,11 @@ namespace Tsc.AIBridge.Core
 
                 // Start WebSocket session with text input
                 var npcName = request.NpcClient.NpcName;
-                SetTrackedSession(new ConversationSession(npcName, request.RequestId));
+                // NOT the microphone's turn: the player is not talking into a character-speaks-first
+                // turn, so this must not touch _micSession. Before the split it did, and a spontaneous
+                // NPC line therefore stole the pointer the push-to-talk release depends on.
+                RegisterLiveSession(new ConversationSession(npcName, request.RequestId,
+                    request.NpcConfig?.Id, request.Request.OnPlayerTurnsAway));
 
                 // The audio path has always done this; the text path never did, so an NPC-initiated turn
                 // was not resolvable by the router at all — which also broke NpcAudioPlayer's
@@ -1842,7 +1959,7 @@ namespace Tsc.AIBridge.Core
                 StartCoroutine(TurnFirstSignalWatchdog(request.RequestId));
 
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Text request started. Session: {_currentSession.RequestId}");
+                    Debug.Log($"[RequestOrchestrator] Text request started. Session: {_micSession.RequestId}");
 
                 // Start latency measurement for NPC-initiated conversations
                 // For player-initiated: StartMeasurement is called on PTT release

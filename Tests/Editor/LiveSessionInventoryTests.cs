@@ -169,8 +169,8 @@ namespace Tsc.AIBridge.Tests.Editor
 
         private void Track(string requestId)
         {
-            var method = typeof(RequestOrchestrator).GetMethod("SetTrackedSession", PrivateInstance);
-            Assert.IsNotNull(method, "SetTrackedSession not found on RequestOrchestrator");
+            var method = typeof(RequestOrchestrator).GetMethod("SetMicSession", PrivateInstance);
+            Assert.IsNotNull(method, "SetMicSession not found on RequestOrchestrator");
             method.Invoke(_orchestrator, new object[] { new ConversationSession("TestNpc", requestId) });
         }
 

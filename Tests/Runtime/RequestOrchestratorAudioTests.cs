@@ -856,13 +856,13 @@ namespace Tsc.AIBridge.Tests.Runtime
         ///
         /// WHY: After WebSocket reconnect or during high load, queue processing may be delayed.
         ///      If user releases PTT quickly, HandleRecordingStopped() is called before ProcessAudioRequest() runs.
-        ///      Without immediate session creation, HandleRecordingStopped() sees null _currentSession and drops messages.
+        ///      Without immediate session creation, HandleRecordingStopped() sees null _micSession and drops messages.
         ///
         /// WHAT: Test that session is created IMMEDIATELY in StartAudioRequest(), not deferred to queue processor
         /// HOW: Call StartConversationRequest(), immediately trigger HandleRecordingStopped() via reflection BEFORE yielding
         ///
         /// SUCCESS CRITERIA:
-        /// - _currentSession exists immediately after StartAudioRequest()
+        /// - _micSession exists immediately after StartAudioRequest()
         /// - HandleRecordingStopped() sends EndOfSpeech/EndOfAudio (no "no active request" warning)
         /// - Backend receives transcription trigger
         ///
@@ -906,7 +906,7 @@ namespace Tsc.AIBridge.Tests.Runtime
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
             // This should NOT log "Recording stopped but no active request" anymore
-            // With the fix, _currentSession exists so EndOfSpeech/EndOfAudio are sent
+            // With the fix, _micSession exists so EndOfSpeech/EndOfAudio are sent
             method?.Invoke(_orchestrator, null);
 
             // Let queue process (gives HandleRecordingStopped async methods time to complete)
@@ -917,14 +917,14 @@ namespace Tsc.AIBridge.Tests.Runtime
             Assert.IsNotNull(currentSession, "Session should still exist after queue processing");
 
             // CRITICAL ASSERTION: Verify EndOfSpeech and EndOfAudio were sent
-            // With the bug, these would be 0 because _currentSession was null
+            // With the bug, these would be 0 because _micSession was null
             // With the fix, these should be 1 because session exists immediately
             Assert.AreEqual(1, _mockWebSocket.SentEndOfSpeechRequests.Count,
                 "EndOfSpeech should be sent when session exists. " +
-                "If this fails, HandleRecordingStopped() couldn't find _currentSession - THE BUG!");
+                "If this fails, HandleRecordingStopped() couldn't find _micSession - THE BUG!");
             Assert.AreEqual(1, _mockWebSocket.SentEndOfAudioRequests.Count,
                 "EndOfAudio should be sent when session exists. " +
-                "If this fails, HandleRecordingStopped() couldn't find _currentSession - THE BUG!");
+                "If this fails, HandleRecordingStopped() couldn't find _micSession - THE BUG!");
 
             // Verify the requestId in EndOfSpeech/EndOfAudio matches the session
             Assert.AreEqual(currentSession.RequestId, _mockWebSocket.SentEndOfSpeechRequests[0],
@@ -942,7 +942,7 @@ namespace Tsc.AIBridge.Tests.Runtime
         /// </summary>
         private ConversationSession GetCurrentSession()
         {
-            var field = typeof(RequestOrchestrator).GetField("_currentSession",
+            var field = typeof(RequestOrchestrator).GetField("_micSession",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             return field?.GetValue(_orchestrator) as ConversationSession;
         }

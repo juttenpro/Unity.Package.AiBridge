@@ -13,23 +13,23 @@ namespace Tsc.AIBridge.Tests.Editor
     /// WHY: Production incident 2026-05-11 — a VR training session locked up because the Unity
     /// client kept sending EndOfSpeech for an already-completed session-ID for 3.5 minutes.
     /// Backend session was cleaned up correctly (per-turn lifecycle), but the client's
-    /// _currentSession state slot was never cleared on the happy path. Every subsequent
+    /// _micSession state slot was never cleared on the happy path. Every subsequent
     /// recording-stopped event then sent EndOfSpeech for the stale RequestId, getting
     /// "Session not found" each time. Symptom: NPC silent, animation kept playing.
     ///
-    /// WHAT: Tests that RequestOrchestrator clears _currentSession, _isRequestActive, and
+    /// WHAT: Tests that RequestOrchestrator clears _micSession, _isRequestActive, and
     /// _isProcessingRequest when its internal HandleConversationCompleted hook is invoked.
-    /// Also verifies that IsProcessingRequest() returns false after cleanup, allowing the
+    /// Also verifies that _isProcessingRequest is cleared after cleanup, allowing the
     /// next PTT to proceed.
     ///
     /// HOW: Uses reflection to set state then invoke the private HandleConversationCompleted
     /// method, mirroring the pattern used by DisconnectActiveRequestTests.
     ///
     /// SUCCESS CRITERIA:
-    /// - _currentSession is null after conversationComplete cleanup
+    /// - _micSession is null after conversationComplete cleanup
     /// - _isRequestActive is false after cleanup (prevents EndOfSpeech for stale session)
     /// - _isProcessingRequest is false after cleanup
-    /// - IsProcessingRequest() returns false so RuleSystem can start the next turn
+    /// - _isProcessingRequest is cleared so RuleSystem can start the next turn
     /// - No exception when cleanup runs with no active session (defensive)
     ///
     /// BUSINESS IMPACT:
@@ -65,22 +65,22 @@ namespace Tsc.AIBridge.Tests.Editor
         public void HandleConversationCompleted_WithActiveSession_ClearsCurrentSession()
         {
             // Arrange
-            SetField("_currentSession", new ConversationSession("TestNpc", "test-request-id"));
+            SetField("_micSession", new ConversationSession("TestNpc", "test-request-id"));
             SetField("_isRequestActive", true);
 
             // Act
             InvokeConversationCompleted(audioReceived: true);
 
             // Assert
-            Assert.IsNull(GetField<ConversationSession>("_currentSession"),
-                "_currentSession must be cleared so the next PTT does not send EndOfSpeech for the stale RequestId");
+            Assert.IsNull(GetField<ConversationSession>("_micSession"),
+                "_micSession must be cleared so the next PTT does not send EndOfSpeech for the stale RequestId");
         }
 
         [Test]
         public void HandleConversationCompleted_WithActiveSession_ClearsIsRequestActive()
         {
             // Arrange
-            SetField("_currentSession", new ConversationSession("TestNpc", "test-request-id"));
+            SetField("_micSession", new ConversationSession("TestNpc", "test-request-id"));
             SetField("_isRequestActive", true);
 
             // Act
@@ -95,7 +95,7 @@ namespace Tsc.AIBridge.Tests.Editor
         public void HandleConversationCompleted_WithActiveSession_ClearsIsProcessingRequest()
         {
             // Arrange
-            SetField("_currentSession", new ConversationSession("TestNpc", "test-request-id"));
+            SetField("_micSession", new ConversationSession("TestNpc", "test-request-id"));
             SetField("_isProcessingRequest", true);
 
             // Act
@@ -103,23 +103,7 @@ namespace Tsc.AIBridge.Tests.Editor
 
             // Assert
             Assert.IsFalse(GetField<bool>("_isProcessingRequest"),
-                "_isProcessingRequest must be cleared so IsProcessingRequest() returns false after the turn");
-        }
-
-        [Test]
-        public void HandleConversationCompleted_WithActiveSession_IsProcessingRequestReturnsFalse()
-        {
-            // Arrange
-            SetField("_currentSession", new ConversationSession("TestNpc", "test-request-id"));
-            SetField("_isRequestActive", true);
-            SetField("_isProcessingRequest", true);
-
-            // Act
-            InvokeConversationCompleted(audioReceived: true);
-
-            // Assert
-            Assert.IsFalse(_orchestrator.IsProcessingRequest(),
-                "IsProcessingRequest() must return false after the turn so RuleSystem unblocks the next PTT");
+                "_isProcessingRequest must be cleared so _isProcessingRequest is cleared after the turn");
         }
 
         [Test]
@@ -139,15 +123,15 @@ namespace Tsc.AIBridge.Tests.Editor
         {
             // Arrange: backend can send conversationComplete with audioReceived=false (e.g. on
             // interruption, no-transcript path). State cleanup must happen regardless of the flag.
-            SetField("_currentSession", new ConversationSession("TestNpc", "test-request-id"));
+            SetField("_micSession", new ConversationSession("TestNpc", "test-request-id"));
             SetField("_isRequestActive", true);
 
             // Act
             InvokeConversationCompleted(audioReceived: false);
 
             // Assert
-            Assert.IsNull(GetField<ConversationSession>("_currentSession"),
-                "_currentSession must be cleared regardless of whether audio was received");
+            Assert.IsNull(GetField<ConversationSession>("_micSession"),
+                "_micSession must be cleared regardless of whether audio was received");
             Assert.IsFalse(GetField<bool>("_isRequestActive"),
                 "_isRequestActive must be cleared regardless of whether audio was received");
         }

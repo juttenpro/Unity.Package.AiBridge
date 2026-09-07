@@ -23,9 +23,22 @@ namespace Tsc.AIBridge.Core
 
         /// <summary>
         /// NPC name associated with this session. A display name, so not safe as an identity key —
-        /// asset names are not unique in this project.
+        /// asset names are not unique in this project. Use <see cref="NpcId"/> to compare NPCs.
         /// </summary>
         public string NpcName { get; set; }
+
+        /// <summary>
+        /// The provider key of the NPC this turn belongs to — what INpcConfiguration.Id and
+        /// ConversationRequest.NpcId use. This is the identity; NpcName is for humans.
+        /// </summary>
+        public string NpcId { get; }
+
+        /// <summary>
+        /// What to do with this turn's unfinished answer if the player turns to another NPC. Carried on
+        /// the session because the decision is made when the turn is ABANDONED, by which time its
+        /// request record is long gone.
+        /// </summary>
+        public PlayerTurnsAwayPolicy OnPlayerTurnsAway { get; }
 
         /// <summary>
         /// Number of audio streams received. Sole input to the "was there audio?" branch that decides
@@ -35,10 +48,13 @@ namespace Tsc.AIBridge.Core
 
         /// <param name="npcName">Name of the NPC</param>
         /// <param name="requestId">Optional request ID. If null, a new GUID will be generated</param>
-        public ConversationSession(string npcName = null, string requestId = null)
+        public ConversationSession(string npcName = null, string requestId = null, string npcId = null,
+            PlayerTurnsAwayPolicy onPlayerTurnsAway = PlayerTurnsAwayPolicy.CancelAnswer)
         {
             RequestId = requestId ?? Guid.NewGuid().ToString();
             NpcName = npcName ?? "Unknown";
+            NpcId = npcId;
+            OnPlayerTurnsAway = onPlayerTurnsAway;
             StreamsReceived = 0;
         }
     }

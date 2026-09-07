@@ -306,7 +306,7 @@ namespace Tsc.AIBridge.WebSocket
                         // → RuleSystem stayed busy and the NPC was mute until an NPC switch
                         // (2026-06-12 audit, client critical C4). The voice-fallback subscriber must
                         // equally only ever see the current turn.
-                        var currentSessionId = orchestrator.GetCurrentSessionId();
+                        var currentSessionId = orchestrator.GetMicrophoneSessionId();
                         if (currentSessionId == completeRequestId)
                         {
                             var audioReceived = orchestrator.GetStreamsReceived(completeRequestId) > 0;

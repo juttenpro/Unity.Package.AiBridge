@@ -6,6 +6,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-09-09
+
+MINOR: public C# signatures change, the wire protocol does not.
+
+### Changed
+- **The microphone'''s turn is now a distinct thing from "some turn".** `_currentSession` is renamed
+  `_micSession` and `GetCurrentSessionId()` is `GetMicrophoneSessionId()` — deliberately, so every
+  call site had to re-declare what it meant instead of compiling unchanged against a new meaning.
+  A character-speaks-first turn no longer writes that pointer at all, and completion, watchdog failure
+  and abort only touch microphone state when the turn is the microphone'''s own.
+
+  This is client-critical C4 from the 2026-06-12 audit closed at the root: an NPC turn ending while the
+  player was recording used to clear the microphone'''s bookkeeping, and the push-to-talk release then
+  found no active request — no EndOfSpeech, no transcript, no sttFailed, and the NPC stayed mute until
+  the player switched NPCs. It was reachable in production because the request queue releases as soon as
+  a request is sent, not when the turn ends.
+
+- **The NPC-switch guard compares NPC identities.** It read `_activeNpcConfig?.Id`, which the text path
+  also writes, so it named whichever NPC started ANY turn last: a bystander'''s spontaneous line made the
+  next press read as a switch and cancel the player'''s own live turn. It now compares the microphone
+  turn'''s own `NpcId`.
+
+- **`AbortActiveTurn` split into per-turn and all-turns.** `FailTurn(requestId, context)` fails one;
+  `AbortAllLiveTurns(context)` fails every live turn with its own notification and its own id, which is
+  what a dropped socket actually does. One shared flag cannot express which of several turns died.
+
+- **A session-mismatch is no longer fatal.** A turn that stopped being live between being queued and
+  being sent is obsolete, not broken — whichever turn replaced it owns the outcome. It is dropped with a
+  Warning instead of a `Debug.LogError` (which ends the session in the host app) and deliberately
+  without `RaiseSttFailed`: for a displaced turn the player is still speaking, into the turn that
+  displaced this one.
+
+### Added
+- **`PlayerTurnsAwayPolicy` and `ConversationRequest.OnPlayerTurnsAway`.** What happens to an NPC'''s
+  unfinished answer when the player turns to someone else is content policy, not a client decision:
+  in one scene the abandoned NPC should fall silent, in another it should answer anyway. Two values
+  now — `CancelAnswer` (the default, exactly what the client always did) and `LetAnswerFinish`. A
+  third behaviour, holding the answer until the player looks back, needs audio to be held and released
+  and is deliberately not a value here yet.
+
+  Closing the previous RECORDING is NOT part of this policy and always happens: upstream microphone
+  audio carries no request id, so the backend attributes speech to the most recently opened session and
+  exactly one microphone turn may be live. `CancelCurrentSession` gained a `cancelBackendAnswer`
+  parameter so those two can finally be decided separately.
+
+### Removed
+- `IsProcessingRequest()`. No production callers, and its docstring'''s claim that the RuleSystem
+  consults it to unblock the next push-to-talk is not true of this codebase.
 ## [5.2.1] - 2026-09-09
 
 ### Fixed

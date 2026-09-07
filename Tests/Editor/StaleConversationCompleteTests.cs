@@ -15,7 +15,7 @@ namespace Tsc.AIBridge.Tests.Editor
     /// WHY: 2026-06-12 robustness audit, client critical C4. The v1.17.1 fix added a RequestId
     /// check around <c>CompleteCurrentSession()</c>, but <c>OnConversationComplete</c> was still
     /// raised UNCONDITIONALLY — including in the "old session, ignoring cleanup" branch. The
-    /// orchestrator's cleanup hook (HandleConversationCompleted) clears _currentSession /
+    /// orchestrator's cleanup hook (HandleConversationCompleted) clears _micSession /
     /// _isRequestActive without any RequestId knowledge, so the chain was: user interrupts the
     /// NPC and immediately starts talking (turn N+1 active, recording); the backend still sends
     /// turn N's conversationComplete; the event fires; the orchestrator wipes turn N+1's state.
@@ -86,7 +86,7 @@ namespace Tsc.AIBridge.Tests.Editor
             Assert.IsFalse(raised,
                 "a stale conversationComplete must not raise OnConversationComplete — the orchestrator's " +
                 "cleanup hook clears state unconditionally and would kill the active turn");
-            Assert.AreEqual("turn-2", _orchestrator.GetCurrentSessionId(),
+            Assert.AreEqual("turn-2", _orchestrator.GetMicrophoneSessionId(),
                 "the active session must survive a stale completion");
         }
 
@@ -101,7 +101,7 @@ namespace Tsc.AIBridge.Tests.Editor
 
             Assert.IsNotNull(audioReceived, "a completion for the CURRENT session must raise the event");
             Assert.IsFalse(audioReceived.Value, "no streams were received, so audioReceived must be false");
-            Assert.IsNull(_orchestrator.GetCurrentSessionId(),
+            Assert.IsNull(_orchestrator.GetMicrophoneSessionId(),
                 "the no-audio path completes the session via CompleteCurrentSession (pre-existing behaviour)");
         }
 
@@ -142,8 +142,8 @@ namespace Tsc.AIBridge.Tests.Editor
         private ConversationSession SetCurrentSession(string requestId)
         {
             var session = new ConversationSession("TestNpc", requestId);
-            var field = typeof(RequestOrchestrator).GetField("_currentSession", PrivateInstance);
-            Assert.IsNotNull(field, "Field '_currentSession' not found on RequestOrchestrator");
+            var field = typeof(RequestOrchestrator).GetField("_micSession", PrivateInstance);
+            Assert.IsNotNull(field, "Field '_micSession' not found on RequestOrchestrator");
             field.SetValue(_orchestrator, session);
             return session;
         }
@@ -172,7 +172,7 @@ namespace Tsc.AIBridge.Tests.Editor
 
             _handler.ProcessMessage("{\"type\":\"conversationComplete\"}");
 
-            Assert.AreEqual("turn-1", _orchestrator.GetCurrentSessionId(),
+            Assert.AreEqual("turn-1", _orchestrator.GetMicrophoneSessionId(),
                 "An unidentifiable completion must never release the turn that is actually running.");
         }
 

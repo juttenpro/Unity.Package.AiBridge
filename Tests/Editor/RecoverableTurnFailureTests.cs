@@ -16,7 +16,7 @@ namespace Tsc.AIBridge.Tests.Editor
     /// and no reconnection in progress". Two defects combined to make that a session-ending event:
     ///
     /// 1. When SendSessionStartAsync faulted (socket down at turn start), ProcessAudioRequest
-    ///    yield-broke WITHOUT resetting _isRequestActive / _currentSession. The turn stayed armed,
+    ///    yield-broke WITHOUT resetting _isRequestActive / _micSession. The turn stayed armed,
     ///    so the failure surfaced minutes later at push-to-talk RELEASE instead of immediately,
     ///    and the RuleSystem's IsReactionBusy stayed set in the meantime.
     /// 2. Both log lines were untagged Debug.LogError, which the host project's ErrorHandler
@@ -37,7 +37,7 @@ namespace Tsc.AIBridge.Tests.Editor
     ///
     /// SUCCESS CRITERIA:
     /// - AbortActiveTurn fires OnSttFailed once with Reason="ConnectionLost" when a turn is armed
-    /// - AbortActiveTurn clears _isRequestActive, _currentSession and _isProcessingRequest
+    /// - AbortActiveTurn clears _isRequestActive, _micSession and _isProcessingRequest
     /// - AbortActiveTurn is idempotent: a second call does not re-fire OnSttFailed
     /// - UserErrorLogger.LogRecoverableError emits BOTH the [UserError:...] tag (so the popup can
     ///   show a true message) and the [Recoverable] marker (so it is downgraded to non-fatal)
@@ -98,7 +98,7 @@ namespace Tsc.AIBridge.Tests.Editor
         {
             SetField("_isRequestActive", true);
             SetField("_isProcessingRequest", true);
-            SetField("_currentSession", new ConversationSession("TestNpc", "test-request-id"));
+            SetField("_micSession", new ConversationSession("TestNpc", "test-request-id"));
 
             LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(
                 @"\[RequestOrchestrator\] Active turn aborted"));
@@ -107,10 +107,10 @@ namespace Tsc.AIBridge.Tests.Editor
 
             Assert.IsFalse(GetField<bool>("_isRequestActive"),
                 "_isRequestActive must be cleared so push-to-talk release does not report a second failure.");
-            Assert.IsNull(GetField<ConversationSession>("_currentSession"),
-                "_currentSession must be cleared so the next push-to-talk on the SAME NPC starts clean.");
-            Assert.IsFalse(_orchestrator.IsProcessingRequest(),
-                "IsProcessingRequest() must return false so the UI and RuleSystem unblock a new turn.");
+            Assert.IsNull(GetField<ConversationSession>("_micSession"),
+                "_micSession must be cleared so the next push-to-talk on the SAME NPC starts clean.");
+            Assert.IsFalse(GetField<bool>("_isProcessingRequest"),
+                "_isProcessingRequest must be cleared so the UI and RuleSystem unblock a new turn.");
         }
 
         [Test]
@@ -119,7 +119,7 @@ namespace Tsc.AIBridge.Tests.Editor
             // The id has to be read BEFORE the session field is cleared at the end of the method, which
             // is the whole reason this is easy to get wrong.
             SetField("_isRequestActive", true);
-            SetField("_currentSession", new ConversationSession("TestNpc", "test-request-id"));
+            SetField("_micSession", new ConversationSession("TestNpc", "test-request-id"));
 
             NoTranscriptMessage failed = null;
             _orchestrator.OnSttFailed += msg => failed = msg;
@@ -141,7 +141,7 @@ namespace Tsc.AIBridge.Tests.Editor
             // A turn that already completed can leave a stale session behind (e.g. the socket died
             // right after the last chunk). Recovery must still clear it, but must NOT report a
             // failure for a turn that was never armed.
-            SetField("_currentSession", new ConversationSession("TestNpc", "stale-request-id"));
+            SetField("_micSession", new ConversationSession("TestNpc", "stale-request-id"));
             SetField("_isProcessingRequest", true);
 
             var sttFailedFired = false;
@@ -151,7 +151,7 @@ namespace Tsc.AIBridge.Tests.Editor
 
             Assert.IsFalse(sttFailedFired,
                 "OnSttFailed must not fire when no turn was armed — that would fabricate a failed turn.");
-            Assert.IsNull(GetField<ConversationSession>("_currentSession"),
+            Assert.IsNull(GetField<ConversationSession>("_micSession"),
                 "A stale session must be cleared even when _isRequestActive was already false.");
         }
 

@@ -12,6 +12,13 @@ namespace Tsc.AIBridge.Core
         public string NpcId { get; set; }
 
         /// <summary>
+        /// What happens to this NPC's unfinished answer if the player turns to a different NPC. Content
+        /// policy, configured per turn by the RuleSystem. Defaults to the behaviour the client always
+        /// had, so an existing scenario that sets nothing keeps working exactly as before.
+        /// </summary>
+        public PlayerTurnsAwayPolicy OnPlayerTurnsAway { get; set; } = PlayerTurnsAwayPolicy.CancelAnswer;
+
+        /// <summary>
         /// Id for this turn, supplied by the caller. It becomes the session RequestId and is echoed on
         /// every message and audio frame of the turn, so the caller can attribute a transcript, an
         /// answer or a finished playback to the turn that produced it. Null = the orchestrator mints

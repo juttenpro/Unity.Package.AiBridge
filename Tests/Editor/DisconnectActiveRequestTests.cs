@@ -128,17 +128,17 @@ namespace Tsc.AIBridge.Tests.Editor
         /// WHY: Reported in the field: "I talk to NPC, get no response, try again with same NPC,
         /// still nothing. Only switching coaches makes it work again." StartAudioRequest only
         /// calls CancelCurrentSession when the npcConfig.Id differs from the previously active
-        /// one, so a lingering _currentSession / _isProcessingRequest after a disconnect leaves
-        /// IsProcessingRequest() returning true and downstream state inconsistent for same-NPC
+        /// one, so a lingering _micSession / _isProcessingRequest after a disconnect leaves
+        /// _isProcessingRequest staying true and downstream state inconsistent for same-NPC
         /// retries.
         ///
-        /// WHAT: Tests that HandleWebSocketDisconnected clears _currentSession and
-        /// _isProcessingRequest so that IsProcessingRequest() returns false after cleanup.
+        /// WHAT: Tests that HandleWebSocketDisconnected clears _micSession and
+        /// _isProcessingRequest so that _isProcessingRequest is cleared after cleanup.
         ///
         /// SUCCESS CRITERIA:
-        /// - _currentSession is null after disconnect
+        /// - _micSession is null after disconnect
         /// - _isProcessingRequest is false after disconnect
-        /// - IsProcessingRequest() returns false (allowing new PTT on same NPC to proceed)
+        /// - _isProcessingRequest is cleared (allowing new PTT on same NPC to proceed)
         ///
         /// BUSINESS IMPACT:
         /// - Failure = students/coaches have to switch NPC or restart to recover from any drop
@@ -150,37 +150,37 @@ namespace Tsc.AIBridge.Tests.Editor
             // Arrange: simulate an active request tied to a live session.
             SetField("_isRequestActive", true);
             SetField("_isProcessingRequest", true);
-            SetField("_currentSession", new ConversationSession("TestNpc", "test-request-id"));
+            SetField("_micSession", new ConversationSession("TestNpc", "test-request-id"));
 
             // Act
             InvokeDisconnectHandler(WebSocketCloseCode.Abnormal);
 
             // Assert
-            Assert.IsNull(GetField<ConversationSession>("_currentSession"),
-                "_currentSession must be cleared so the next PTT on the same NPC starts clean");
+            Assert.IsNull(GetField<ConversationSession>("_micSession"),
+                "_micSession must be cleared so the next PTT on the same NPC starts clean");
             Assert.IsFalse(GetField<bool>("_isProcessingRequest"),
-                "_isProcessingRequest must be cleared so IsProcessingRequest() returns false after disconnect");
-            Assert.IsFalse(_orchestrator.IsProcessingRequest(),
-                "IsProcessingRequest() must return false after disconnect so UI/RuleSystem unblocks new PTT");
+                "_isProcessingRequest must be cleared so _isProcessingRequest is cleared after disconnect");
+            Assert.IsFalse(GetField<bool>("_isProcessingRequest"),
+                "_isProcessingRequest must be cleared after disconnect so UI/RuleSystem unblocks new PTT");
         }
 
         [Test]
         public void HandleWebSocketDisconnected_WithoutActiveRequest_StillClearsStaleSession()
         {
-            // Arrange: _isRequestActive is false but a stale _currentSession lingers
+            // Arrange: _isRequestActive is false but a stale _micSession lingers
             // (e.g. ProcessAudioRequest completed, but ConversationComplete never arrived
             // because the socket died right after). We should still recover.
-            SetField("_currentSession", new ConversationSession("TestNpc", "stale-request-id"));
+            SetField("_micSession", new ConversationSession("TestNpc", "stale-request-id"));
             SetField("_isProcessingRequest", true);
 
             // Act
             InvokeDisconnectHandler(WebSocketCloseCode.Normal);
 
             // Assert
-            Assert.IsNull(GetField<ConversationSession>("_currentSession"),
+            Assert.IsNull(GetField<ConversationSession>("_micSession"),
                 "Stale session must be cleared even when _isRequestActive was already false");
-            Assert.IsFalse(_orchestrator.IsProcessingRequest(),
-                "IsProcessingRequest() must return false so next PTT on same NPC can start");
+            Assert.IsFalse(GetField<bool>("_isProcessingRequest"),
+                "_isProcessingRequest must be cleared so next PTT on same NPC can start");
         }
 
         #region Helpers

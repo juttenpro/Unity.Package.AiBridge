@@ -16,7 +16,7 @@ namespace Tsc.AIBridge.Tests.Editor
     /// client-side watchdog at all; the client relied entirely on the SERVER's per-stage timeouts
     /// reaching it. Three real cases break that assumption: a half-open TCP connection (WiFi drop
     /// without RST — no app-level keepalive exists in either direction), a backend error path that
-    /// skips conversationComplete, and a server hang. In all three, _currentSession stayed armed,
+    /// skips conversationComplete, and a server hang. In all three, _micSession stayed armed,
     /// no event ever fired, and the NPC stared at the player in silence until the TCP layer
     /// happened to notice (minutes) or an NPC switch.
     ///
@@ -32,7 +32,7 @@ namespace Tsc.AIBridge.Tests.Editor
     /// SUCCESS CRITERIA:
     /// - verdict logic: disabled → stop; turn ended/replaced → stop; signal seen → stop;
     ///   paused → wait without consuming budget; budget exhausted → fail.
-    /// - failing the turn clears _currentSession/_isRequestActive/_isProcessingRequest and raises
+    /// - failing the turn clears _micSession/_isRequestActive/_isProcessingRequest and raises
     ///   OnSttFailed with a recognizable reason, exactly like the disconnect recovery path.
     /// - transcript and audio-start record themselves as a signal for the current turn.
     /// </summary>
@@ -144,7 +144,7 @@ namespace Tsc.AIBridge.Tests.Editor
         [Test]
         public void FailUnresponsiveTurn_ClearsState_AndRaisesSttFailed()
         {
-            SetField("_currentSession", new ConversationSession("TestNpc", "turn-1"));
+            SetField("_micSession", new ConversationSession("TestNpc", "turn-1"));
             SetField("_isRequestActive", true);
             SetField("_isProcessingRequest", true);
 
@@ -153,7 +153,7 @@ namespace Tsc.AIBridge.Tests.Editor
 
             InvokeFailUnresponsiveTurn("turn-1");
 
-            Assert.IsNull(GetField<ConversationSession>("_currentSession"),
+            Assert.IsNull(GetField<ConversationSession>("_micSession"),
                 "the dead turn's session must be cleared so the next PTT starts clean");
             Assert.IsFalse(GetField<bool>("_isRequestActive"),
                 "_isRequestActive must be cleared so EndOfSpeech is not sent for the dead RequestId");
@@ -172,7 +172,7 @@ namespace Tsc.AIBridge.Tests.Editor
         {
             // _isRequestActive already false (e.g. pause stopped the recording): no duplicate
             // SttFailed, but the session slot must still be released.
-            SetField("_currentSession", new ConversationSession("TestNpc", "turn-1"));
+            SetField("_micSession", new ConversationSession("TestNpc", "turn-1"));
             SetField("_isRequestActive", false);
 
             var eventCount = 0;
@@ -180,7 +180,7 @@ namespace Tsc.AIBridge.Tests.Editor
 
             InvokeFailUnresponsiveTurn("turn-1");
 
-            Assert.IsNull(GetField<ConversationSession>("_currentSession"));
+            Assert.IsNull(GetField<ConversationSession>("_micSession"));
             Assert.AreEqual(0, eventCount,
                 "mirrors HandleWebSocketDisconnected: SttFailed only fires when a request was still active");
         }
@@ -193,10 +193,10 @@ namespace Tsc.AIBridge.Tests.Editor
         public void RaiseTranscriptionReceived_RecordsSignalForTheTranscriptsOwnTurn()
         {
             // The old version of this test set the current session to the SAME id it passed in, so it
-            // passed while the code credited _currentSession instead of the transcript's own turn. Here
+            // passed while the code credited _micSession instead of the transcript's own turn. Here
             // the two differ: turn-2 is the session the orchestrator happens to be pointing at, turn-1 is
             // the turn this transcript actually belongs to.
-            SetField("_currentSession", new ConversationSession("TestNpc", "turn-2"));
+            SetField("_micSession", new ConversationSession("TestNpc", "turn-2"));
 
             _orchestrator.RaiseTranscriptionReceived("hallo", "turn-1");
 
@@ -210,7 +210,7 @@ namespace Tsc.AIBridge.Tests.Editor
         {
             // A transcript with no id cannot prove anything about any particular turn, and guessing
             // "the current one" is what this fix removes. Warn and record nothing.
-            SetField("_currentSession", new ConversationSession("TestNpc", "turn-1"));
+            SetField("_micSession", new ConversationSession("TestNpc", "turn-1"));
 
             LogAssert.Expect(LogType.Warning, new Regex("without a RequestId"));
             _orchestrator.RaiseTranscriptionReceived("hallo", null);
@@ -236,7 +236,7 @@ namespace Tsc.AIBridge.Tests.Editor
         [Test]
         public void MarkAudioStreamReceived_RecordsSignalForCurrentTurn()
         {
-            SetField("_currentSession", new ConversationSession("TestNpc", "turn-1"));
+            SetField("_micSession", new ConversationSession("TestNpc", "turn-1"));
 
             _orchestrator.MarkAudioStreamReceived();
 
