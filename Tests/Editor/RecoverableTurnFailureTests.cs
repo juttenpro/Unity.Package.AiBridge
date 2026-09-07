@@ -114,6 +114,28 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
+        public void AbortActiveTurn_NamesTheTurnItFailed()
+        {
+            // The id has to be read BEFORE the session field is cleared at the end of the method, which
+            // is the whole reason this is easy to get wrong.
+            SetField("_isRequestActive", true);
+            SetField("_currentSession", new ConversationSession("TestNpc", "test-request-id"));
+
+            NoTranscriptMessage failed = null;
+            _orchestrator.OnSttFailed += msg => failed = msg;
+
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex(
+                @"\[RequestOrchestrator\] Active turn aborted"));
+
+            InvokeAbort("SessionStart send failed");
+
+            Assert.IsNotNull(failed);
+            Assert.AreEqual("test-request-id", failed.RequestId,
+                "The client releases the failed turn by this id. Without it the turn leaks: " +
+                "HasTurnAwaitingResponseForNpc stays true and the talk button holds every short press back.");
+        }
+
+        [Test]
         public void AbortActiveTurn_WithoutArmedTurn_DoesNotFireSttFailedButStillClearsStaleSession()
         {
             // A turn that already completed can leave a stale session behind (e.g. the socket died

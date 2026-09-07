@@ -274,8 +274,13 @@ namespace Tsc.AIBridge.Core
             {
                 Debug.LogWarning($"[RequestOrchestrator] Active turn aborted — {context}");
                 _isRequestActive = false;
+
+                // Read the id BEFORE the session field is cleared at the end of this method. The client
+                // releases a failed turn by this id; an unnamed failure leaves the turn registered, so
+                // that NPC keeps looking mid-request and its talk button holds every short press back.
                 RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage
                 {
+                    RequestId = _currentSession?.RequestId,
                     Reason = "ConnectionLost",
                     AudioDuration = 0,
                     SttProvider = "none"
@@ -939,6 +944,7 @@ namespace Tsc.AIBridge.Core
                 _isRequestActive = false;
                 RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage
                 {
+                    RequestId = requestId,
                     Reason = "TurnResponseTimeout",
                     AudioDuration = 0,
                     SttProvider = "none"
@@ -1170,7 +1176,11 @@ namespace Tsc.AIBridge.Core
 
                         // Notify RuleSystem so IsReactionBusy resets (prevents permanent NPC freeze)
                         _isRequestActive = false;
-                        RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage { Reason = "ConnectionLost" });
+                        RaiseSttFailed(new AIBridge.Messages.NoTranscriptMessage
+                        {
+                            RequestId = _currentSession?.RequestId,
+                            Reason = "ConnectionLost"
+                        });
                         return;
                     }
                 }

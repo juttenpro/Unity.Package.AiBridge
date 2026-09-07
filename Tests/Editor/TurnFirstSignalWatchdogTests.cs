@@ -161,6 +161,10 @@ namespace Tsc.AIBridge.Tests.Editor
             Assert.IsNotNull(failed,
                 "OnSttFailed must fire so the RuleSystem resets IsReactionBusy — same contract as the disconnect path");
             Assert.AreEqual("TurnResponseTimeout", failed.Reason);
+            Assert.AreEqual("turn-1", failed.RequestId,
+                "The failure must name the turn it belongs to. The client-side listener releases the turn " +
+                "by this id, so without it the turn is never released and that NPC's talk button starts " +
+                "swallowing short presses for the rest of the lesson.");
         }
 
         [Test]

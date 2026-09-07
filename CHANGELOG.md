@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-09-09
+
+### Fixed
+- **A client-side turn failure now names the turn it failed.** The three `NoTranscriptMessage`s the
+  orchestrator synthesises itself carried no `RequestId`: `AbortActiveTurn` ("ConnectionLost"),
+  `FailUnresponsiveTurn` ("TurnResponseTimeout") and the reconnect timeout in
+  `HandleRecordingStopped`. The consumer releases a failed turn by that id, so an unnamed failure left
+  the turn registered for the rest of the lesson — that NPC kept looking mid-request and its talk
+  button held back every press shorter than the hold window.
+
+  In `AbortActiveTurn` the id has to be read before the session field is cleared at the end of the
+  method, which is what made this easy to miss.
 ## [4.0.1] - 2026-09-09
 
 ### Fixed
