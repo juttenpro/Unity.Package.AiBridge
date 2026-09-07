@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.5.0] - 2026-09-09
+
+### Changed
+- **`MarkAudioStreamReceived` takes the RequestId of the turn whose audio started.** It used to take
+  nothing and stamp whatever the microphone'''s session happened to be, so any NPC'''s first audio chunk
+  silenced another turn'''s watchdog and flipped its `StreamsReceived` — a pre-recorded scripted clip
+  included, since the hook is wired to `AudioPlayer.OnPlaybackStarted`. `StreamsReceived` is the sole
+  input to the "was there audio?" branch that decides whether a completion still has to clean the turn
+  up, so crediting the wrong turn left a real one uncleaned.
+
+  A missing id logs a warning and records nothing; audio for a turn that is no longer live is ignored.
+  There is no fallback to "the current turn". One caller to update in a consumer.
 ## [5.4.0] - 2026-09-09
 
 ### Changed

@@ -234,14 +234,64 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
-        public void MarkAudioStreamReceived_RecordsSignalForCurrentTurn()
+        public void MarkAudioStreamReceived_RecordsSignalForTheTurnWhoseAudioItIs()
         {
-            SetField("_micSession", new ConversationSession("TestNpc", "turn-1"));
+            // Two live turns, and the audio belongs to the one that is NOT the microphone's. The old
+            // version set the microphone's session to the same id it implicitly used, so it passed while
+            // the code credited whatever the microphone pointed at.
+            Track("mic-turn");
+            var esra = Register("esra-turn");
 
-            _orchestrator.MarkAudioStreamReceived();
+            _orchestrator.MarkAudioStreamReceived("esra-turn");
 
-            Assert.AreEqual("turn-1", GetField<string>("_turnSignalSeenForRequestId"),
-                "audio playback start is the first proof of life for an NPC-initiated text turn");
+            Assert.AreEqual("esra-turn", GetField<string>("_turnSignalSeenForRequestId"),
+                "Audio proves the backend is alive for the turn whose audio it is — crediting the " +
+                "microphone's turn instead silences that turn's watchdog and masks the dead one.");
+            Assert.AreEqual(1, esra.StreamsReceived);
+            Assert.AreEqual(0, _orchestrator.GetStreamsReceived("mic-turn"),
+                "The microphone's turn produced no audio and must not be marked as if it had — that flag " +
+                "decides whether its completion still has to clean the turn up.");
+        }
+
+        [Test]
+        public void MarkAudioStreamReceived_WithoutARequestId_RecordsNothing()
+        {
+            Track("mic-turn");
+
+            LogAssert.Expect(LogType.Warning, new Regex("Audio started for an unnamed turn"));
+            _orchestrator.MarkAudioStreamReceived(null);
+
+            Assert.IsNull(GetField<string>("_turnSignalSeenForRequestId"),
+                "No id means no proof of life for any particular turn — never fall back to the microphone's.");
+            Assert.AreEqual(0, _orchestrator.GetStreamsReceived("mic-turn"));
+        }
+
+        [Test]
+        public void MarkAudioStreamReceived_ForATurnThatIsGone_RecordsNothing()
+        {
+            // Late audio for a turn that was cancelled or displaced must not resurrect it.
+            Track("mic-turn");
+
+            _orchestrator.MarkAudioStreamReceived("already-finished");
+
+            Assert.IsNull(GetField<string>("_turnSignalSeenForRequestId"));
+            Assert.AreEqual(0, _orchestrator.GetStreamsReceived("mic-turn"));
+        }
+
+        private void Track(string requestId)
+        {
+            var method = typeof(RequestOrchestrator).GetMethod("SetMicSession", PrivateInstance);
+            Assert.IsNotNull(method, "SetMicSession not found on RequestOrchestrator");
+            method.Invoke(_orchestrator, new object[] { new ConversationSession("TestNpc", requestId, "TestNpc") });
+        }
+
+        private ConversationSession Register(string requestId)
+        {
+            var session = new ConversationSession("Esra", requestId, "Esra");
+            var method = typeof(RequestOrchestrator).GetMethod("RegisterLiveSession", PrivateInstance);
+            Assert.IsNotNull(method, "RegisterLiveSession not found on RequestOrchestrator");
+            method.Invoke(_orchestrator, new object[] { session });
+            return session;
         }
 
         #endregion

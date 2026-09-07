@@ -986,20 +986,35 @@ namespace Tsc.AIBridge.Core
         /// Should be called when the first binary audio chunk is received.
         /// This prevents premature session completion when conversationComplete arrives.
         /// </summary>
-        public void MarkAudioStreamReceived()
+        public void MarkAudioStreamReceived(string requestId)
         {
-            // Any audio for the current turn is proof of backend life — ends the turn watchdog's
-            // first-signal window.
-            if (_micSession != null)
+            // Audio is proof of backend life for THE TURN IT BELONGS TO. This used to stamp whatever the
+            // microphone's session happened to be, so any NPC's first audio chunk silenced another turn's
+            // watchdog and flipped its StreamsReceived — including a pre-recorded scripted clip, since the
+            // hook is wired to AudioPlayer.OnPlaybackStarted. StreamsReceived is the sole input to the
+            // "was there audio?" branch that decides whether a completion has to clean the turn up
+            // itself, so crediting it to the wrong turn left a real turn uncleaned.
+            if (string.IsNullOrEmpty(requestId))
             {
-                _turnSignalSeenForRequestId = _micSession.RequestId;
+                Debug.LogWarning("[RequestOrchestrator] Audio started for an unnamed turn — cannot credit any " +
+                                 "turn with proof of backend life or with having produced audio.");
+                return;
             }
 
-            if (_micSession != null && _micSession.StreamsReceived == 0)
+            if (!_liveSessions.TryGetValue(requestId, out var session))
             {
-                _micSession.StreamsReceived = 1;
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Audio stream marked as received for session {_micSession.RequestId}");
+                    Debug.Log($"[RequestOrchestrator] Audio started for {requestId}, which is no longer a live turn.");
+                return;
+            }
+
+            _turnSignalSeenForRequestId = requestId;
+
+            if (session.StreamsReceived == 0)
+            {
+                session.StreamsReceived = 1;
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Audio stream marked as received for session {requestId}");
             }
         }
 
