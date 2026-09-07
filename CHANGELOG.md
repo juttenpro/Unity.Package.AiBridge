@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.4.0] - 2026-09-09
+
+### Changed
+- **A turn completion now reaches the orchestrator for every NPC that has a turn, and is acted on for
+  any live turn.** Three things had to line up for this, and the last two were the ones actually
+  dropping completions on the floor:
+
+  1. The orchestrator kept ONE subscription slot for `OnConversationComplete` and re-pointed it on
+     every turn start, actively unsubscribing the previous NPC. Each NpcClient owns its own metadata
+     handler, so with turns live on two NPCs one NPC'''s completion reached nobody at all. It is now one
+     subscription per NpcClient, dropped when that client is destroyed and all of them when the
+     orchestrator is. Cancelling the microphone'''s turn no longer drops any of them: that says nothing
+     about the other NPCs still speaking.
+  2. The handler'''s `currentSessionId == completeRequestId` gate dropped every completion that was not
+     the microphone'''s. It asks whether the turn is LIVE now. The protection it provided has moved to
+     where it belongs — the completion names its own turn, and the orchestrator only touches microphone
+     state when that turn IS the microphone'''s (5.3.0) — so client-critical C4 stays closed while a
+     character-speaks-first turn can finally be released.
+  3. `GetStreamsReceived` and `CompleteSession` answered only for the microphone'''s session, so even a
+     delivered foreign completion would have read 0 streams and released nothing. Both now address the
+     live set.
+
+  A completion for a turn nobody tracks any more is still ignored, and one without a requestId is
+  still refused with a warning.
 ## [5.3.0] - 2026-09-09
 
 MINOR: public C# signatures change, the wire protocol does not.

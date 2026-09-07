@@ -139,12 +139,18 @@ namespace Tsc.AIBridge.Tests.Editor
 
         #region Helpers
 
+        /// <summary>
+        /// Installs a real LIVE microphone turn, through the same method production uses. Writing the
+        /// field directly is no longer enough: the handler asks whether a turn is live, not whether it
+        /// happens to be the one the field points at — which is what lets a completion for one NPC be
+        /// handled while another NPC's turn keeps running.
+        /// </summary>
         private ConversationSession SetCurrentSession(string requestId)
         {
-            var session = new ConversationSession("TestNpc", requestId);
-            var field = typeof(RequestOrchestrator).GetField("_micSession", PrivateInstance);
-            Assert.IsNotNull(field, "Field '_micSession' not found on RequestOrchestrator");
-            field.SetValue(_orchestrator, session);
+            var session = new ConversationSession("TestNpc", requestId, "TestNpc");
+            var method = typeof(RequestOrchestrator).GetMethod("SetMicSession", PrivateInstance);
+            Assert.IsNotNull(method, "SetMicSession not found on RequestOrchestrator");
+            method.Invoke(_orchestrator, new object[] { session });
             return session;
         }
 

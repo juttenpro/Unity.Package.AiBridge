@@ -146,7 +146,17 @@ namespace Tsc.AIBridge.Core
         // Metadata-handler we are currently subscribed to for OnConversationComplete cleanup.
         // Tracked so the same handler is not subscribed twice (same-NPC retries) and so we can
         // unsubscribe symmetrically on NPC switch / cancel / destroy.
-        private ConversationMetadataHandler _subscribedMetadataHandler;
+        // One entry per NpcClient we are subscribed to for conversationComplete. This was a single
+        // slot, and registering a turn actively unsubscribed the previous NPC — so with turns live on
+        // two NPCs only the last one's completion ever reached the orchestrator, and the other turn
+        // could never be released by anything except the watchdog, which after the value-based rework
+        // means failing a turn that had actually succeeded. A dictionary keyed by RequestId cannot
+        // repair a notification that was never delivered, which is why this comes first.
+        //
+        // Keyed on the concrete NpcClientBase deliberately: Unity's destroyed-object "fake null" only
+        // works through a concrete UnityEngine.Object reference, not through an interface.
+        private readonly Dictionary<NpcClientBase, ConversationMetadataHandler> _completionSubscriptions =
+            new Dictionary<NpcClientBase, ConversationMetadataHandler>();
 
         // Turn watchdog state: the RequestId for which a backend response signal (transcript or
         // audio playback start) was recorded, and whether a pause is active — paused time must not
@@ -794,8 +804,10 @@ namespace Tsc.AIBridge.Core
                               "content asked for the abandoned answer to finish.");
                 }
 
-                // Unsubscribe from per-turn completion before clearing the NpcClient reference.
-                UnregisterConversationCompletionHandler();
+                // Deliberately NOT unsubscribing here any more. Cancelling the microphone's turn says
+                // nothing about the other NPCs whose turns may still be running, and dropping their
+                // subscriptions is how their completions went unheard and their turns unreleased.
+                // Subscriptions end when the NpcClient is destroyed.
 
                 // Clear session
                 ReleaseLiveSession(requestIdToCancel);
@@ -956,16 +968,17 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// Audio streams received for <paramref name="requestId"/>, or 0 when that turn is not the one
-        /// this orchestrator is tracking. Addressed by id rather than by "the current one", so a
-        /// completion for another turn cannot read this turn's count.
+        /// Audio streams received for <paramref name="requestId"/>, or 0 when no such turn is live.
+        /// Answers for ANY live turn: the count decides whether a completion has to clean the turn up
+        /// itself, and that question is just as real for a character-speaks-first turn as for the
+        /// player's own.
         /// </summary>
         public int GetStreamsReceived(string requestId)
         {
-            if (string.IsNullOrEmpty(requestId) || _micSession?.RequestId != requestId)
+            if (string.IsNullOrEmpty(requestId) || !_liveSessions.TryGetValue(requestId, out var session))
                 return 0;
 
-            return _micSession.StreamsReceived;
+            return session.StreamsReceived;
         }
 
         /// <summary>
@@ -1000,23 +1013,26 @@ namespace Tsc.AIBridge.Core
 
         /// <summary>
         /// Completes <paramref name="requestId"/> (used when no audio was received, so nothing else will
-        /// clean the turn up). Addressed by id: a completion arriving for a turn this orchestrator is no
-        /// longer tracking must not release the turn it IS tracking.
+        /// clean the turn up). Addressed by id: a completion for a turn that is no longer live must not
+        /// release a different one, and only the microphone's own turn clears the microphone pointer.
         /// </summary>
         public void CompleteSession(string requestId)
         {
-            if (string.IsNullOrEmpty(requestId) || _micSession?.RequestId != requestId)
+            if (string.IsNullOrEmpty(requestId) || !_liveSessions.ContainsKey(requestId))
             {
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Not completing '{requestId ?? "(none)"}' — it is not the tracked session.");
+                    Debug.Log($"[RequestOrchestrator] Not completing '{requestId ?? "(none)"}' — no such live turn.");
                 return;
             }
 
             if (enableVerboseLogging)
                 Debug.Log($"[RequestOrchestrator] Session {requestId} completed");
 
+            var wasMicTurn = _micSession != null && _micSession.RequestId == requestId;
             ReleaseLiveSession(requestId);
-            _micSession = null;
+
+            if (wasMicTurn)
+                _micSession = null;
         }
 
         #region Turn Watchdog
@@ -1432,44 +1448,87 @@ namespace Tsc.AIBridge.Core
         #region Private Methods
 
         /// <summary>
-        /// Subscribe to the NPC client's ConversationMetadataHandler so the orchestrator
-        /// can clear per-turn state when the backend signals conversationComplete.
+        /// Subscribe to this NPC client's ConversationMetadataHandler so the orchestrator can clear
+        /// per-turn state when the backend signals conversationComplete.
         ///
-        /// Without this, _micSession lingers after a successful turn — every subsequent
-        /// recording-stopped event then sends EndOfSpeech for the stale RequestId, the
-        /// backend answers "Session not found", and the NPC goes silent while animations
-        /// keep running (incident 2026-05-11).
+        /// Without a subscription, the session lingers after a successful turn — every subsequent
+        /// recording-stopped event then sends EndOfSpeech for the stale RequestId, the backend answers
+        /// "Session not found", and the NPC goes silent while animations keep running (incident
+        /// 2026-05-11).
         ///
-        /// Safe to call repeatedly: re-subscribing to the same handler is a no-op so
-        /// same-NPC retries don't accumulate duplicate subscriptions.
+        /// Subscriptions are per NPC and are NOT removed when the player turns to someone else. Each
+        /// NpcClient owns its own metadata handler, so unsubscribing the previous NPC on every turn
+        /// start meant that with turns live on two NPCs, only the last one's completion was ever heard.
+        /// They are removed when that NpcClient is destroyed, and all of them when this component is.
+        ///
+        /// Safe to call repeatedly: a client that is already subscribed is a no-op, so same-NPC retries
+        /// do not accumulate duplicate subscriptions.
         /// </summary>
         private void RegisterConversationCompletionHandler(NpcClientBase npcClient)
         {
-            var newHandler = npcClient?.MetadataHandler;
-            if (_subscribedMetadataHandler == newHandler)
+            if (npcClient == null)
                 return;
 
-            if (_subscribedMetadataHandler != null)
-                _subscribedMetadataHandler.OnConversationComplete -= HandleConversationCompleted;
+            PruneDestroyedCompletionSubscriptions();
 
-            _subscribedMetadataHandler = newHandler;
+            if (_completionSubscriptions.ContainsKey(npcClient))
+                return;
 
-            if (_subscribedMetadataHandler != null)
-                _subscribedMetadataHandler.OnConversationComplete += HandleConversationCompleted;
+            var handler = npcClient.MetadataHandler;
+            if (handler == null)
+            {
+                Debug.LogWarning($"[RequestOrchestrator] '{npcClient.NpcName}' has no metadata handler yet, so its " +
+                                 "turn completions cannot be observed. Its session will only be released by the watchdog.");
+                return;
+            }
+
+            handler.OnConversationComplete += HandleConversationCompleted;
+            _completionSubscriptions[npcClient] = handler;
+
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Subscribed to completions for '{npcClient.NpcName}' " +
+                          $"({_completionSubscriptions.Count} NPC(s) subscribed).");
         }
 
         /// <summary>
-        /// Symmetric counterpart to <see cref="RegisterConversationCompletionHandler"/>.
-        /// Called on NPC switch, session cancel, and component destruction so no stale
-        /// subscription remains on a NpcClient we no longer drive.
+        /// Drops subscriptions whose NpcClient has been destroyed — a dynamically spawned NPC that is
+        /// gone would otherwise be pinned alive by this dictionary for the rest of the scene.
+        /// </summary>
+        private void PruneDestroyedCompletionSubscriptions()
+        {
+            List<NpcClientBase> destroyed = null;
+
+            foreach (var subscription in _completionSubscriptions)
+            {
+                if (subscription.Key == null)
+                    (destroyed ??= new List<NpcClientBase>()).Add(subscription.Key);
+            }
+
+            if (destroyed == null)
+                return;
+
+            foreach (var client in destroyed)
+            {
+                if (_completionSubscriptions.TryGetValue(client, out var handler) && handler != null)
+                    handler.OnConversationComplete -= HandleConversationCompleted;
+
+                _completionSubscriptions.Remove(client);
+            }
+        }
+
+        /// <summary>
+        /// Removes every completion subscription. Called when this component is destroyed, so no
+        /// delegate of ours outlives it.
         /// </summary>
         private void UnregisterConversationCompletionHandler()
         {
-            if (_subscribedMetadataHandler != null)
+            foreach (var subscription in _completionSubscriptions)
             {
-                _subscribedMetadataHandler.OnConversationComplete -= HandleConversationCompleted;
-                _subscribedMetadataHandler = null;
+                if (subscription.Value != null)
+                    subscription.Value.OnConversationComplete -= HandleConversationCompleted;
             }
+
+            _completionSubscriptions.Clear();
         }
 
         /// <summary>

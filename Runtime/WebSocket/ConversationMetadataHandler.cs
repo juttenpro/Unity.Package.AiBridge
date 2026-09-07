@@ -297,17 +297,21 @@ namespace Tsc.AIBridge.WebSocket
                     if (RequestOrchestrator.HasInstance)
                     {
                         var orchestrator = RequestOrchestrator.Instance;
-                        // CRITICAL: Only act on a completion for the CURRENT session — including the
-                        // event below. Raising OnConversationComplete for a stale turn killed the
-                        // ACTIVE turn: the orchestrator's cleanup hook clears _currentSession /
-                        // _isRequestActive without RequestId knowledge, so a late turn-N completion
-                        // arriving while turn N+1 was already recording wiped N+1's state. PTT release
-                        // then found "no active request" → no EndOfSpeech, no transcript, no SttFailed
-                        // → RuleSystem stayed busy and the NPC was mute until an NPC switch
-                        // (2026-06-12 audit, client critical C4). The voice-fallback subscriber must
-                        // equally only ever see the current turn.
-                        var currentSessionId = orchestrator.GetMicrophoneSessionId();
-                        if (currentSessionId == completeRequestId)
+                        // Act on a completion for any turn that is still LIVE, and on nothing else.
+                        //
+                        // This used to compare against the microphone's session, because the cleanup hook
+                        // cleared the session and _isRequestActive with no knowledge of which turn had
+                        // completed: a late turn-N completion arriving while turn N+1 was recording wiped
+                        // N+1's state, push-to-talk release then found "no active request", and the NPC
+                        // stayed mute until an NPC switch (2026-06-12 audit, client critical C4). That
+                        // comparison was the protection, and its cost was that a character-speaks-first
+                        // turn's completion was dropped entirely, so that turn was never released.
+                        //
+                        // The protection now lives where it belongs: the completion names its own turn,
+                        // the orchestrator only touches microphone state when that turn IS the
+                        // microphone's, and a completion is only acted on while its turn is live. A
+                        // completion for a turn nobody tracks any more is still ignored.
+                        if (orchestrator.IsTurnLive(completeRequestId))
                         {
                             var audioReceived = orchestrator.GetStreamsReceived(completeRequestId) > 0;
 
@@ -329,7 +333,7 @@ namespace Tsc.AIBridge.WebSocket
                         }
                         else if(_enableVerboseLogging)
                         {
-                            Debug.Log($"[{_personaName}] conversationComplete for old session {completeRequestId}, current is {currentSessionId} - ignoring (no cleanup, no event)");
+                            Debug.Log($"[{_personaName}] conversationComplete for {completeRequestId}, which is no longer a live turn - ignoring (no cleanup, no event)");
                         }
                     }
                     else
