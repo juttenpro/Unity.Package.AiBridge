@@ -49,6 +49,11 @@ namespace Tsc.AIBridge.Audio.Capture
         float CurrentVolume { get; }
 
         /// <summary>
+        /// Device the provider is currently capturing from, or null when none is selected
+        /// </summary>
+        string SelectedDevice { get; }
+
+        /// <summary>
         /// Start capturing audio
         /// </summary>
         void StartCapture();

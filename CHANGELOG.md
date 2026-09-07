@@ -6,6 +6,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-07
+
+### Fixed
+- **A microphone that fails to start now keeps retrying instead of going quiet for the rest of the
+  session.** `StartCapture` used to raise one error and give up. The host project has
+  "No microphone available" on its `ErrorHandler` ignore list — no popup, no Oops report — and
+  `MicrophoneCapture.OnError` has no subscribers, so that error reached nobody. From then on every
+  talk press produced an empty turn.
+
+  Reported from the field (Radboud, 2026-09-03): on two of three freshly installed headsets the
+  NPCs and the coach stopped answering, with no message of any kind. Visible in session log
+  `Instrumental_04-09-2026_14-04-31`: five consecutive turns where the player spoke for seconds and
+  the transcript came back empty within 0.1s — too fast to be anything but "no audio was sent".
+
+- **Microphone permission is now read through the Android permission API.** Both permission checks
+  used `Application.HasUserAuthorization`, which Unity implements for iOS and WebGL only; per its
+  documentation, "for all other platforms this function always returns true". On Quest that made
+  the five-second wait for permission a no-op and started capture before RECORD_AUDIO was granted —
+  which is exactly the first-launch-after-install case that failed. The host project's
+  `AppPermissions` has always done it this way; the package never followed.
+
+  The dead `RequestMicrophonePermission` coroutine is removed with it: asking here would put a
+  second OS dialog on top of the host's own blocking permission screen.
+
+- **The restart after the headset is put back on is no longer gated on the device list.**
+  `OnApplicationPause(false)` only restarted when `Microphone.devices` was already populated —
+  the same check that had just failed — with no `else` and no log. One unlucky moment (audio not
+  yet awake on resume, permission not yet landed) killed the microphone for the rest of the run.
+
+- **A recording that never produces audio now times out after 3s and is retried.**
+  `WaitForMicrophoneReady` waited on `Microphone.GetPosition() > 0` with only a half-second mute
+  check; a device that claims to be recording but never advances left that loop spinning forever,
+  with no error and `IsCapturing` never becoming true.
+
+- **A talk press verifies the microphone is actually capturing.** `SpeechInputHandler.StartRecording`
+  set a flag and started the encoder without ever checking. It now restarts a stopped capture and
+  warns that the opening moment of the turn may be missing. Regression tests:
+  `MicrophoneRecoveryTests`.
+
+### Added
+- **`IAudioCaptureProvider.SelectedDevice`** — the interface covered selecting a device and listing
+  devices but not reading back which one is in use, so `SpeechInputHandler` had to hold the concrete
+  `MicrophoneCapture`. It now works through the interface, which is what makes the recovery above
+  testable without a physical microphone.
+
 ## [2.0.0] - 2026-09-03
 
 ### Changed (breaking)

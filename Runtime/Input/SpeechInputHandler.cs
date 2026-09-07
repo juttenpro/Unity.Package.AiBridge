@@ -194,7 +194,7 @@ namespace Tsc.AIBridge.Input
 
         #region Private Fields
 
-        private MicrophoneCapture _microphoneCapture;
+        private IAudioCaptureProvider _microphoneCapture;
         private VADManager _vadManager;
         private RecordingController _recordingController;
         private bool _isCapturing;
@@ -274,8 +274,9 @@ namespace Tsc.AIBridge.Input
 
         private void Awake()
         {
-            // Find or create MicrophoneCapture
-            _microphoneCapture = GetComponent<MicrophoneCapture>();
+            // Find or create the capture provider. Resolved through IAudioCaptureProvider so a
+            // scene can supply an alternative source (and so the recovery below is testable).
+            _microphoneCapture = GetComponent<IAudioCaptureProvider>();
             if (_microphoneCapture == null)
             {
                 _microphoneCapture = gameObject.AddComponent<MicrophoneCapture>();
@@ -359,9 +360,21 @@ namespace Tsc.AIBridge.Input
 
             _isRecording = true;
 
-            // IMPORTANT: Microphone is already running (started in MicrophoneCapture.Start())
+            // IMPORTANT: Microphone is normally already running (started in MicrophoneCapture.Start())
             // This prevents hardware switching delays (headset mode, ANC adjustment, etc.)
-            // We only need to start encoding here
+            // We only need to start encoding here.
+            //
+            // But "normally" is not "always", and a talk press that encodes nothing is invisible:
+            // the indicator lights up, the RuleSystem logs PlayerStartsTalking, no audio reaches the
+            // backend, and the empty transcript that comes back reads as "the player said nothing"
+            // (Radboud, 2026-09-03 — two headsets went through a whole lesson like this). So verify,
+            // and get the microphone back if it is not running.
+            if (!_microphoneCapture.IsCapturing)
+            {
+                Debug.LogWarning("[SpeechInputHandler] Microphone was not capturing at talk start - restarting it. " +
+                                 "The first moment of this turn may be missing.");
+                _microphoneCapture.StartCapture();
+            }
 
             // Start audio encoding - buffering is controlled by RequestOrchestrator
             if (_audioStreamProcessor == null)
@@ -483,7 +496,7 @@ namespace Tsc.AIBridge.Input
             // Ensure components are initialized
             if (_microphoneCapture == null)
             {
-                _microphoneCapture = GetComponent<MicrophoneCapture>();
+                _microphoneCapture = GetComponent<IAudioCaptureProvider>();
                 if (_microphoneCapture == null)
                 {
                     _microphoneCapture = gameObject.AddComponent<MicrophoneCapture>();
@@ -494,6 +507,14 @@ namespace Tsc.AIBridge.Input
             {
                 _vadManager = CreateConfiguredVadManager();
             }
+
+            // StartRecording needs this: without it the encoder call logs an error instead of
+            // exercising the path under test.
+            _audioStreamProcessor ??= new Audio.Processing.AudioStreamProcessor(
+                audioPlayer: null,
+                opusBitrate: MicrophoneCapture.UPSTREAM_OPUS_BITRATE,
+                bufferDuration: 0f,
+                isVerboseLogging: enableVerboseLogging);
 
             if (enableVerboseLogging)
                 Debug.Log("[SpeechInputHandler] Initialized for testing");

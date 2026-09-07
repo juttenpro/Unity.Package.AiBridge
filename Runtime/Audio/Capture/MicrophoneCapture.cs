@@ -2,6 +2,10 @@ using System;
 using System.Collections;
 using UnityEngine;
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
+
 namespace Tsc.AIBridge.Audio.Capture
 {
     /// <summary>
@@ -81,6 +85,15 @@ namespace Tsc.AIBridge.Audio.Capture
         private const int RECORDING_LENGTH = 10; // 10 seconds circular buffer like RecorderBase
         private const float MUTE_CHECK_TIMEOUT = 0.5f; // Check if mic is muted after 0.5s
 
+        // How long a started recording may stay at position 0 before the attempt is abandoned and
+        // retried. Generous enough for slow hardware to wake, short enough that a player who
+        // presses talk right away only loses a moment instead of the whole session.
+        private const float READY_TIMEOUT = 3f;
+
+        // Cadence for retrying a capture that could not start. Cheap (one Microphone.devices call)
+        // and fast enough that a permission granted mid-run is picked up before the user notices.
+        private const float RETRY_INTERVAL = 0.5f;
+
         #endregion
 
         #region Properties
@@ -125,6 +138,32 @@ namespace Tsc.AIBridge.Audio.Capture
         /// </summary>
         public bool IsMicrophoneAvailable => Microphone.devices != null && Microphone.devices.Length > 0;
 
+        /// <summary>
+        /// Whether the OS has actually granted microphone access.
+        /// </summary>
+        /// <remarks>
+        /// Android needs its own permission API. <see cref="Application.HasUserAuthorization"/> is
+        /// implemented for iOS and WebGL only and, per Unity's documentation, "for all other
+        /// platforms this function always returns true" — so on Quest it reported access the app
+        /// did not have, the wait for permission below was a no-op, and capture started before
+        /// RECORD_AUDIO was granted. The host project's AppPermissions already does it this way.
+        /// </remarks>
+        public static bool HasMicrophonePermission
+        {
+            get
+            {
+#if UNITY_EDITOR
+                return true;
+#elif UNITY_ANDROID
+                return Permission.HasUserAuthorizedPermission(Permission.Microphone);
+#elif UNITY_IOS
+                return Application.HasUserAuthorization(UserAuthorization.Microphone);
+#else
+                return true;
+#endif
+            }
+        }
+
         #endregion
 
         #region Private Fields
@@ -132,6 +171,8 @@ namespace Tsc.AIBridge.Audio.Capture
         private AudioClip recordingClip;
         private int lastReadPosition = 0;
         private Coroutine captureCoroutine;
+        private Coroutine retryCoroutine;
+        private bool hasReportedStartFailure;
         private AudioSource audioSource;
 
         // Optimization: Buffer pooling to prevent GC allocations
@@ -177,13 +218,9 @@ namespace Tsc.AIBridge.Audio.Capture
             FixAudioOniOS();
 #endif
 
-            // Check microphone permission on mobile platforms
-#if UNITY_IOS || UNITY_ANDROID
-            if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
-            {
-                StartCoroutine(RequestMicrophonePermission());
-            }
-#endif
+            // Permission itself is the host application's call to make — it owns the blocking
+            // screen that explains why the training needs a microphone. Requesting it from here
+            // as well would put a second OS dialog on top of that flow.
         }
 
         private IEnumerator Start()
@@ -194,30 +231,13 @@ namespace Tsc.AIBridge.Audio.Capture
             // - Active Noise Cancellation (ANC) needs time to adjust (~50-200ms)
             // - Microphone gain adjustment takes time (~50-150ms)
             // Starting early ensures hardware is "warm" and ready for immediate recording
-
-#if UNITY_IOS || UNITY_ANDROID
-            // Wait for microphone permission on mobile platforms
-            float timeout = 5f;
-            float elapsed = 0f;
-            while (!Application.HasUserAuthorization(UserAuthorization.Microphone) && elapsed < timeout)
-            {
-                yield return new WaitForSeconds(0.1f);
-                elapsed += 0.1f;
-            }
-
-            if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
-            {
-                UserErrorLogger.LogError(
-                    "Microphone access is required. Please grant permission and try again.",
-                    "[MicrophoneCapture] Microphone permission not granted after timeout!");
-                yield break;
-            }
-#else
             yield return null; // Wait one frame for Awake to complete
-#endif
 
             if (enableVerboseLogging)
                 Debug.Log("[MicrophoneCapture] Starting microphone at scene start (prevents hardware switching delays)");
+
+            // No permission wait here: StartCapture keeps retrying until the device shows up, which
+            // covers a permission that lands mid-run as well as audio hardware that is still waking.
             StartCapture();
         }
 
@@ -255,7 +275,13 @@ namespace Tsc.AIBridge.Audio.Capture
                 // Headset put back on / app resumed - restart capture
                 // CRITICAL: Without this, microphone stays stopped after headset is removed and put back on
                 // This causes PTT to fail silently - button press works but no audio is sent
-                if (!IsCapturing && IsMicrophoneAvailable)
+                //
+                // Deliberately NOT gated on IsMicrophoneAvailable. It used to be, and that turned one
+                // unlucky moment — the device list still empty because audio had not woken up yet, or
+                // because permission had not landed — into a microphone that never came back for the
+                // rest of the app run, with no error and no log. StartCapture judges availability
+                // itself and keeps retrying.
+                if (!IsCapturing)
                 {
                     if (enableVerboseLogging)
                         Debug.Log("[MicrophoneCapture] Restarting capture after application resume (headset put back on)");
@@ -276,9 +302,11 @@ namespace Tsc.AIBridge.Audio.Capture
                 return;
             }
 
-            if (!IsMicrophoneAvailable)
+            if (!HasMicrophonePermission || !IsMicrophoneAvailable)
             {
-                RaiseError("No microphone available");
+                ScheduleCaptureRetry(HasMicrophonePermission
+                    ? "no microphone device listed yet"
+                    : "microphone permission not granted yet");
                 return;
             }
 
@@ -287,7 +315,7 @@ namespace Tsc.AIBridge.Audio.Capture
                 var devices = Microphone.devices;
                 if (devices == null || devices.Length == 0)
                 {
-                    RaiseError("No microphone devices found");
+                    ScheduleCaptureRetry("no microphone device listed yet");
                     return;
                 }
 
@@ -313,7 +341,7 @@ namespace Tsc.AIBridge.Audio.Capture
 
             if (recordingClip == null)
             {
-                RaiseError("Failed to start microphone recording");
+                ScheduleCaptureRetry("Microphone.Start returned no clip");
                 return;
             }
 
@@ -327,6 +355,50 @@ namespace Tsc.AIBridge.Audio.Capture
 
             // Start waiting for microphone to be ready (like RecorderBase)
             StartCoroutine(WaitForMicrophoneReady());
+        }
+
+        /// <summary>
+        /// Abandons this start attempt and keeps trying in the background until the microphone
+        /// comes up. Replaces the old behaviour of raising one error and giving up for good:
+        /// the host application has "No microphone available" on its error ignore list, so that
+        /// error reached nobody and the training simply went quiet (Radboud, 2026-09-03).
+        /// </summary>
+        /// <param name="reason">Why this attempt failed. Logged once per dry spell.</param>
+        private void ScheduleCaptureRetry(string reason)
+        {
+            // Warning, not error: a retry is in flight, and in the host project a Debug.LogError
+            // ends the session with a "restart the app" popup.
+            if (!hasReportedStartFailure)
+            {
+                hasReportedStartFailure = true;
+                Debug.LogWarning($"[MicrophoneCapture] Could not start capture ({reason}). " +
+                                 $"Retrying every {RETRY_INTERVAL:0.#}s until the microphone is available.");
+                OnError?.Invoke($"Microphone not available: {reason}");
+            }
+
+            if (retryCoroutine == null && gameObject.activeInHierarchy)
+                retryCoroutine = StartCoroutine(RetryCaptureUntilAvailable());
+        }
+
+        private IEnumerator RetryCaptureUntilAvailable()
+        {
+            while (!IsCapturing)
+            {
+                yield return new WaitForSeconds(RETRY_INTERVAL);
+
+                if (IsCapturing)
+                    break;
+
+                if (!HasMicrophonePermission || !IsMicrophoneAvailable)
+                    continue;
+
+                Debug.Log("[MicrophoneCapture] Microphone became available - starting capture.");
+                retryCoroutine = null;
+                StartCapture();
+                yield break;
+            }
+
+            retryCoroutine = null;
         }
 
         public void StopCapture()
@@ -464,6 +536,7 @@ namespace Tsc.AIBridge.Audio.Capture
         private IEnumerator WaitForMicrophoneReady()
         {
             float muteTimer = MUTE_CHECK_TIMEOUT;
+            float readyTimer = READY_TIMEOUT;
 
             // Wait for microphone to start recording (position > 0)
             while (Microphone.GetPosition(SelectedDevice) <= 0)
@@ -475,11 +548,23 @@ namespace Tsc.AIBridge.Audio.Capture
                     {
                         if (!Microphone.IsRecording(SelectedDevice))
                         {
-                            RaiseError("Microphone is muted or not available");
+                            ScheduleCaptureRetry("microphone reported not recording");
                             yield break;
                         }
                     }
                 }
+
+                // A device that reports it is recording but never advances its read position used to
+                // spin here forever: no error, IsCapturing never true, and every talk press after
+                // that sent an empty turn. Give up on this attempt and start over instead.
+                readyTimer -= Time.deltaTime;
+                if (readyTimer <= 0)
+                {
+                    Microphone.End(SelectedDevice);
+                    ScheduleCaptureRetry($"no audio after {READY_TIMEOUT:0.#}s");
+                    yield break;
+                }
+
                 yield return null;
             }
 
@@ -490,6 +575,10 @@ namespace Tsc.AIBridge.Audio.Capture
 
             lastReadPosition = 0;
             IsCapturing = true;
+
+            // Only a capture that actually produced audio clears the failure notice, so a dry spell
+            // logs once instead of once per retry.
+            hasReportedStartFailure = false;
 
             // Start capture coroutine
             captureCoroutine = StartCoroutine(CaptureRoutine());
@@ -642,17 +731,6 @@ namespace Tsc.AIBridge.Audio.Capture
             OnError?.Invoke(error);
         }
 
-#if UNITY_IOS || UNITY_ANDROID
-        private IEnumerator RequestMicrophonePermission()
-        {
-            yield return Application.RequestUserAuthorization(UserAuthorization.Microphone);
-
-            if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
-            {
-                RaiseError("Microphone permission denied");
-            }
-        }
-#endif
 
         #endregion
     }
