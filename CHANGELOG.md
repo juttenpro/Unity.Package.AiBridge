@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-08
+
+### Added
+- **`InterruptionManager.SetAddressedNpc`** — the client can now name the NPC the player is
+  addressing, and every part of the interruption decision follows that NPC: whether it is speaking,
+  whether it may be interrupted, how long the overlap must last, and whose audio is stopped.
+
+  Why: the manager only knew the NPC that `RequestOrchestrator` had most recently started a request
+  for (`OnActiveNpcChanged`). That is a usable proxy only while a room holds a single NPC. Once NPCs
+  take turns among themselves — a room built to put the trainee under pressure — it is a bystander,
+  and then `OnUserInputStarted` asked whether the wrong NPC was speaking, `AllowInterruption` and
+  `InterruptionPersistenceTime` came off the wrong PersonaSO (so a persona configured as
+  non-interruptible could shield an unrelated one, or expose it), and an approved interruption called
+  `StopAudio()` on the bystander — silencing the wrong NPC while the one being talked over carried on.
+
+  Backwards compatible: until `SetAddressedNpc` is called the request NPC is still used, so scenes
+  that never address anyone (menu coach, no camera target) behave exactly as before. With neither
+  known the fallback stays permissive — a scene-load timing gap must not produce an NPC nobody can
+  interrupt.
+
+- **`InterruptionTarget`** — value type holding one NPC's interruption settings, plus the pure
+  `InterruptionManager.ResolveInterruptionTarget` that fixes the precedence
+  (addressed → request → fallback). Pure so the precedence is testable without faking the whole
+  `INpcConfiguration` surface; see `InterruptionTargetTests`.
+
 ## [2.1.1] - 2026-09-07
 
 ### Fixed

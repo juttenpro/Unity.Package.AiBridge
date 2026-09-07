@@ -72,6 +72,72 @@ namespace Tsc.AIBridge.Audio.Interruption
         private INpcConfiguration _activeNpcConfig;
         private StreamingAudioPlayer _activeAudioPlayer; // Cached for performance (GetComponent is expensive)
 
+        // The NPC the player is addressing, pushed by the client at the moment it resolves one.
+        // See SetAddressedNpc for why this outranks the request NPC above.
+        private NpcClientBase _addressedNpcClient;
+        private INpcConfiguration _addressedNpcConfig;
+        private StreamingAudioPlayer _addressedAudioPlayer;
+
+        /// <summary>
+        /// The NPC every part of the interruption decision is about: whether it is speaking, whether it
+        /// may be interrupted, how long the overlap must last, and whose audio is stopped.
+        /// </summary>
+        private NpcClientBase TurnOwnerClient => _addressedNpcClient ?? _activeNpcClient;
+
+        private StreamingAudioPlayer TurnOwnerAudioPlayer => _addressedNpcClient != null
+            ? _addressedAudioPlayer
+            : _activeAudioPlayer;
+
+        /// <summary>
+        /// Tells the manager which NPC the player is addressing. Until this is called the manager falls
+        /// back to the NPC that RequestOrchestrator most recently started a request for.
+        ///
+        /// WHY: that request NPC is only a usable proxy while a room holds a single NPC. Once NPCs take
+        /// turns among themselves it is a bystander, and then the manager asked whether the wrong NPC was
+        /// speaking, read AllowInterruption and InterruptionPersistenceTime off the wrong PersonaSO, and
+        /// called StopAudio() on the wrong NPC - silencing a bystander while the NPC the player was
+        /// talking over carried on.
+        /// </summary>
+        public void SetAddressedNpc(NpcClientBase npcClient, INpcConfiguration npcConfig)
+        {
+            _addressedNpcClient = npcClient;
+            _addressedNpcConfig = npcConfig;
+
+            // Same reason as for the request NPC: GetComponent is too expensive for the Update loop.
+            _addressedAudioPlayer = npcClient == null
+                ? null
+                : npcClient.GetComponent<StreamingAudioPlayer>() ?? npcClient.GetComponentInChildren<StreamingAudioPlayer>();
+
+            if (enableVerboseLogging)
+            {
+                Debug.Log($"[InterruptionManager] Addressed NPC set to {(npcClient == null ? "none" : npcClient.NpcName)}, " +
+                          $"AudioPlayer cached: {_addressedAudioPlayer != null}");
+            }
+        }
+
+        /// <summary>
+        /// Picks the NPC whose interruption settings apply: the addressed one, else the one a request was
+        /// started for, else a permissive fallback. Pure so the precedence is testable - see
+        /// InterruptionTargetTests.
+        /// </summary>
+        public static InterruptionTarget ResolveInterruptionTarget(
+            InterruptionTarget addressed, InterruptionTarget activeFromRequest, float fallbackPersistenceTime)
+        {
+            if (addressed.IsPresent)
+                return addressed;
+
+            if (activeFromRequest.IsPresent)
+                return activeFromRequest;
+
+            // Permissive on purpose: a scene-load timing gap must not produce an NPC nobody can interrupt.
+            return new InterruptionTarget(allowInterruption: true, fallbackPersistenceTime);
+        }
+
+        private static InterruptionTarget TargetFrom(INpcConfiguration config)
+            => config == null
+                ? InterruptionTarget.None
+                : new InterruptionTarget(config.AllowInterruption, config.InterruptionPersistenceTime);
+
         // State tracking
         private bool _hasValidInterruption;
         private float _npcResponseStartTime;
@@ -219,7 +285,7 @@ namespace Tsc.AIBridge.Audio.Interruption
             }
 
             // Check if NPC is currently responding
-            bool npcResponding = _activeNpcClient?.IsTalking ?? false;
+            bool npcResponding = TurnOwnerClient?.IsTalking ?? false;
 
             if (npcResponding)
             {
@@ -400,19 +466,15 @@ namespace Tsc.AIBridge.Audio.Interruption
             // Before v1.6.16 the fallback was 1.5f, which silently made interruption 3.75x
             // harder when config was unavailable. Now it matches the PersonaSO default and
             // logs a warning so the fallback is visible instead of silent.
-            bool allowInterruption;
-            float persistenceTime;
-            if (_activeNpcConfig != null)
+            var target = ResolveInterruptionTarget(
+                TargetFrom(_addressedNpcConfig), TargetFrom(_activeNpcConfig), DefaultPersistenceTimeFallback);
+            var allowInterruption = target.AllowInterruption;
+            var persistenceTime = target.PersistenceTime;
+
+            if (_addressedNpcConfig == null && _activeNpcConfig == null)
             {
-                allowInterruption = _activeNpcConfig.AllowInterruption;
-                persistenceTime = _activeNpcConfig.InterruptionPersistenceTime;
-            }
-            else
-            {
-                allowInterruption = true;
-                persistenceTime = DefaultPersistenceTimeFallback;
                 Debug.LogWarning(
-                    $"[InterruptionManager] No active NPC configuration — using fallback " +
+                    $"[InterruptionManager] No NPC configuration for this turn — using fallback " +
                     $"persistence {DefaultPersistenceTimeFallback:F2}s. " +
                     $"This usually indicates a timing issue during scene load.");
             }
@@ -425,16 +487,17 @@ namespace Tsc.AIBridge.Audio.Interruption
                           $"npcPauseTolerance: {npcPauseTolerance:F2}s");
             }
 
-            while (_activeNpcClient != null && speechInputHandler != null && speechInputHandler.IsUserInputActive)
+            var turnOwner = TurnOwnerClient;
+            while (turnOwner != null && speechInputHandler != null && speechInputHandler.IsUserInputActive)
             {
                 // Get user speaking state from VAD
                 bool userSpeaking = DetectUserSpeech();
 
                 // Get NPC responding state
-                bool npcResponding = _activeNpcClient.IsTalking;
+                bool npcResponding = turnOwner.IsTalking;
 
                 // CRITICAL: Use VAD-based speech detection to distinguish actual speech from pauses
-                bool npcActuallySpeaking = GetNpcActualSpeech(_activeNpcClient);
+                bool npcActuallySpeaking = GetNpcActualSpeech(turnOwner);
 
                 // Track NPC response time
                 if (npcResponding)
@@ -524,11 +587,12 @@ namespace Tsc.AIBridge.Audio.Interruption
                 return false;
 
             // Use cached StreamingAudioPlayer for performance
-            if (_activeAudioPlayer != null)
+            var nearEndPlayer = TurnOwnerAudioPlayer;
+            if (nearEndPlayer != null)
             {
                 // Near-end = AudioStreamEnd received + BufferLevel < threshold
-                bool streamCompleted = !_activeAudioPlayer.IsReceivingResponse;
-                float bufferRemaining = _activeAudioPlayer.BufferLevel;
+                bool streamCompleted = !nearEndPlayer.IsReceivingResponse;
+                float bufferRemaining = nearEndPlayer.BufferLevel;
 
                 bool isNearEnd = streamCompleted && bufferRemaining < nearEndThresholdSeconds;
 
@@ -600,25 +664,22 @@ namespace Tsc.AIBridge.Audio.Interruption
             // Fire event for tests (using null for persona object to avoid dependency)
             OnInterruptionDetectedEvent?.Invoke(null, "Interruption detected");
 
-            // Use cached active NPC client (no reflection!)
-            if (_activeNpcClient == null)
+            // The NPC that was actually talked over - not whichever one a request was last started for,
+            // which in a room with several speakers is a bystander whose audio must keep running.
+            var interrupted = TurnOwnerClient;
+            if (interrupted == null)
             {
-                Debug.LogWarning("[InterruptionManager] No active NPC client to interrupt");
+                Debug.LogWarning("[InterruptionManager] No NPC client to interrupt");
                 return;
             }
 
             if (enableVerboseLogging)
             {
-                Debug.Log($"[InterruptionManager] Active NPC: {_activeNpcClient.NpcName}, IsTalking: {_activeNpcClient.IsTalking}");
-            }
-
-            if (enableVerboseLogging)
-            {
-                Debug.Log($"[InterruptionManager] Stopping audio for {_activeNpcClient.NpcName}");
+                Debug.Log($"[InterruptionManager] Interrupting {interrupted.NpcName}, IsTalking: {interrupted.IsTalking} - stopping its audio");
             }
 
             // Stop the NPC's audio playback (stops playback, clears buffer)
-            _activeNpcClient.StopAudio();
+            interrupted.StopAudio();
 
             // Mark interruption in RequestOrchestrator and notify backend
             if (RequestOrchestrator.HasInstance)
