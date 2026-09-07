@@ -704,13 +704,6 @@ namespace Tsc.AIBridge.Audio.Interruption
                         Debug.Log($"[InterruptionManager] Sent InterruptionOccurred to backend for session {interruptedRequestId}");
                     }
                 }
-
-                // Mark interruption flag for new session (IsInterruptionActive=true)
-                orchestrator.StartInterruption();
-                if (enableVerboseLogging)
-                {
-                    Debug.Log("[InterruptionManager] Marked interruption in RequestOrchestrator");
-                }
             }
         }
     }

@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-09-09
+
+### Removed (breaking)
+- **Dead public API, verified to have zero production callers.** First step of
+  `Docs/Architecture/Concurrent-Turns-Plan.md` in the host project: shrink the blast radius before the
+  turn bookkeeping becomes per-request, so no corpse gets migrated as if it were live plumbing.
+
+  - `RequestOrchestrator.IsAudioPlaying()`
+  - `RequestOrchestrator.SendSessionCancelToBackend()` — `CancelCurrentSession` calls
+    `CancelSessionOnBackendAsync` directly
+  - `RequestOrchestrator.StartAudioRequest(string npcId)` — the overload never set
+    `_currentConversationRequest`, so reviving it would have shipped the previous turn's voice settings
+  - `RequestOrchestrator.IsInterruptionActive()` / `StartInterruption()` / `EndInterruption()` and
+    `ConversationSession.IsInterruptionActive`. The trio wrote a flag nobody read: `IsInterruptionActive()`
+    was its only reader and had no callers of its own. `InterruptionManager` no longer sets it.
+  - `Runtime/Handlers/NoTranscriptHandler.cs` — a plain class, never constructed anywhere
+  - `ConversationSession`: the `SessionState` enum plus `State`, `IsActive`, `Complete()`, `Cancel()`,
+    `IsListening`, its `IsRecording` alias, `ChunksSent`, `IncrementChunksSent()` and `StartTime`. What
+    remains is what production reads: `RequestId`, `NpcName`, `StreamsReceived`. `StartTime` was stamped
+    at construction (push-to-talk press, not send) and could never have served as a turn clock.
+
+  Callers to update in a consumer: none in this repo beyond `InterruptionManager`, plus the host
+  project's `InterruptionController`, which was the only caller of `EndInterruption` and is itself not
+  present in any scene or prefab.
 ## [3.0.0] - 2026-09-09
 
 ### Changed (breaking)

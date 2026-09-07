@@ -585,28 +585,6 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// Start an audio request by NPC ID
-        /// </summary>
-        public void StartAudioRequest(string npcId)
-        {
-            if (_npcProvider == null)
-            {
-                Debug.LogError("[RequestOrchestrator] No NPC provider set! Cannot start audio request by ID. " +
-                              "Either set an NPC provider or use StartAudioRequest(INpcConfiguration) directly.");
-                return;
-            }
-
-            var npcConfig = _npcProvider.GetNpcConfiguration(npcId);
-            if (npcConfig == null)
-            {
-                Debug.LogError($"[RequestOrchestrator] No NPC configuration found for ID: {npcId}");
-                return;
-            }
-
-            StartAudioRequest(npcConfig);
-        }
-
-        /// <summary>
         /// Start a text-based request (NPC-initiated or system)
         /// </summary>
         public void StartTextRequest(INpcConfiguration npcConfig, string text, string requestId = null)
@@ -720,21 +698,6 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// Send SessionCancel message to backend to stop LLM/TTS generation
-        /// Does NOT clear session state - use CancelCurrentSession for full cleanup
-        /// </summary>
-        public void SendSessionCancelToBackend(string requestId, string reason)
-        {
-            if (string.IsNullOrEmpty(requestId))
-            {
-                Debug.LogWarning("[RequestOrchestrator] Cannot send SessionCancel - requestId is null or empty");
-                return;
-            }
-
-            _ = CancelSessionOnBackendAsync(requestId, reason);
-        }
-
-        /// <summary>
         /// Internal async method to send SessionCancel message to backend
         /// </summary>
         private async System.Threading.Tasks.Task CancelSessionOnBackendAsync(string requestId, string reason)
@@ -815,48 +778,6 @@ namespace Tsc.AIBridge.Core
             return _isProcessingRequest || _currentSession != null;
         }
 
-        /// <summary>
-        /// Check if audio is currently playing
-        /// </summary>
-        public bool IsAudioPlaying()
-        {
-            // Check if the active NPC client is currently playing audio
-            return _activeNpcClient?.IsSpeaking ?? false;
-        }
-
-        /// <summary>
-        /// Check if an interruption is currently active in the current session
-        /// </summary>
-        public bool IsInterruptionActive()
-        {
-            return _currentSession?.IsInterruptionActive ?? false;
-        }
-
-        /// <summary>
-        /// Mark that an interruption has started in the current session
-        /// </summary>
-        public void StartInterruption()
-        {
-            if (_currentSession != null)
-            {
-                _currentSession.IsInterruptionActive = true;
-                if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Interruption started for session {_currentSession.RequestId}");
-            }
-        }
-
-        /// <summary>
-        /// Mark that an interruption has ended in the current session
-        /// </summary>
-        public void EndInterruption()
-        {
-            if (_currentSession != null)
-            {
-                _currentSession.IsInterruptionActive = false;
-                if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Interruption ended for session {_currentSession.RequestId}");
-            }
-        }
 
         /// <summary>
         /// Get the number of audio streams received in the current session
@@ -903,7 +824,6 @@ namespace Tsc.AIBridge.Core
         {
             if (_currentSession != null)
             {
-                _currentSession.Complete();
                 if (enableVerboseLogging)
                     Debug.Log($"[RequestOrchestrator] Session {_currentSession.RequestId} completed");
                 _currentSession = null;
