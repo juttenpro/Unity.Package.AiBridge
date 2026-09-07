@@ -46,7 +46,7 @@ namespace Tsc.AIBridge.Audio.Processing
     ///
     /// DEPENDENCIES:
     /// - StreamingAudioPlayer: For audio playback
-    /// - Concentus: Opus codec library
+    /// - OpusSharp: Opus codec library
     /// - ConversationSession: Session tracking
     /// </summary>
     public class AudioStreamProcessor : IDisposable

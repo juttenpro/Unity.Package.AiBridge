@@ -1840,7 +1840,7 @@ namespace Tsc.AIBridge.Core
                 // DOWNSTREAM (TTS output) uses 48kHz PCM, configured separately in backend
                 AudioFormat = "opus",
                 SampleRate = MicrophoneCapture.Frequency,  // UPSTREAM: 16kHz for STT
-                Bitrate = MicrophoneCapture.UPSTREAM_OPUS_BITRATE,  // UPSTREAM: 16kbps
+                Bitrate = MicrophoneCapture.UPSTREAM_OPUS_BITRATE,  // UPSTREAM: 64kbps (16kHz is the SAMPLE rate, above)
                 ChannelCount = 1,
                 // Enable metrics if configured
                 EnableMetrics = enableMetrics

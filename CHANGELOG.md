@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-07
+
+### Fixed
+- **Comments only.** Three stale comments described the upstream audio wrongly and had already
+  misled the architecture docs into publishing the same numbers:
+  - `NetworkMessageController` and `RequestOrchestrator` annotated `UPSTREAM_OPUS_BITRATE` as
+    "16kbps" while the constant is 64000. The 16 is the *sample* rate (16 kHz), which is on the
+    line above in both places — hence the mix-up. Now spelled out.
+  - `AudioStreamProcessor` still listed Concentus as its Opus codec dependency; it has used
+    OpusSharp (`OpusSharp.Core.OpusEncoder`) since the codec swap.
+
+  No behaviour change, no API change.
+
 ## [2.1.0] - 2026-09-07
 
 ### Fixed

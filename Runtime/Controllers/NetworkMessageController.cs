@@ -93,7 +93,7 @@ namespace Tsc.AIBridge.Controllers
                 // CRITICAL audio format fields - without these STT cannot decode audio!
                 AudioFormat = "opus",      // Must be opus for compressed audio
                 SampleRate = MicrophoneCapture.Frequency,  // UPSTREAM: 16kHz for STT
-                OpusBitrate = MicrophoneCapture.UPSTREAM_OPUS_BITRATE  // UPSTREAM: 16kbps
+                OpusBitrate = MicrophoneCapture.UPSTREAM_OPUS_BITRATE  // UPSTREAM: 64kbps (16kHz is the SAMPLE rate, above)
             };
             
             // Use WebSocketClient for SessionStart - Fire and forget (event-driven!)
