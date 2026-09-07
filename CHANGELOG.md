@@ -6,6 +6,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-09-09
+
+### Changed (breaking)
+- **A queued turn now carries its own wire payload instead of reading shared fields when it is sent.**
+  `StartAudioRequest` and `StartTextRequest` take the turn's `ConversationRequest` as a required
+  argument; `_currentConversationRequest` is gone and `GetChatHistory()` became
+  `GetChatHistory(INpcConfiguration, NpcClientBase)`. Start turns through
+  `StartConversationRequest`, which is the only caller either method ever had.
+
+  Why: the request queue releases as soon as a request is SENT, not when the turn ends, so a second
+  turn can begin while the first is still being assembled. Every per-turn value — the messages, the
+  five ElevenLabs voice settings, `EnableTts`, `ResponseFormat`, `TtsLanguageCode`, `BaseEmotion`,
+  the thinking budget and level, the prosody provider, the LLM fallback and the Gemini
+  `ContextCacheName` — was read off a shared field at send time. A character-speaks-first turn for one
+  persona starting during the player's turn with another therefore put the first persona's system
+  prompt, chat history, voice and cached context into the other's SessionStart.
+
+  The `?? default` fallbacks on those fields are gone with it. They only ever compensated for the
+  shared field being null; `ConversationRequest` carries the very same defaults on its own properties,
+  so nothing changes except that a missing request record now fails the turn loudly instead of sending
+  a plausible-looking one.
+
+### Fixed
+- **The NPC client and chat history are resolved into locals and published only once the turn is
+  really going ahead.** The shared fields were written before the provider lookup, so a miss left
+  `_activeNpcConfig` pointing at an NPC with no client behind it.
+- **A subscription leak that straddled a yield.** `ProcessAudioRequest` added and removed its
+  `OnSessionStarted` handler through `_activeNpcClient`, with a `WaitUntil` in between, so the field
+  could point at a different client by the time the handler was removed. It now uses the turn's own
+  client reference.
 ## [4.0.2] - 2026-09-09
 
 ### Fixed

@@ -131,7 +131,6 @@ namespace Tsc.AIBridge.Core
         private ConversationSession _currentSession;
         private INpcConfiguration _activeNpcConfig;
         private NpcClientBase _activeNpcClient; // Cache to avoid FindObjectsByType
-        private ConversationRequest _currentConversationRequest; // Store for voice settings access
         private bool _isProcessingRequest; // Queue management - prevents concurrent request STARTS
         private bool _isRequestActive; // Request lifecycle - true from StartAudioRequest until EndAudioRequest/Cancel
         private Coroutine _processQueueCoroutine;
@@ -469,9 +468,6 @@ namespace Tsc.AIBridge.Core
                 }
             }
 
-            // Store the request for later access to voice settings
-            _currentConversationRequest = request;
-
             // Create a temporary configuration wrapper for the request
             var config = new ConversationRequestAdapter(request);
 
@@ -481,21 +477,22 @@ namespace Tsc.AIBridge.Core
                 // NPC-initiated: Skip STT, go directly to text input flow (with empty text)
                 if (enableVerboseLogging)
                     Debug.Log("[RequestOrchestrator] Using text input flow for NPC-initiated conversation");
-                StartTextRequest(config, "", request.RequestId); // Empty text = NPC initiates based on system prompt/history
+                StartTextRequest(config, "", request.RequestId, request); // Empty text = NPC initiates based on system prompt/history
             }
             else
             {
                 // Player-initiated: Use normal audio/STT flow
                 if (enableVerboseLogging)
                     Debug.Log("[RequestOrchestrator] Using audio request flow for player-initiated conversation");
-                StartAudioRequest(config, request.RequestId);
+                StartAudioRequest(config, request.RequestId, request);
             }
         }
 
         /// <summary>
         /// Start an audio request with NPC configuration
         /// </summary>
-        public void StartAudioRequest(INpcConfiguration npcConfig, string requestId = null)
+        public void StartAudioRequest(INpcConfiguration npcConfig, string requestId,
+            ConversationRequest conversationRequest)
         {
             if (npcConfig == null)
             {
@@ -514,7 +511,13 @@ namespace Tsc.AIBridge.Core
                 CancelCurrentSession("Switching to different NPC");
             }
 
-            _activeNpcConfig = npcConfig;
+            if (conversationRequest == null)
+            {
+                Debug.LogError($"[RequestOrchestrator] Cannot start a turn for '{npcConfig.Id}' without a " +
+                               "ConversationRequest — it carries this turn's messages, voice settings and " +
+                               "context-cache name. Start turns through StartConversationRequest.");
+                return;
+            }
 
             // Get NPC client from provider - MUST be configured!
             if (_npcProvider == null)
@@ -523,24 +526,33 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
-            _activeNpcClient = _npcProvider.GetNpcClient(npcConfig.Id);
+            // Into a LOCAL, published below only once this turn is really going ahead. The shared fields
+            // used to be written before this lookup, so a provider miss left _activeNpcConfig pointing at
+            // an NPC that had no client behind it.
+            var npcClient = _npcProvider.GetNpcClient(npcConfig.Id);
 
-            if (_activeNpcClient == null)
+            if (npcClient == null)
             {
                 Debug.LogError($"[RequestOrchestrator] NPC provider returned null for NPC ID: '{npcConfig.Id}'. Check that NPC client exists in scene and matches this ID.");
                 return;
             }
 
             if (enableVerboseLogging)
-                Debug.Log($"[RequestOrchestrator] Found NPC client: {_activeNpcClient.NpcName} for ID: {npcConfig.Id}");
+                Debug.Log($"[RequestOrchestrator] Found NPC client: {npcClient.NpcName} for ID: {npcConfig.Id}");
+
+            // Snapshot the history for THIS turn, while the NPC it belongs to is still unambiguous.
+            var messages = GetChatHistory(npcConfig, npcClient);
+
+            _activeNpcConfig = npcConfig;
+            _activeNpcClient = npcClient;
 
             // Subscribe to per-turn completion so the next user-turn starts with a fresh session.
             // Without this, _currentSession lingers after the backend cleans up its session,
             // and the next recording-stopped event sends EndOfSpeech for the stale RequestId.
-            RegisterConversationCompletionHandler(_activeNpcClient);
+            RegisterConversationCompletionHandler(npcClient);
 
             // Notify listeners (e.g., InterruptionManager) about active NPC change
-            OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
+            OnActiveNpcChanged?.Invoke(npcClient, npcConfig);
 
             // NOTE: Buffering is now handled automatically by AudioStreamProcessor.StartEncoding()
             // Audio is ALWAYS buffered by default until FlushBuffer() is called after SessionStarted
@@ -552,7 +564,7 @@ namespace Tsc.AIBridge.Core
             // messages are never sent, causing backend to never process the audio.
             // This issue is especially likely after WebSocket reconnects when queue processing may be delayed.
             requestId ??= Guid.NewGuid().ToString();
-            var npcName = _activeNpcClient?.NpcName ?? npcConfig.Name;
+            var npcName = npcClient.NpcName;
             _currentSession = new ConversationSession(npcName, requestId);
 
             if (enableVerboseLogging)
@@ -561,13 +573,13 @@ namespace Tsc.AIBridge.Core
             // Mark request as active - audio chunks can now be accepted (they will be buffered)
             _isRequestActive = true;
 
-            // Start PTT duration tracking in latency tracker (after we have _activeNpcClient)
-            var tracker = GetLatencyTracker(_activeNpcClient);
+            // Start PTT duration tracking in latency tracker (after we have the client)
+            var tracker = GetLatencyTracker(npcClient);
             if (tracker != null)
             {
                 tracker.MarkRecordingStart();
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] MarkRecordingStart() called for {_activeNpcClient?.NpcName}");
+                    Debug.Log($"[RequestOrchestrator] MarkRecordingStart() called for {npcClient.NpcName}");
             }
             else
             {
@@ -581,7 +593,10 @@ namespace Tsc.AIBridge.Core
             var request = new AudioRequest
             {
                 NpcConfig = npcConfig,
-                RequestId = requestId  // Use same RequestId as session
+                RequestId = requestId,  // Use same RequestId as session
+                Request = conversationRequest,
+                NpcClient = npcClient,
+                Messages = messages,
             };
 
             _audioRequestQueue.Enqueue(request);
@@ -592,7 +607,8 @@ namespace Tsc.AIBridge.Core
         /// <summary>
         /// Start a text-based request (NPC-initiated or system)
         /// </summary>
-        public void StartTextRequest(INpcConfiguration npcConfig, string text, string requestId = null)
+        public void StartTextRequest(INpcConfiguration npcConfig, string text, string requestId,
+            ConversationRequest conversationRequest)
         {
             // Note: text can be empty string for NPC-initiated conversations (NPC speaks first without player input)
             if (npcConfig == null || text == null)
@@ -606,7 +622,13 @@ namespace Tsc.AIBridge.Core
                 Debug.Log($"[RequestOrchestrator] Starting text request for {npcConfig.Name}" +
                          (isNpcInitiated ? " (NPC-initiated, no player input)" : $": {text}"));
 
-            _activeNpcConfig = npcConfig;
+            if (conversationRequest == null)
+            {
+                Debug.LogError($"[RequestOrchestrator] Cannot start a turn for '{npcConfig.Id}' without a " +
+                               "ConversationRequest — it carries this turn's messages, voice settings and " +
+                               "context-cache name. Start turns through StartConversationRequest.");
+                return;
+            }
 
             // Get NPC client from provider - MUST be configured!
             if (_npcProvider == null)
@@ -615,30 +637,42 @@ namespace Tsc.AIBridge.Core
                 return;
             }
 
-            _activeNpcClient = _npcProvider.GetNpcClient(npcConfig.Id);
+            // Into a LOCAL, published below only once this turn is really going ahead. The shared fields
+            // used to be written before this lookup, so a provider miss left _activeNpcConfig pointing at
+            // an NPC that had no client behind it.
+            var npcClient = _npcProvider.GetNpcClient(npcConfig.Id);
 
-            if (_activeNpcClient == null)
+            if (npcClient == null)
             {
                 Debug.LogError($"[RequestOrchestrator] NPC provider returned null for NPC ID: '{npcConfig.Id}'. Check that NPC client exists in scene and matches this ID.");
                 return;
             }
 
             if (enableVerboseLogging)
-                Debug.Log($"[RequestOrchestrator] Found NPC client: {_activeNpcClient.NpcName} for ID: {npcConfig.Id}");
+                Debug.Log($"[RequestOrchestrator] Found NPC client: {npcClient.NpcName} for ID: {npcConfig.Id}");
+
+            // Snapshot the history for THIS turn, while the NPC it belongs to is still unambiguous.
+            var messages = GetChatHistory(npcConfig, npcClient);
+
+            _activeNpcConfig = npcConfig;
+            _activeNpcClient = npcClient;
 
             // Subscribe to per-turn completion so the next user-turn starts with a fresh session.
             // Without this, _currentSession lingers after the backend cleans up its session,
             // and the next recording-stopped event sends EndOfSpeech for the stale RequestId.
-            RegisterConversationCompletionHandler(_activeNpcClient);
+            RegisterConversationCompletionHandler(npcClient);
 
             // Notify listeners (e.g., InterruptionManager) about active NPC change
-            OnActiveNpcChanged?.Invoke(_activeNpcClient, _activeNpcConfig);
+            OnActiveNpcChanged?.Invoke(npcClient, npcConfig);
 
             var request = new TextRequest
             {
                 NpcConfig = npcConfig,
                 Text = text,
-                RequestId = requestId ?? Guid.NewGuid().ToString()
+                RequestId = requestId ?? Guid.NewGuid().ToString(),
+                Request = conversationRequest,
+                NpcClient = npcClient,
+                Messages = messages,
             };
 
             _textRequestQueue.Enqueue(request);
@@ -1446,11 +1480,11 @@ namespace Tsc.AIBridge.Core
                 var parameters = BuildSessionParameters(request.NpcConfig);
 
                 // Register this request with the NPC router so messages are routed correctly
-                var npcName = _activeNpcClient?.NpcName ?? request.NpcConfig.Name;
+                var npcName = request.NpcClient.NpcName;
                 NpcMessageRouter.Instance.SetActiveRequest(request.RequestId, npcName);
 
                 // CRITICAL: Register the NPC handler with WebSocketClient to receive responses
-                if (_activeNpcClient is INpcMessageHandler handler)
+                if (request.NpcClient is INpcMessageHandler handler)
                 {
                     _webSocketClient.RegisterNpc(request.RequestId, handler);
                     if (enableVerboseLogging)
@@ -1458,10 +1492,12 @@ namespace Tsc.AIBridge.Core
                 }
                 else
                 {
-                    Debug.LogError("[RequestOrchestrator] Cannot register NPC handler - _activeNpcClient is null or doesn't implement INpcMessageHandler!");
+                    Debug.LogError($"[RequestOrchestrator] Cannot register NPC handler for '{npcName}' — its client does not implement INpcMessageHandler. This turn will receive no responses.");
                 }
 
-                var messages = GetChatHistory();
+                // Snapshotted when the turn was started, so a turn that began in the meantime cannot
+                // have replaced it with another persona's history.
+                var messages = request.Messages;
 
                 // The vocal baseline is LESSON-scoped. Enforce that here, where the lesson is known, so it
                 // holds for every entry path (menu start, next case, retry) without a caller having to
@@ -1486,18 +1522,18 @@ namespace Tsc.AIBridge.Core
                     // Speech opt-out for this turn. False = STT -> LLM only (no TTS pipeline, no
                     // audio, no TTS cost) — a PromptComposer scoring turn. Absent request keeps
                     // the spoken answer every existing scenario expects.
-                    EnableTts = _currentConversationRequest?.EnableTts ?? true,
+                    EnableTts = request.Request.EnableTts,
                     // Optional "json_object" for a machine-readable reply. Null = free text.
-                    ResponseFormat = _currentConversationRequest?.ResponseFormat,
+                    ResponseFormat = request.Request.ResponseFormat,
                     // ElevenLabs voice settings (from ConversationRequest, set by RuleSystem)
-                    VoiceStability = _currentConversationRequest?.TtsStability ?? 0.5f,
-                    VoiceSimilarityBoost = _currentConversationRequest?.TtsSimilarityBoost ?? 0.75f,
-                    VoiceStyle = _currentConversationRequest?.TtsStyle ?? 0f,
-                    VoiceUseSpeakerBoost = _currentConversationRequest?.TtsSpeakerBoost ?? true,
-                    VoiceSpeed = _currentConversationRequest?.TtsSpeed ?? 1.0f,
-                    TtsLanguageCode = _currentConversationRequest?.TtsLanguageCode, // Force TTS language (e.g., "nl" to prevent Flemish)
+                    VoiceStability = request.Request.TtsStability,
+                    VoiceSimilarityBoost = request.Request.TtsSimilarityBoost,
+                    VoiceStyle = request.Request.TtsStyle,
+                    VoiceUseSpeakerBoost = request.Request.TtsSpeakerBoost,
+                    VoiceSpeed = request.Request.TtsSpeed,
+                    TtsLanguageCode = request.Request.TtsLanguageCode, // Force TTS language (e.g., "nl" to prevent Flemish)
                     // Cartesia base emotion (ignored by ElevenLabs/Voxtral backend-side)
-                    BaseEmotion = _currentConversationRequest?.BaseEmotion,
+                    BaseEmotion = request.Request.BaseEmotion,
                     // LLM settings
                     LlmProvider = parameters.LlmProvider,
                     LlmModel = parameters.LlmModel,
@@ -1509,15 +1545,15 @@ namespace Tsc.AIBridge.Core
                     // the backend keeps its provider default (existing pre-thinking
                     // behaviour). Sessions inherit this once at SessionStart; subsequent
                     // dialogue turns within the session reuse the same budget.
-                    ThinkingBudget = _currentConversationRequest?.ThinkingBudget,
+                    ThinkingBudget = request.Request.ThinkingBudget,
                     // Gemini 3.x reasoning-depth selector (minimal|low|medium|high). Mutually
                     // exclusive with ThinkingBudget; same per-session inheritance as the budget.
-                    ThinkingLevel = _currentConversationRequest?.ThinkingLevel,
+                    ThinkingLevel = request.Request.ThinkingLevel,
                     // Player vocal-delivery (prosody) analysis from the AI API Template. Null/empty
                     // provider = off (omitted from the wire → backend runs no analysis). Audio path only;
                     // EnableProsodyAnalysis is derived so the backend's per-session gate matches.
-                    ProsodyProvider = _currentConversationRequest?.ProsodyProvider,
-                    EnableProsodyAnalysis = !string.IsNullOrEmpty(_currentConversationRequest?.ProsodyProvider),
+                    ProsodyProvider = request.Request.ProsodyProvider,
+                    EnableProsodyAnalysis = !string.IsNullOrEmpty(request.Request.ProsodyProvider),
                     // Player-owned vocal baseline (measurement v2), sent each turn; the server's updated copy
                     // comes back via NpcClient. Read from the lesson-scoped store, not from a scene
                     // component: scene loads (every attempt) destroy the handler, which used to restart the
@@ -1525,7 +1561,7 @@ namespace Tsc.AIBridge.Core
                     ProsodyBaseline = ProsodyBaselineStore.State,
                     // Optional per-template dialogue-LLM fallback target. Null when the template
                     // configures none → omitted from the wire payload → backend wraps nothing.
-                    LlmFallback = _currentConversationRequest?.LlmFallback,
+                    LlmFallback = request.Request.LlmFallback,
                     // STT settings
                     SttProvider = parameters.SttProvider,
                     LanguageCode = parameters.Language,  // Note: field is called LanguageCode, not Language
@@ -1535,7 +1571,7 @@ namespace Tsc.AIBridge.Core
                     // Enable metrics if configured
                     EnableMetrics = enableMetrics,
                     // Context caching (Gemini cost optimization)
-                    ContextCacheName = _currentConversationRequest?.ContextCacheName,
+                    ContextCacheName = request.Request.ContextCacheName,
                     // Anonymous observability correlation IDs (null when host project
                     // hasn't registered a provider or no IDs are available yet).
                     // Never contains UserId — GDPR gate enforced at model level.
@@ -1547,9 +1583,9 @@ namespace Tsc.AIBridge.Core
                 var sessionStartedReceived = false;
                 Action sessionStartedHandler = () => { sessionStartedReceived = true; };
 
-                if (_activeNpcClient != null)
+                if (request.NpcClient != null)
                 {
-                    _activeNpcClient.OnSessionStarted += sessionStartedHandler;
+                    request.NpcClient.OnSessionStarted += sessionStartedHandler;
                     if (enableVerboseLogging)
                         Debug.Log("[RequestOrchestrator] Subscribed to SessionStarted event - ready to receive confirmation");
                 }
@@ -1568,9 +1604,9 @@ namespace Tsc.AIBridge.Core
                         $"[RequestOrchestrator] Failed to send SessionStart: {sendTask.Exception?.GetBaseException().Message}");
 
                     // Unsubscribe on error
-                    if (_activeNpcClient != null)
+                    if (request.NpcClient != null)
                     {
-                        _activeNpcClient.OnSessionStarted -= sessionStartedHandler;
+                        request.NpcClient.OnSessionStarted -= sessionStartedHandler;
                     }
 
                     // CRITICAL: release the turn here. Leaving it armed is what made this surface
@@ -1586,7 +1622,7 @@ namespace Tsc.AIBridge.Core
                 StartCoroutine(TurnFirstSignalWatchdog(request.RequestId));
 
                 // Wait for SessionStarted confirmation from backend before flushing
-                if (_activeNpcClient != null)
+                if (request.NpcClient != null)
                 {
                     if (enableVerboseLogging)
                         Debug.Log("[RequestOrchestrator] Waiting for SessionStarted confirmation from backend...");
@@ -1600,7 +1636,7 @@ namespace Tsc.AIBridge.Core
                         elapsed += Time.deltaTime;
                     }
 
-                    _activeNpcClient.OnSessionStarted -= sessionStartedHandler;
+                    request.NpcClient.OnSessionStarted -= sessionStartedHandler;
 
                     if (sessionStartedReceived)
                     {
@@ -1653,19 +1689,19 @@ namespace Tsc.AIBridge.Core
                     Debug.Log($"[RequestOrchestrator] Processing text request: {request.Text}");
 
                 // Validate NPC client is available
-                if (_activeNpcClient == null)
+                if (request.NpcClient == null)
                 {
-                    Debug.LogError("[RequestOrchestrator] Cannot process text request - no active NPC client! This should have been caught in StartTextRequest.");
+                    Debug.LogError($"[RequestOrchestrator] Cannot process the text request for '{request.NpcConfig?.Id}' — it carries no NPC client. This should have been caught in StartTextRequest.");
                     _isProcessingRequest = false;
                     yield break;
                 }
 
                 // Start WebSocket session with text input
-                var npcName = _activeNpcClient?.NpcName ?? request.NpcConfig.Name;
+                var npcName = request.NpcClient.NpcName;
                 _currentSession = new ConversationSession(npcName, request.RequestId);
 
                 // CRITICAL: Register the NPC handler with WebSocketClient to receive responses
-                if (_activeNpcClient is INpcMessageHandler textHandler)
+                if (request.NpcClient is INpcMessageHandler textHandler)
                 {
                     _webSocketClient.RegisterNpc(request.RequestId, textHandler);
                     if (enableVerboseLogging)
@@ -1673,10 +1709,12 @@ namespace Tsc.AIBridge.Core
                 }
                 else
                 {
-                    Debug.LogError("[RequestOrchestrator] Cannot register NPC handler for text request - _activeNpcClient is null or doesn't implement INpcMessageHandler!");
+                    Debug.LogError($"[RequestOrchestrator] Cannot register NPC handler for the text request for '{npcName}' — its client does not implement INpcMessageHandler. This turn will receive no responses.");
                 }
 
-                var messages = GetChatHistory();
+                // Snapshotted when the turn was started, so a turn that began in the meantime cannot
+                // have replaced it with another persona's history.
+                var messages = request.Messages;
 
                 // Build TextInputMessage for text-based conversation
                 var textInputMessage = new TextInputMessage
@@ -1698,23 +1736,23 @@ namespace Tsc.AIBridge.Core
                         // Optional Gemini 2.5+ reasoning budget — carried from the
                         // AI API Template via ConversationRequest. Null = backend uses
                         // provider default (existing pre-thinking behaviour).
-                        thinkingBudget = _currentConversationRequest?.ThinkingBudget,
+                        thinkingBudget = request.Request.ThinkingBudget,
                         // Gemini 3.x reasoning-depth selector; mutually exclusive with thinkingBudget.
-                        thinkingLevel = _currentConversationRequest?.ThinkingLevel,
+                        thinkingLevel = request.Request.ThinkingLevel,
                         ttsModel = request.NpcConfig?.TtsModel,
                         sttProvider = request.NpcConfig?.SttProvider,
                         ttsProvider = request.NpcConfig?.TtsProvider,
                         // ElevenLabs voice settings (from ConversationRequest, set by RuleSystem)
-                        voiceStability = _currentConversationRequest?.TtsStability,
-                        voiceSimilarityBoost = _currentConversationRequest?.TtsSimilarityBoost,
-                        voiceStyle = _currentConversationRequest?.TtsStyle,
-                        voiceUseSpeakerBoost = _currentConversationRequest?.TtsSpeakerBoost,
-                        voiceSpeed = _currentConversationRequest?.TtsSpeed,
-                        ttsLanguageCode = _currentConversationRequest?.TtsLanguageCode, // Force TTS language
+                        voiceStability = request.Request.TtsStability,
+                        voiceSimilarityBoost = request.Request.TtsSimilarityBoost,
+                        voiceStyle = request.Request.TtsStyle,
+                        voiceUseSpeakerBoost = request.Request.TtsSpeakerBoost,
+                        voiceSpeed = request.Request.TtsSpeed,
+                        ttsLanguageCode = request.Request.TtsLanguageCode, // Force TTS language
                         // Cartesia base emotion (ignored by ElevenLabs/Voxtral backend-side)
-                        baseEmotion = _currentConversationRequest?.BaseEmotion,
+                        baseEmotion = request.Request.BaseEmotion,
                         // Context caching (Gemini cost optimization)
-                        contextCacheName = _currentConversationRequest?.ContextCacheName,
+                        contextCacheName = request.Request.ContextCacheName,
                         // Anonymous observability correlation IDs; null when host project
                         // hasn't registered a provider yet or no IDs are available.
                         observability = AIBridgeObservability.TryGetContext(),
@@ -1791,50 +1829,50 @@ namespace Tsc.AIBridge.Core
         /// RuleSystem path: Messages already includes system prompt as first message
         /// SimpleNpcClient path: Convert SystemPrompt to Messages[0] with role="system"
         /// </summary>
-        private List<ChatMessage> GetChatHistory()
+        private List<ChatMessage> GetChatHistory(INpcConfiguration npcConfig, NpcClientBase npcClient)
         {
-            if (_activeNpcConfig == null)
+            if (npcConfig == null)
             {
                 if (enableVerboseLogging)
-                    Debug.LogWarning("[RequestOrchestrator] No active NPC config - returning empty messages");
+                    Debug.LogWarning("[RequestOrchestrator] No NPC config - returning empty messages");
                 return new List<ChatMessage>();
             }
 
             // Priority 1: Use Messages if provided (RuleSystem path - already complete with system prompt)
-            if (_activeNpcConfig.Messages != null && _activeNpcConfig.Messages.Count > 0)
+            if (npcConfig.Messages != null && npcConfig.Messages.Count > 0)
             {
                 if (enableVerboseLogging)
                 {
-                    Debug.Log($"[RequestOrchestrator] Using {_activeNpcConfig.Messages.Count} messages from config (includes system prompt)");
+                    Debug.Log($"[RequestOrchestrator] Using {npcConfig.Messages.Count} messages from config (includes system prompt)");
 
                     // Log each message with role and content preview
-                    for (int i = 0; i < _activeNpcConfig.Messages.Count; i++)
+                    for (int i = 0; i < npcConfig.Messages.Count; i++)
                     {
-                        var msg = _activeNpcConfig.Messages[i];
+                        var msg = npcConfig.Messages[i];
                         var contentPreview = msg.Content?.Length > 500
                             ? msg.Content.Substring(0, 500) + "... [TRUNCATED]"
                             : msg.Content;
                         Debug.Log($"[RequestOrchestrator] Message[{i}] role={msg.Role}:\n{contentPreview}");
                     }
                 }
-                return new List<ChatMessage>(_activeNpcConfig.Messages);
+                return new List<ChatMessage>(npcConfig.Messages);
             }
 
             // Priority 2: Build Messages from SystemPrompt + NPC client history (SimpleNpcClient path)
             var messages = new List<ChatMessage>();
 
             // Add system prompt as first message if available
-            if (!string.IsNullOrEmpty(_activeNpcConfig.SystemPrompt))
+            if (!string.IsNullOrEmpty(npcConfig.SystemPrompt))
             {
                 messages.Add(new ChatMessage
                 {
                     Role = "system",
-                    Content = _activeNpcConfig.SystemPrompt
+                    Content = npcConfig.SystemPrompt
                 });
             }
 
             // Add chat history from NPC client if available
-            if (_activeNpcClient != null && _activeNpcClient is IConversationHistory historyProvider)
+            if (npcClient != null && npcClient is IConversationHistory historyProvider)
             {
                 var history = historyProvider.GetApiHistoryAsChatMessages();
                 if (history != null && history.Count > 0)
@@ -1904,10 +1942,18 @@ namespace Tsc.AIBridge.Core
 
         #region Internal Classes
 
+        // Everything a queued turn needs to go on the wire, captured when the turn was STARTED.
+        // Reading any of this off a shared field at process time is what let one persona's system
+        // prompt, chat history, voice settings and Gemini context-cache name end up in another
+        // persona's turn: the queue releases as soon as a request is sent, so a second turn can
+        // overwrite those fields while the first is still being assembled.
         private class AudioRequest
         {
             public INpcConfiguration NpcConfig;
             public string RequestId;
+            public ConversationRequest Request;
+            public NpcClientBase NpcClient;
+            public List<ChatMessage> Messages;
         }
 
         private class TextRequest
@@ -1915,6 +1961,9 @@ namespace Tsc.AIBridge.Core
             public INpcConfiguration NpcConfig;
             public string Text;
             public string RequestId;
+            public ConversationRequest Request;
+            public NpcClientBase NpcClient;
+            public List<ChatMessage> Messages;
         }
 
 
