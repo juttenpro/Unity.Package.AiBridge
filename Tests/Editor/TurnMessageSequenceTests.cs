@@ -185,6 +185,39 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
+        public void TheRouterStillKnowsWhoIsSpeakingAfterConversationComplete()
+        {
+            // The other half of the v5.6.0 mistake, and the reason an approved interruption never
+            // reached the backend since v5.2.1. InterruptionManager.ResolveInterruptedTurnId asks the
+            // router "which turn is this NPC playing" in order to tell the backend to stop that turn's
+            // TTS. conversationComplete arrives ~200 ms into the speech, so clearing the router entry
+            // there made that lookup return null for every interruption that could realistically
+            // happen — the client silenced the NPC locally and the backend kept synthesising, at cost,
+            // for an answer nobody would hear.
+            StartTurn("marc-turn", "Marc");
+
+            DeliverText(CompleteJson("marc-turn"));
+
+            Assert.AreEqual("marc-turn", NpcMessageRouter.Instance.GetActiveRequestForNpc("Marc"),
+                "While Marc is still speaking, the router must still be able to name his turn.");
+        }
+
+        [Test]
+        public void RoutingStopsWhenTheAudioIsActuallyFinished()
+        {
+            // The counterpart: this must not become a leak. The client calls in at playback end.
+            StartTurn("marc-turn", "Marc");
+            DeliverText(CompleteJson("marc-turn"));
+
+            _orchestrator.ReleaseTurnRouting("marc-turn");
+
+            Assert.IsNull(NpcMessageRouter.Instance.GetActiveRequestForNpc("Marc"));
+            DeliverText(StreamEndJson("marc-turn"));
+            Assert.IsFalse(_npcObjects[0].GetComponent<RecordingNpcClient>().SawStreamEnd,
+                "Once the audio is finished the handler is gone, which is the point of releasing it.");
+        }
+
+        [Test]
         public void UnroutableAudioIsLoud()
         {
             // The other half of the contract: audio nobody can place must NOT pass silently. This is the

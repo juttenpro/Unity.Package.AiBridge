@@ -23,13 +23,16 @@ namespace Tsc.AIBridge.Tests.Editor
     /// CancelCurrentSession, so an abandoned turn stayed resolvable there as well — and that router is
     /// what NpcAudioPlayer.SendPauseStream / SendResumeStream consult to find a turn's stream.
     ///
-    /// WHAT: the router clear lives in ReleaseLiveSession, the one place a turn leaves the live set,
-    /// instead of being repeated (and forgotten) at each of its call sites. These tests pin that, per
-    /// path.
+    /// WHAT: `ReleaseLiveSession` ends only the BOOKKEEPING. Routing — both tables — is ended by
+    /// `ReleaseTurnRouting`, and only when the turn's audio can no longer arrive: its playback finished,
+    /// or it was cancelled with a backend cancel, timed out, or died with the socket.
     ///
-    /// The WebSocket handler is deliberately NOT torn down there, and one of these tests exists only to
-    /// keep it that way. v5.6.0 did tear it down there and broke every second turn — see
-    /// TheWebSocketHandlerOutlivesTheTurnsBookkeeping below.
+    /// This fixture had it the other way round twice, and both times the test was the thing that made the
+    /// mistake look correct. v5.6.0 tore both tables down at `conversationComplete` and every second turn
+    /// died; v5.6.1 fixed the socket handler and kept the router clear on the reasoning "that is where it
+    /// already was" — which was the same wrong premise, and it is why an approved interruption has never
+    /// reached the backend since v5.2.1. `conversationComplete` arrives ~200 ms after the FIRST audio
+    /// chunk. It is not the end of anything the NPC is doing.
     /// </summary>
     [TestFixture]
     public class TurnTeardownTests
@@ -79,24 +82,42 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
-        public void CompletingATurnStopsRoutingIt()
+        public void CompletingATurnEndsItsBookkeepingAndNothingElse()
         {
+            // The turn is no longer live, and both routing tables stay: the NPC is still speaking.
             StartTurn("esra-turn", "Esra");
 
             _orchestrator.CompleteSession("esra-turn");
+
+            Assert.IsFalse(_orchestrator.IsTurnLive("esra-turn"));
+            AssertStillRouted("esra-turn", "Esra");
+        }
+
+        [Test]
+        public void PlaybackFinishingStopsRoutingIt()
+        {
+            // The moment routing really ends. The client calls in from OnNpcReactionFinished, which is
+            // the only place that knows the audio is done.
+            StartTurn("esra-turn", "Esra");
+            _orchestrator.CompleteSession("esra-turn");
+
+            _orchestrator.ReleaseTurnRouting("esra-turn");
 
             AssertFullyTornDown("esra-turn");
         }
 
         [Test]
-        public void CancellingTheMicrophoneTurnStopsRoutingIt()
+        public void CancellingWithABackendCancelStopsRoutingIt()
         {
-            // The path that cleared neither table. An abandoned turn stayed resolvable in the router,
-            // which is what NpcAudioPlayer's pause/resume lookup goes through.
+            // The backend was told to stop, so no audio can still arrive and both tables can go.
             GiveMicTurn("mic-turn", "Marc");
             RegisterRouting("mic-turn", "Marc");
 
-            _orchestrator.CancelCurrentSession("test", cancelBackendAnswer: false);
+            // A backend cancel on a socket that was never connected (no Awake in EditMode) logs a
+            // [Recoverable] connection error. That is the harness, not the product.
+            LogAssert.ignoreFailingMessages = true;
+            _orchestrator.CancelCurrentSession("test", cancelBackendAnswer: true);
+            LogAssert.ignoreFailingMessages = false;
 
             AssertFullyTornDown("mic-turn");
         }
@@ -129,16 +150,23 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
-        public void ADisplacedMicrophoneTurnStopsRoutingIt()
+        public void ADisplacedMicrophoneTurnKeepsItsRouting()
         {
-            // Ten rapid push-to-talk presses on the same NPC are one continuous session by design: the
-            // displaced turn gets no backend cancel, so nothing but this releases it.
+            // Ten rapid push-to-talk presses on the same NPC are one continuous session by design, and
+            // the displaced turn gets NO backend cancel — so its answer may still be on its way. Dropping
+            // its routing would drop audio, and unroutable binary audio ends the lesson.
+            //
+            // The cost is a bounded leak: if that answer never plays, its two routing entries stay for
+            // the rest of the lesson. One per displaced press, against a dropped chunk killing the
+            // session — see Concurrent-Turns-Plan step 13.
             GiveMicTurn("press-1", "Marc");
             RegisterRouting("press-1", "Marc");
 
             GiveMicTurn("press-2", "Marc");
 
-            AssertFullyTornDown("press-1");
+            Assert.IsFalse(_orchestrator.IsTurnLive("press-1"), "its bookkeeping is gone");
+            Assert.IsTrue(IsRoutedByWebSocket("press-1"),
+                "but an answer that arrives must still be playable rather than fatal");
         }
 
         [Test]
@@ -147,6 +175,8 @@ namespace Tsc.AIBridge.Tests.Editor
             // Every path can discover the same dead turn, so this runs more than once per turn.
             Invoke("ReleaseLiveSession", "never-existed");
             Invoke("ReleaseLiveSession", (string)null);
+            _orchestrator.ReleaseTurnRouting("never-existed");
+            _orchestrator.ReleaseTurnRouting(null);
 
             Assert.IsFalse(IsRoutedByRouter("never-existed"));
         }
@@ -230,8 +260,20 @@ namespace Tsc.AIBridge.Tests.Editor
         {
             Assert.IsFalse(_orchestrator.IsTurnLive(requestId), $"{requestId} must not be live");
             Assert.IsFalse(IsRoutedByRouter(requestId),
-                $"NpcMessageRouter must stop resolving {requestId} — NpcAudioPlayer's pause/resume lookup " +
-                "goes through it and would find a turn that no longer exists.");
+                $"NpcMessageRouter must stop resolving {requestId} once the audio is done.");
+            Assert.IsFalse(IsRoutedByWebSocket(requestId),
+                $"WebSocketClient must stop routing {requestId} once the audio is done, or its handler " +
+                "table grows one entry per turn for the whole lesson.");
+        }
+
+        private void AssertStillRouted(string requestId, string npcName)
+        {
+            Assert.IsTrue(IsRoutedByWebSocket(requestId),
+                $"The rest of {requestId}'s audio and its audioStreamEnd still route through this handler.");
+            Assert.AreEqual(requestId, NpcMessageRouter.Instance.GetActiveRequestForNpc(npcName),
+                "And the router must still be able to name the turn this NPC is playing — that is what " +
+                "InterruptionManager.ResolveInterruptedTurnId asks in order to stop the interrupted " +
+                "turn's TTS on the backend.");
         }
 
         private bool IsRoutedByWebSocket(string requestId)

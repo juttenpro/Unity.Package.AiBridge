@@ -6,6 +6,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.7.0] - 2026-09-08
+
+### Added
+- **A turn can be interrupted while the NPC is still thinking, and the persona decides.**
+  `InterruptionManager.TryInterruptWhileThinking()` and `IsInterruptionAllowedForTurnOwner()`. The
+  overlap monitor can only judge a press that overlaps AUDIO, and between "the request went out" and
+  "the first chunk plays" there are seconds of LLM and TTS latency in which the NPC is visibly thinking.
+  That phase used to walk straight past this manager: a matured press sent a plain PlayerStartsTalking
+  with `IsPlayerInterruption=false`, nothing cancelled the answer already on its way, and the NPC then
+  delivered it over the player's new turn. From the player's seat, "I cannot interrupt her while she is
+  thinking" (session log 2026-09-08 07:31, where the press matured 222 ms before her audio started).
+
+  `AllowInterruption` now means the same thing in both phases, so a persona configured as
+  non-interruptible is not interruptible in either. The deliberateness gate still differs because it has
+  to: overlap persistence when there is audio, the client's hold window when there is not. All 42
+  personas in the host project have `allowInterruption: 1`, so no existing course changes behaviour.
+- **`RequestOrchestrator.ReleaseTurnRouting(string requestId)`** — ends a turn's message routing, both
+  tables, separately from its bookkeeping.
+
+### Fixed
+- **An approved interruption has never reached the backend since v5.2.1.**
+  `InterruptionManager.ResolveInterruptedTurnId` asks `NpcMessageRouter` which turn an NPC is playing, in
+  order to tell the backend to stop that turn's TTS. But the router entry was cleared at
+  `conversationComplete`, which arrives ~200 ms after the FIRST audio chunk — so for any interruption
+  that could realistically happen the lookup returned null, the client logged "could not resolve its turn
+  id", and the backend kept synthesising an answer nobody would hear, at cost.
+
+  Same root cause as the 5.6.1 regression, and the same wrong premise: `conversationComplete` is not the
+  end of anything the NPC is doing. 5.6.1 fixed the WebSocket handler and left the router clear in place
+  on the reasoning "that is where it already was". `ReleaseLiveSession` now ends only the bookkeeping;
+  both routing tables are released by `ReleaseTurnRouting`, at playback end or on the paths where no
+  audio can still arrive (backend cancel, timeout, dropped socket).
+
+  Residual: a microphone turn displaced by a rapid re-press keeps its routing, because it gets no backend
+  cancel and its answer may still arrive — dropping it would drop audio, and unroutable binary audio ends
+  the lesson. One bounded leak per displaced press. See Concurrent-Turns-Plan step 13.
+
 ## [5.6.2] - 2026-09-08
 
 ### Added

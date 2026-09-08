@@ -311,7 +311,11 @@ namespace Tsc.AIBridge.Core
             // it without resetting downstream state — symptom: the user tries again with the same NPC and
             // nothing happens. _isProcessingRequest is cleared defensively in case a ProcessXxxRequest
             // coroutine did not reach its finally.
-            ReleaseLiveSession(_micSession?.RequestId);
+            // An aborted turn never got an answer, so nothing more will arrive for it: routing can go
+            // at the same time as the bookkeeping.
+            var abortedRequestId = _micSession?.RequestId;
+            ReleaseLiveSession(abortedRequestId);
+            ReleaseTurnRouting(abortedRequestId);
             _micSession = null;
             _isProcessingRequest = false;
         }
@@ -338,6 +342,7 @@ namespace Tsc.AIBridge.Core
                 Debug.LogWarning($"[RequestOrchestrator] Turn {requestId} failed — {context}. " +
                                  "The microphone's own turn is untouched.");
                 ReleaseLiveSession(requestId);
+                ReleaseTurnRouting(requestId);
             }
         }
 
@@ -809,8 +814,11 @@ namespace Tsc.AIBridge.Core
                 // subscriptions is how their completions went unheard and their turns unreleased.
                 // Subscriptions end when the NpcClient is destroyed.
 
-                // Clear session
+                // Clear session. Routing only stops when the backend was told to stop: with
+                // LetAnswerFinish the answer is still coming and still has to be routed and played.
                 ReleaseLiveSession(requestIdToCancel);
+                if (cancelBackendAnswer)
+                    ReleaseTurnRouting(requestIdToCancel);
                 _micSession = null;
                 _activeNpcConfig = null;
                 _activeNpcClient = null;
@@ -1001,28 +1009,32 @@ namespace Tsc.AIBridge.Core
         public bool HasLiveTurnForNpc(string npcId) => FindOtherLiveTurnForNpc(npcId, null) != null;
 
         /// <summary>
-        /// Drops a turn from the live set and clears the NpcMessageRouter entry keyed on its RequestId.
-        /// Safe to call for a turn that is already gone — every step is idempotent.
+        /// Drops a turn from the live set. Nothing else: a turn's BOOKKEEPING ends at
+        /// `conversationComplete`, and its message ROUTING must outlive that. Tearing routing down here
+        /// is a mistake this method has now made twice.
         ///
-        /// This is the ONLY place a turn leaves _liveSessions, which is why the router clear belongs here
-        /// rather than at each of the eight call sites: the completion and timeout paths did it, the
-        /// cancel path did not, so an abandoned turn stayed resolvable in the router that
-        /// NpcAudioPlayer.SendPauseStream/SendResumeStream consult.
+        /// The backend sends `conversationComplete` about 200 ms after the FIRST audio chunk of a turn,
+        /// not after the last. So at this moment the NPC is usually still speaking, and two things are
+        /// still needed:
         ///
-        /// **`WebSocketClient.UnregisterNpc` deliberately does NOT happen here.** v5.6.0 put it here and
-        /// broke every second turn: a turn leaves the live set at `conversationComplete`, which the
-        /// backend sends ~200 ms after the FIRST audio chunk, not after the last. Dropping the handler
-        /// there meant the rest of that turn's audio and its `audioStreamEnd` arrived with nowhere to go,
-        /// so the NpcClient never closed the stream — the NPC stayed "talking" with an empty buffer, the
-        /// next talk-button press was classified as an interruption attempt and silently discarded, and
-        /// the turn only ended on the 15-second safety net. Binary audio with no handler is worse still:
-        /// it logs a `Debug.LogError`, which ends the lesson. And with
-        /// <see cref="PlayerTurnsAwayPolicy.LetAnswerFinish"/> the whole point is that the answer keeps
-        /// arriving after the turn is released locally.
+        /// * **`WebSocketClient._npcHandlers`** — the rest of the audio and the `audioStreamEnd` route
+        ///   through it. v5.6.0 dropped it here and every second turn died: the stream never closed, the
+        ///   NPC stayed "talking" with an empty buffer, and the player's next press was classified as an
+        ///   interruption attempt and silently discarded. Unroutable binary audio also logs a
+        ///   `Debug.LogError`, which ends the lesson.
+        /// * **`NpcMessageRouter`** — it answers "which turn is this NPC playing", which is exactly what
+        ///   `InterruptionManager.ResolveInterruptedTurnId` asks in order to tell the backend to stop the
+        ///   TTS of an interrupted answer. Clearing it at completion meant that lookup returned null for
+        ///   any interruption more than ~200 ms into the NPC's speech, i.e. all of them: since v5.2.1
+        ///   every approved interruption logged "could not resolve its turn id" and the backend was never
+        ///   told, so the TTS ran to completion unheard and at cost. It is also what
+        ///   `NpcAudioPlayer.SendPauseStream` / `SendResumeStream` consult.
         ///
-        /// The bookkeeping turn and the message routing have different lifetimes: bookkeeping ends at
-        /// completion, routing has to outlive it until the audio is actually done. Closing the
-        /// `_npcHandlers` leak needs a hook at that later moment; see Concurrent-Turns-Plan step 13.
+        /// Both are released by <see cref="ReleaseTurnRouting"/>, at the moment the turn's audio is
+        /// genuinely finished — or immediately on the paths where no audio can still arrive.
+        ///
+        /// And with <see cref="PlayerTurnsAwayPolicy.LetAnswerFinish"/> the whole point is that an
+        /// answer keeps arriving after its turn was released locally.
         /// </summary>
         private void ReleaseLiveSession(string requestId)
         {
@@ -1030,9 +1042,30 @@ namespace Tsc.AIBridge.Core
                 return;
 
             _liveSessions.Remove(requestId);
+        }
+
+        /// <summary>
+        /// Stops routing everything keyed on <paramref name="requestId"/>: the WebSocket handler and the
+        /// NpcMessageRouter entry. The exact mirror of what `ProcessAudioRequest` / `ProcessTextRequest`
+        /// register, and deliberately separate from <see cref="ReleaseLiveSession"/> — see the note there
+        /// for why these two lifetimes are not the same one.
+        ///
+        /// Call this when the turn's audio can no longer arrive: its playback finished (the client knows
+        /// that moment and calls in), or the turn was cancelled with a backend cancel, timed out, or died
+        /// with the socket. Safe to call twice; both removals are idempotent.
+        /// </summary>
+        public void ReleaseTurnRouting(string requestId)
+        {
+            if (string.IsNullOrEmpty(requestId))
+                return;
+
+            _webSocketClient?.UnregisterNpc(requestId);
 
             if (NpcMessageRouter.HasInstance)
                 NpcMessageRouter.Instance.ClearRequest(requestId);
+
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Stopped routing turn {requestId}.");
         }
 
         /// <summary>
@@ -1257,8 +1290,9 @@ namespace Tsc.AIBridge.Core
                 });
             }
 
-            // Router and WebSocket routing are torn down by ReleaseLiveSession, for every path.
+            // No answer is coming for a turn the backend never responded to, so stop routing it too.
             ReleaseLiveSession(requestId);
+            ReleaseTurnRouting(requestId);
 
             // An NPC turn's timeout must not disarm the microphone or tell the RuleSystem the player
             // said nothing — the player may be mid-sentence into a turn of their own.

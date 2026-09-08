@@ -656,6 +656,57 @@ namespace Tsc.AIBridge.Audio.Interruption
         }
 
         /// <summary>
+        /// Whether the NPC whose turn this is may be interrupted at all, using the same precedence as the
+        /// overlap monitor: the addressed NPC's policy, else the one a request was started for, else the
+        /// permissive fallback.
+        ///
+        /// Exposed because the audible phase is not the only one in which a player interrupts. The
+        /// overlap monitor can only judge a press that overlaps AUDIO, and between "the request went out"
+        /// and "the first chunk plays" there is no audio to overlap with — several seconds of LLM and TTS
+        /// latency in which the NPC is visibly thinking and the player may well cut in.
+        /// </summary>
+        public bool IsInterruptionAllowedForTurnOwner()
+            => ResolveInterruptionTarget(_addressedPolicy, TargetFrom(_activeNpcConfig),
+                DefaultPersistenceTimeFallback).AllowInterruption;
+
+        /// <summary>
+        /// Interrupts a turn that is still in its thinking phase — requested, but not audible yet.
+        ///
+        /// The client holds such a press back until it has lasted long enough to be deliberate
+        /// (DeferredPlayerStart) and then calls this. That hold is the deliberateness gate, standing in
+        /// for the overlap persistence the audible path uses; there is no audio to measure overlap
+        /// against. Whether the interruption is ALLOWED is this manager's decision either way, so a
+        /// persona configured as non-interruptible is not interruptible in either phase.
+        ///
+        /// Before this existed, a matured press in the thinking phase walked straight past this manager
+        /// and sent a plain PlayerStartsTalking with IsPlayerInterruption=false. Nothing then cancelled
+        /// the answer already on its way, so the NPC delivered it over the player's new turn — from the
+        /// player's seat, "I cannot interrupt her while she is thinking" (session log 2026-09-08 07:31).
+        /// </summary>
+        /// <returns>False when this NPC may not be interrupted; the caller must then drop the press.</returns>
+        public bool TryInterruptWhileThinking()
+        {
+            if (!IsInterruptionAllowedForTurnOwner())
+            {
+                if (enableVerboseLogging)
+                {
+                    Debug.Log($"[InterruptionManager] {(TurnOwnerClient == null ? "NPC" : TurnOwnerClient.NpcName)} " +
+                              "may not be interrupted (AllowInterruption is off) — the held-back press is dropped.");
+                }
+                return false;
+            }
+
+            if (enableVerboseLogging)
+            {
+                Debug.Log("[InterruptionManager] Interrupting a turn that is still thinking — no audio to " +
+                          "stop, but the backend must stop generating and the RuleSystem must hear about it.");
+            }
+
+            OnInterruptionDetected();
+            return true;
+        }
+
+        /// <summary>
         /// Called when an interruption is detected. Made public for testing.
         /// </summary>
         public void OnInterruptionDetected()
