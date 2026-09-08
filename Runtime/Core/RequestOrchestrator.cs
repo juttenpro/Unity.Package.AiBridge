@@ -2250,8 +2250,11 @@ namespace Tsc.AIBridge.Core
                 // instead of staying half-armed forever.
                 StartCoroutine(TurnFirstSignalWatchdog(request.RequestId));
 
+                // This turn's own id, not the microphone session's: the text path deliberately
+                // leaves _micSession alone (see RegisterLiveSession above), so reading it here threw
+                // on every NPC-initiated turn that had no microphone turn in flight beside it.
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Text request started. Session: {_micSession.RequestId}");
+                    Debug.Log($"[RequestOrchestrator] Text request started. Request: {request.RequestId}");
 
                 // Start latency measurement for NPC-initiated conversations
                 // For player-initiated: StartMeasurement is called on PTT release

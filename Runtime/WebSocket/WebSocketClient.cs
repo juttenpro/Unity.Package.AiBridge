@@ -592,7 +592,7 @@ namespace Tsc.AIBridge.WebSocket
         /// <summary>
         /// Send TextInput message for text-only conversation (no audio)
         /// </summary>
-        public async Task SendTextInputAsync(TextInputMessage message)
+        public virtual async Task SendTextInputAsync(TextInputMessage message)
         {
             // Ensure connection before sending (follows WebSocketClient pattern)
             if (!await EnsureConnectionAsync())

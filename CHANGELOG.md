@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.11.1] - 2026-09-08
+
+### Fixed
+- **An NPC-initiated turn no longer throws when verbose logging is on.** `ProcessTextRequest` ended its
+  send with a verbose log line that read `_micSession.RequestId`, but the text path deliberately leaves
+  `_micSession` alone — the player is not talking into a character-speaks-first turn, and touching that
+  pointer is what the push-to-talk release depends on. The line was a leftover from before the text and
+  audio paths were split, so with verbose logging enabled every NPC-initiated turn threw a
+  `NullReferenceException` unless a microphone turn happened to be in flight beside it.
+
+  Two things went wrong downstream: the turn's latency measurement never started, and the host project's
+  `ErrorHandler` classifies an unmatched exception as fatal, so the trainee got the error popup over a
+  running session. The line now logs the turn's own request id, which is also the only correct value
+  here — a microphone session belongs to a different turn.
+
+### Changed
+- `WebSocketClient.SendTextInputAsync` is `virtual`, matching the other `Send*` methods it sits between.
+  Without it a test double cannot intercept the text path at all, which is why that path had no coverage.
+
+### Added
+- `NpcInitiatedTurn_WithVerboseLogging_DoesNotThrow`, which runs a full NPC-initiated turn with verbose
+  logging on and fails on any exception. NOT YET EXECUTED: this project's PlayMode runner enters play
+  mode on the open scene rather than an isolated one, so the fixture never ran here. The fix itself was
+  verified end to end instead — reproduced in play mode with the coach onboarding turn, then confirmed
+  gone after the change.
+
+
 ## [5.11.0] - 2026-09-08
 
 ### Fixed

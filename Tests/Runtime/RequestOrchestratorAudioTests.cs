@@ -949,6 +949,85 @@ namespace Tsc.AIBridge.Tests.Runtime
 
         #endregion
 
+        #region Test 13: NPC-initiated Turn - Verbose Logging
+
+        /// <summary>
+        /// BUSINESS REQUIREMENT: an NPC-initiated (text) turn must survive verbose logging being on.
+        ///
+        /// WHY: the text path deliberately leaves _micSession alone — the player is not talking into a
+        /// character-speaks-first turn, and touching it would steal the pointer the push-to-talk release
+        /// depends on. A leftover verbose log line still read _micSession.RequestId there, so with
+        /// verbose logging enabled every NPC-initiated turn threw a NullReferenceException unless a
+        /// microphone turn happened to be in flight. ErrorHandler classifies an unmatched exception as
+        /// Fatal, so the trainee got the error popup over a running session.
+        ///
+        /// WHAT: runs a full NPC-initiated turn with verbose logging on and fails on any exception.
+        ///
+        /// HOW: it lives in this fixture because the mocks it needs (WebSocket, NpcClient, provider)
+        /// are private to it. LogAssert.ignoreFailingMessages is on so the recorded exception is
+        /// reported by the assertion below — which names the symptom — instead of by Unity's generic
+        /// auto-fail.
+        ///
+        /// WHAT THIS DOES NOT COVER: the backend round trip. The mock WebSocket accepts the send and
+        /// never answers, which is enough: the bug sits between the send and the latency measurement.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator NpcInitiatedTurn_WithVerboseLogging_DoesNotThrow()
+        {
+            yield return null;
+
+            var exceptions = new List<string>();
+            Application.LogCallback recorder = (message, stack, type) =>
+            {
+                if (type == LogType.Exception)
+                    exceptions.Add(message);
+            };
+
+            var verboseField = typeof(RequestOrchestrator).GetField("enableVerboseLogging",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            Assert.IsNotNull(verboseField, "enableVerboseLogging must exist — was the field renamed?");
+            var previousVerbose = (bool)verboseField.GetValue(_orchestrator);
+
+            var previousIgnore = LogAssert.ignoreFailingMessages;
+            Application.logMessageReceived += recorder;
+            LogAssert.ignoreFailingMessages = true;
+            verboseField.SetValue(_orchestrator, true);
+
+            try
+            {
+                var request = new ConversationRequest
+                {
+                    NpcId = "TestNPC",
+                    IsNpcInitiated = true, // empty text: the NPC speaks first, so no microphone turn
+                    Messages = new List<ChatMessage>
+                    {
+                        new ChatMessage { Role = "system", Content = "Test" }
+                    },
+                    LlmProvider = "openai",
+                    LlmModel = "gpt-4"
+                };
+
+                _orchestrator.StartConversationRequest(request);
+
+                // One frame to drain the request queue, one for the coroutine to run past the send.
+                yield return null;
+                yield return null;
+            }
+            finally
+            {
+                verboseField.SetValue(_orchestrator, previousVerbose);
+                LogAssert.ignoreFailingMessages = previousIgnore;
+                Application.logMessageReceived -= recorder;
+            }
+
+            Assert.IsEmpty(exceptions,
+                "An NPC-initiated turn threw with verbose logging on. The trainee sees ErrorHandler's " +
+                "fatal popup over a running session, and the turn's latency measurement never starts. " +
+                "Exceptions: " + string.Join(" | ", exceptions));
+        }
+
+        #endregion
+
         #region Mock Classes
 
         /// <summary>
@@ -1083,6 +1162,14 @@ namespace Tsc.AIBridge.Tests.Runtime
             public override System.Threading.Tasks.Task SendSessionStartAsync(Messages.SessionStartMessage message, System.Threading.CancellationToken cancellationToken = default)
             {
                 SentJsonMessages.Add(Newtonsoft.Json.JsonConvert.SerializeObject(message));
+                return System.Threading.Tasks.Task.CompletedTask;
+            }
+
+            public List<Messages.TextInputMessage> SentTextInputs { get; } = new List<Messages.TextInputMessage>();
+
+            public override System.Threading.Tasks.Task SendTextInputAsync(Messages.TextInputMessage message)
+            {
+                SentTextInputs.Add(message);
                 return System.Threading.Tasks.Task.CompletedTask;
             }
 
