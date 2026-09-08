@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.9.1] - 2026-09-08
+
+### Fixed
+- **An approved interruption now actually reaches the backend.** The turn id was resolved AFTER
+  `StopAudio()`, and stopping the audio is what takes the routing down: it raises playback-interrupted,
+  the client reports that turn's audio as finished, and with the backend already done — completion lands
+  about 200 ms into the speech — the orchestrator releases the turn's routing. `ResolveInterruptedTurnId`
+  reads `NpcMessageRouter`, so it then ran against a table cleared one millisecond earlier and returned
+  null every time (session log 2026-09-08: release at 09:39:45.117, failed lookup at .118). The
+  interrupted answer was synthesised in full, unheard, at cost.
+
+  Resolved before `StopAudio()` now. This is the second fix for the same notification — 5.9.0 stopped the
+  router entry being cleared at completion, which was a different way of losing the same lookup. The
+  lesson is in the test fixture: this id only exists while the turn's routing is up.
+
+### Added
+- `InterruptedTurnNotificationTests`, including one test that reproduces the production cascade with a
+  test double whose `StopAudio` clears the routing. The three tests that exercise the lookup in
+  isolation stayed green through the ordering bug — the fourth is the one that catches it.
+
 ## [5.9.0] - 2026-09-08
 
 ### Fixed

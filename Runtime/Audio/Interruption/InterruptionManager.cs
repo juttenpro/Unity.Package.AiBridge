@@ -706,11 +706,18 @@ namespace Tsc.AIBridge.Audio.Interruption
                 Debug.Log($"[InterruptionManager] Interrupting {interrupted.NpcName}, IsTalking: {interrupted.IsTalking} - stopping its audio");
             }
 
+            // Resolve the turn id BEFORE stopping the audio. StopAudio raises playback-interrupted,
+            // which the client reports as "this turn's audio is finished" — and with the backend already
+            // done (conversationComplete lands ~200 ms into the speech) that releases the turn's routing.
+            // The router is what this lookup goes through, so asking afterwards asks a table we just
+            // cleared, one millisecond earlier: "could not resolve its turn id", every single time
+            // (session log 2026-09-08 09:39:45.117 release, 09:39:45.118 failed lookup).
+            var interruptedRequestId = ResolveInterruptedTurnId(interrupted);
+
             // Stop the NPC's audio playback (stops playback, clears buffer)
             interrupted.StopAudio();
 
             // Tell the backend to stop the TTS of the turn we just silenced locally.
-            var interruptedRequestId = ResolveInterruptedTurnId(interrupted);
             if (string.IsNullOrEmpty(interruptedRequestId))
             {
                 // The local StopAudio has already happened, so the player hears the right thing; the
