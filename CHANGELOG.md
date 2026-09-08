@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.2] - 2026-09-08
+
+### Added
+- **`TurnMessageSequenceTests` — the test level this package was missing.** 464 passing tests did not
+  catch the 5.6.1 regression, and the reason was structural: every orchestrator test asserted one state
+  transition in isolation ("call this, check that field"), and none of them knew the ORDER in which the
+  backend speaks. The test written next to the 5.6.0 change therefore asserted the same wrong premise
+  the code did — that `conversationComplete` means the turn is done talking — and passed.
+
+  This fixture drives the real `WebSocketClient` routing and the real completion path with a realistic
+  message SEQUENCE, framed on the wire the way the backend frames it (binary audio header included, so
+  the format is pinned too). Every assertion is about what did or did not arrive at the NPC, not about a
+  field the implementation happens to write. Covered: audio and `AudioStreamEnd` after
+  `conversationComplete`, an abandoned turn under `LetAnswerFinish`, two NPCs streaming interleaved
+  without receiving each other's frames, and unroutable audio staying loud.
+
+  Verified sharp: with the 5.6.0 line put back, 5 tests fail with messages that name the production
+  symptom. What it still cannot see is real backend timing, the 15-second playback safety net, and audio
+  actually decoding — a play session remains the only end-to-end proof.
+
 ## [5.6.1] - 2026-09-08
 
 ### Fixed
