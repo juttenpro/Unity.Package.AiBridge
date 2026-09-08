@@ -60,7 +60,7 @@ namespace Tsc.AIBridge.Core
         /// <param name="npcName">Name of the NPC</param>
         /// <param name="requestId">Optional request ID. If null, a new GUID will be generated</param>
         public ConversationSession(string npcName = null, string requestId = null, string npcId = null,
-            PlayerTurnsAwayPolicy onPlayerTurnsAway = PlayerTurnsAwayPolicy.CancelAnswer)
+            PlayerTurnsAwayPolicy onPlayerTurnsAway = PlayerTurnsAwayPolicy.LetAnswerFinish)
         {
             RequestId = requestId ?? Guid.NewGuid().ToString();
             NpcName = npcName ?? "Unknown";

@@ -197,12 +197,28 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
-        public void TheDefaultPolicyIsTheBehaviourEveryExistingScenarioAlreadyHas()
+        public void AnAbandonedAnswerFinishesUnlessContentSaysOtherwise()
         {
-            Assert.AreEqual(PlayerTurnsAwayPolicy.CancelAnswer,
-                new ConversationSession("Marc", "mic-turn").OnPlayerTurnsAway,
-                "Changing this default would silently change every existing course.");
-            Assert.AreEqual(PlayerTurnsAwayPolicy.CancelAnswer, new ConversationRequest().OnPlayerTurnsAway);
+            // This test used to assert the opposite, on the reasoning that cancelling preserved existing
+            // behaviour. That reasoning was wrong about what it was preserving: cancelling was never a
+            // decision, only what the code happened to do before the setting existed, and an NPC falling
+            // silent because the player glanced away is wrong on its own terms.
+            //
+            // Changed while nothing had it serialized: the field appeared in no asset, prefab or scene,
+            // so no content carried a value to migrate and every persona picked up the new default from
+            // its field initializer.
+            Assert.AreEqual(PlayerTurnsAwayPolicy.LetAnswerFinish,
+                new ConversationSession("Marc", "mic-turn").OnPlayerTurnsAway);
+            Assert.AreEqual(PlayerTurnsAwayPolicy.LetAnswerFinish, new ConversationRequest().OnPlayerTurnsAway);
+        }
+
+        [Test]
+        public void AnUnsetPolicyMeansTheAnswerFinishes()
+        {
+            // LetAnswerFinish is the enum's ZERO, so a default-constructed value, a field nobody set and
+            // an asset with no entry for it all mean the same safe thing. The alternative — an explicit
+            // initializer on every path — is one missed path away from an NPC going silent again.
+            Assert.AreEqual(PlayerTurnsAwayPolicy.LetAnswerFinish, default(PlayerTurnsAwayPolicy));
         }
 
         // --- helpers ---------------------------------------------------------------------------------

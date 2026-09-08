@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.10.0] - 2026-09-08
+
+### Changed
+- **`PlayerTurnsAwayPolicy.LetAnswerFinish` is now the default, and the enum's zero.** An NPC falling
+  silent because the player glanced away is wrong on its own terms; the old cancelling default was never
+  a decision, only what the code happened to do before the setting existed. Making it the ZERO value
+  means a default-constructed value, a field nobody set and an asset with no entry for it all mean the
+  same safe thing — the alternative is one missed initializer away from an NPC going quiet again.
+
+  Safe to do exactly now: the field appeared in no asset, prefab or scene in the host project, so no
+  content carried a value to migrate and every persona picks the new default up from its field
+  initializer. That window does not come back. `CancelAnswer` is still available and is what content
+  asks for when turning away should read as cutting someone off.
+
+### Fixed
+- **A drained playback buffer no longer clicks.** On underrun the audio callback filled the rest of the
+  block with hard zeros — a step from a non-zero sample straight to 0 is a discontinuity, and so is the
+  step back on resume. Two clicks per gap, which is the "tikje" people hear at a sentence boundary while
+  the next sentence's TTS is being made. Both edges are now ramped over ~3 ms: short enough to lose no
+  speech, long enough that the ear hears a fade. The pause itself is untouched — it sits at a sentence
+  boundary and is largely natural.
+
+### Added
+- **Underruns are reported once per turn, whatever the verbose flag says.** They were logged every
+  fiftieth occurrence and only with verbose logging on, so "is this still happening?" could not be
+  answered from a session log. Now one warning per answer, naming the count and the usual cause.
+
 ## [5.9.1] - 2026-09-08
 
 ### Fixed

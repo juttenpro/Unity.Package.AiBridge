@@ -233,6 +233,15 @@ namespace Tsc.AIBridge.Audio.Playback
         // Statistics
         private float _lastBufferLevel;
         private int _underrunCount;
+
+        // Samples still to ramp up after an underrun. Read and written on the audio thread only.
+        private int _fadeInSamplesRemaining;
+
+        // Length of the click-suppression ramp, in samples. ~3 ms at 48 kHz: short enough that no
+        // speech is lost, long enough that the ear hears a fade instead of an edge. A constant on
+        // purpose — nothing about one NPC makes a discontinuity a different length, and a serialized
+        // value would go stale in 27 prefabs (see the aibridge 1.34.0 changelog).
+        private const int FADE_SAMPLES = 144;
         private bool _cachedIsPlaying; // Thread-safe cache of AudioSource.isPlaying
         private int _samplesPlayedSinceStart; // Track samples played since playback started
         private const int UNDERRUN_GRACE_PERIOD_SAMPLES = 24000; // ~500ms at 48kHz - ignore underruns during buffer stabilization
@@ -993,6 +1002,18 @@ namespace Tsc.AIBridge.Audio.Playback
                 else
                 {
                     Debug.Log($"[{_cachedGameObjectName}] Playback stopped - Played: {_totalSamplesPlayed}/{_totalSamplesReceived} samples, Underruns: {_underrunCount}");
+
+                // One line per turn, whatever the verbose flag says. An underrun mid-answer is the gap
+                // people hear; without this the only evidence was a warning every fiftieth occurrence,
+                // and only with verbose logging on — so "is it still happening?" could not be answered
+                // from a session log.
+                if (_underrunCount > 0)
+                {
+                    Debug.LogWarning($"[{_cachedGameObjectName}] {_underrunCount} buffer underrun(s) during this " +
+                                     "answer — the audio ran dry while more was still expected. Usually the gap " +
+                                     "between two sentences: the next sentence's TTS is only requested once the " +
+                                     "previous one has finished streaming. The clicks are faded out; the pause is not.");
+                }
                 }
             }
 
@@ -1241,6 +1262,14 @@ namespace Tsc.AIBridge.Audio.Playback
             {
                 if (_audioBuffer.TryDequeue(out var sample))
                 {
+                    // Coming back from an underrun: ramp up over the same few milliseconds, so the
+                    // 0 -> speech edge is a fade rather than a second click.
+                    if (_fadeInSamplesRemaining > 0)
+                    {
+                        sample *= 1f - (_fadeInSamplesRemaining - 1) / (float)FADE_SAMPLES;
+                        _fadeInSamplesRemaining--;
+                    }
+
                     if (channels == 1)
                     {
                         // Mono output
@@ -1266,6 +1295,27 @@ namespace Tsc.AIBridge.Audio.Playback
             // Fill remaining with silence if needed
             if (samplesProvided < samplesNeeded)
             {
+                // Ramp the last few samples down to zero instead of stepping there.
+                //
+                // A step from a non-zero sample straight to 0 is a discontinuity, and a discontinuity is
+                // a click. That is the "tikje" people hear when a sentence boundary leaves the buffer
+                // empty for the ~600 ms the next sentence's TTS needs: one click going into the silence
+                // and one coming out of it. The pause itself sits at a sentence boundary and is largely
+                // natural; the clicks are the artefact.
+                //
+                // A few milliseconds is enough — short enough not to swallow speech, long enough that
+                // the ear hears a fade rather than an edge.
+                var fadeOut = Mathf.Min(samplesProvided, FADE_SAMPLES);
+                for (var i = 0; i < fadeOut; i++)
+                {
+                    var gain = (float)(fadeOut - 1 - i) / fadeOut;
+                    var at = samplesProvided - fadeOut + i;
+                    for (var ch = 0; ch < channels; ch++)
+                    {
+                        data[at * channels + ch] *= gain;
+                    }
+                }
+
                 for (var i = samplesProvided; i < samplesNeeded; i++)
                 {
                     for (var ch = 0; ch < channels; ch++)
@@ -1273,6 +1323,10 @@ namespace Tsc.AIBridge.Audio.Playback
                         data[i * channels + ch] = 0f;
                     }
                 }
+
+                // Fade the resumption in too, symmetrically: coming out of the silence is the second
+                // click. _fadeInSamplesRemaining is consumed by the normal fill path above.
+                _fadeInSamplesRemaining = FADE_SAMPLES;
 
                 // Only count as underrun if we're still expecting more data
                 // AND we're past the grace period (allows buffer to stabilize after StartPlayback)

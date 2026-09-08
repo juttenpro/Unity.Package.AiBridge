@@ -16,15 +16,22 @@ namespace Tsc.AIBridge.Core
     public enum PlayerTurnsAwayPolicy
     {
         /// <summary>
-        /// Stop the abandoned NPC's answer. What the client always did, so it stays the default: any
-        /// existing scenario keeps behaving exactly as before.
-        /// </summary>
-        CancelAnswer = 0,
-
-        /// <summary>
         /// Let the abandoned NPC finish. The player hears the answer even after turning away — the
         /// natural interaction when asking one team member something and immediately turning to another.
+        ///
+        /// **This is deliberately the enum's zero**, so anything that does not set the policy at all
+        /// gets it. Cancelling was the default when the setting was introduced, on the reasoning that it
+        /// preserved existing behaviour — but that behaviour was never a decision, only what the code
+        /// happened to do, and an NPC falling silent because the player glanced away is wrong on its
+        /// own terms. Changed while nothing had it serialized yet: the field appeared in no asset,
+        /// prefab or scene, so no content carried a value to migrate. That window does not come back.
         /// </summary>
-        LetAnswerFinish = 1,
+        LetAnswerFinish = 0,
+
+        /// <summary>
+        /// Stop the abandoned NPC's answer. Content asks for this when turning away should read as
+        /// cutting someone off.
+        /// </summary>
+        CancelAnswer = 1,
     }
 }

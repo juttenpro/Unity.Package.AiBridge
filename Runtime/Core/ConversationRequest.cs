@@ -16,7 +16,7 @@ namespace Tsc.AIBridge.Core
         /// policy, configured per turn by the RuleSystem. Defaults to the behaviour the client always
         /// had, so an existing scenario that sets nothing keeps working exactly as before.
         /// </summary>
-        public PlayerTurnsAwayPolicy OnPlayerTurnsAway { get; set; } = PlayerTurnsAwayPolicy.CancelAnswer;
+        public PlayerTurnsAwayPolicy OnPlayerTurnsAway { get; set; } = PlayerTurnsAwayPolicy.LetAnswerFinish;
 
         /// <summary>
         /// Id for this turn, supplied by the caller. It becomes the session RequestId and is echoed on
