@@ -7,20 +7,21 @@ using UnityEngine;
 namespace Tsc.AIBridge.Tests.Editor
 {
     /// <summary>
-    /// BUSINESS REQUIREMENT: whether an NPC may be interrupted is one decision, and it holds in both
-    /// phases of a turn � while the NPC is speaking AND while it is still thinking.
+    /// BUSINESS REQUIREMENT: an interruption is the player ACTUALLY SPEAKING over an NPC that has the
+    /// floor — for that persona's persistence time, and only if that persona may be interrupted at all.
+    /// That is one rule, and it holds whether the NPC is audible or still thinking.
     ///
-    /// WHY: the overlap monitor can only judge a press that overlaps AUDIO. Between "the request went
-    /// out" and "the first chunk plays" there are seconds of LLM and TTS latency in which the NPC is
-    /// visibly thinking and the player may well cut in. That phase used to walk straight past this
-    /// manager: the client sent a plain PlayerStartsTalking with IsPlayerInterruption=false, nothing
-    /// cancelled the answer already on its way, and the NPC then delivered it over the player's new
-    /// turn. From the player's seat: "I cannot interrupt her while she is thinking" (session log
-    /// 2026-09-08 07:31, where the press matured 222 ms before her audio started).
+    /// WHY THE THINKING PHASE COUNTS: the overlap monitor used to watch only the audible phase. Between
+    /// "the request went out" and "the first chunk plays" there are seconds of LLM and TTS latency in
+    /// which the NPC visibly has the floor, and a press there walked past this manager entirely: it
+    /// started a plain new turn, nothing cancelled the answer already on its way, and the NPC delivered
+    /// it over the player's new turn. From the player's seat, "I cannot interrupt her while she is
+    /// thinking" (session log 2026-09-08 07:31).
     ///
-    /// So AllowInterruption now decides in both phases, and the persona owns it. The deliberateness
-    /// gate differs because it has to: overlap persistence in the audible phase, the client's hold
-    /// window in the thinking phase, since there is no audio to measure overlap against.
+    /// WHY NOT A HOLD TIMER: v5.7.0 gated the thinking phase on how long the talk button had been held.
+    /// That is not how interruption works anywhere else in this system, and it made a SILENT half-second
+    /// press cancel an answer. Holding the button proves nothing; speech does. These tests exist to keep
+    /// that distinction, which one release already got wrong.
     /// </summary>
     [TestFixture]
     public class ThinkingPhaseInterruptionTests
@@ -30,6 +31,7 @@ namespace Tsc.AIBridge.Tests.Editor
         private GameObject _managerObject;
         private InterruptionManager _manager;
         private GameObject _npcObject;
+        private SimpleNpcClient _npc;
 
         [SetUp]
         public void SetUp()
@@ -38,14 +40,11 @@ namespace Tsc.AIBridge.Tests.Editor
             _manager = _managerObject.AddComponent<InterruptionManager>();
 
             _npcObject = new GameObject("Marc");
-            var npc = _npcObject.AddComponent<SimpleNpcClient>();
+            _npc = _npcObject.AddComponent<SimpleNpcClient>();
             typeof(SimpleNpcClient)
                 .GetField("npcName", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public)
-                .SetValue(npc, "Marc");
-            _npc = npc;
+                .SetValue(_npc, "Marc");
         }
-
-        private SimpleNpcClient _npc;
 
         [TearDown]
         public void TearDown()
@@ -56,34 +55,84 @@ namespace Tsc.AIBridge.Tests.Editor
                 Object.DestroyImmediate(_managerObject);
         }
 
+        #region The gate is speech, not a button hold
+
         [Test]
-        public void AnInterruptiblePersonaCanBeInterruptedWhileThinking()
+        public void SilenceNeverAccumulatesOverlapHoweverLongTheButtonIsHeld()
         {
-            _manager.SetAddressedNpc(_npc, new InterruptionTarget(allowInterruption: true, persistenceTime: 0.4f));
+            // Ten seconds of holding the button without saying anything: still nothing. This is the
+            // v5.7.0 mistake stated as a requirement — that version would have interrupted after 0.35s.
+            var overlap = 0f;
+            for (var i = 0; i < 600; i++)
+            {
+                overlap = InterruptionManager.UpdateOverlapTimer(
+                    currentOverlap: overlap, currentNpcPauseAccumulator: 0f,
+                    userSpeaking: false, npcActuallySpeaking: true, npcResponding: true,
+                    deltaTime: 1f / 60f, npcPauseTolerance: 0.3f).OverlapTimer;
+            }
 
-            var raised = 0;
-            _manager.OnInterruption += () => raised++;
-
-            Assert.IsTrue(_manager.TryInterruptWhileThinking(),
-                "There is no audio to overlap with, so this phase has to be decided on policy alone.");
-            Assert.AreEqual(1, raised,
-                "OnInterruption is the whole contract: it is what sets IsPlayerInterruption=true and " +
-                "sends PlayerStartsTalking. Without it the RuleSystem never learns this was an " +
-                "interruption and the answer already on its way is delivered over the new turn.");
+            Assert.AreEqual(0f, overlap,
+                "Holding the talk button is not interrupting. A silent hold must never cancel an answer.");
         }
 
         [Test]
-        public void ANonInterruptiblePersonaCannotBeInterruptedWhileThinking()
+        public void SpeechOverAThinkingNpcAccumulatesUntilPersistenceIsMet()
         {
-            _manager.SetAddressedNpc(_npc, new InterruptionTarget(allowInterruption: false, persistenceTime: 0.4f));
+            // The thinking NPC holds the floor continuously — it is not pausing, it simply has no audio
+            // yet — so the caller passes npcActuallySpeaking: true and the player's speech is the gate.
+            var overlap = 0f;
+            var ticks = 0;
+            while (!InterruptionManager.ShouldInterrupt(overlap, persistenceTime: 0.4f, isNearEnd: false,
+                       allowInterruption: true, nearEndPersistenceMultiplier: 0.25f))
+            {
+                overlap = InterruptionManager.UpdateOverlapTimer(
+                    overlap, 0f, userSpeaking: true, npcActuallySpeaking: true, npcResponding: true,
+                    deltaTime: 1f / 60f, npcPauseTolerance: 0.3f).OverlapTimer;
 
-            var raised = 0;
-            _manager.OnInterruption += () => raised++;
+                if (++ticks > 600)
+                    Assert.Fail("Speech over a thinking NPC never reached the persistence threshold.");
+            }
 
-            Assert.IsFalse(_manager.TryInterruptWhileThinking(),
+            Assert.GreaterOrEqual(overlap, 0.4f);
+            Assert.LessOrEqual(ticks, 25, "0.4s at 60fps is 24 frames — the gate is the persona's, not a constant.");
+        }
+
+        [Test]
+        public void ANonInterruptiblePersonaIsNeverInterruptedHoweverLongThePlayerTalks()
+        {
+            Assert.IsFalse(InterruptionManager.ShouldInterrupt(overlapTimer: 99f, persistenceTime: 0.4f,
+                isNearEnd: false, allowInterruption: false, nearEndPersistenceMultiplier: 0.25f),
                 "AllowInterruption has to mean the same thing in both phases, or content configures " +
                 "something that only half applies.");
-            Assert.AreEqual(0, raised, "And nothing may be raised, so the caller can drop the press.");
+        }
+
+        #endregion
+
+        #region Who has the floor
+
+        [Test]
+        public void AThinkingNpcHasTheFloor()
+        {
+            // The client owns the turn registry, so it installs this. Without it the manager only ever
+            // saw the audible phase.
+            _manager.SetAddressedNpc(_npc, new InterruptionTarget(allowInterruption: true, persistenceTime: 0.4f));
+            Assert.IsFalse(HasFloor(), "Nothing in flight and nothing audible.");
+
+            _manager.IsTurnOwnerAwaitingResponse = () => true;
+
+            Assert.IsTrue(HasFloor(),
+                "A turn that has been requested but is not audible yet is still that NPC's turn.");
+        }
+
+        [Test]
+        public void WithoutTheDelegateOnlyAudibleSpeechCounts()
+        {
+            // Fail safe rather than fail open: an unwired client must not make every press an
+            // interruption attempt.
+            _manager.SetAddressedNpc(_npc, new InterruptionTarget(allowInterruption: true, persistenceTime: 0.4f));
+            _manager.IsTurnOwnerAwaitingResponse = null;
+
+            Assert.IsFalse(HasFloor());
         }
 
         [Test]
@@ -92,7 +141,7 @@ namespace Tsc.AIBridge.Tests.Editor
             // Same precedence as the overlap monitor: the addressed NPC outranks whichever NPC a request
             // was last started for, which in a room with several speakers is a bystander.
             Assert.IsTrue(_manager.IsInterruptionAllowedForTurnOwner(),
-                "With nothing addressed the fallback is permissive on purpose � a scene-load timing gap " +
+                "With nothing addressed the fallback is permissive on purpose — a scene-load timing gap " +
                 "must not produce an NPC nobody can interrupt.");
 
             _manager.SetAddressedNpc(_npc, new InterruptionTarget(allowInterruption: false, persistenceTime: 0.4f));
@@ -100,6 +149,15 @@ namespace Tsc.AIBridge.Tests.Editor
 
             _manager.SetAddressedNpc(null, InterruptionTarget.None);
             Assert.IsTrue(_manager.IsInterruptionAllowedForTurnOwner(), "Back to the fallback.");
+        }
+
+        #endregion
+
+        private bool HasFloor()
+        {
+            var prop = typeof(InterruptionManager).GetProperty("TurnOwnerHasFloor", PrivateInstance);
+            Assert.IsNotNull(prop, "TurnOwnerHasFloor not found on InterruptionManager");
+            return (bool)prop.GetValue(_manager);
         }
     }
 }

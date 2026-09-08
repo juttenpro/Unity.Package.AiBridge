@@ -6,6 +6,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.8.0] - 2026-09-08
+
+### Changed
+- **The thinking phase is now watched by the overlap monitor, on the same gate as the audible phase.**
+  5.7.0 got this wrong: it gated the thinking phase on how long the talk button had been HELD
+  (`DeferredPlayerStart`, 0.35 s). That is not how interruption works anywhere else in this system — the
+  overlap monitor requires the player to be ACTUALLY SPEAKING, per VAD, for that persona's
+  `persistenceTime`. So a silent half-second press cancelled an answer, which is worse than the bug it
+  replaced.
+
+  `MonitorOverlapCoroutine` now treats "the NPC has the floor" as audible **or** still thinking, and a
+  thinking NPC holds it continuously (no audio to run VAD on, and it is not pausing either). Everything
+  else is the existing path: VAD speech, `persistenceTime`, `AllowInterruption`, `OnInterruption`, and
+  the backend notification. One rule, both phases, configured per persona.
+
+### Added
+- **`InterruptionManager.IsTurnOwnerAwaitingResponse`** — a `Func<bool>` the client installs, because the
+  turn registry lives there and this manager has no way to know a turn has been requested but is not
+  audible yet. A delegate rather than a flag: a flag would be a second copy of that state, and the two
+  subscribers to `OnRecordingStarted` have no defined order, so it could be read stale.
+- **`InterruptionManager.BeginOverlapMonitoring()`** — lets the client start the watch at the moment it
+  has decided the press is a possible interruption, after it has pushed the addressed NPC. Same ordering
+  reason.
+
+### Removed
+- **`InterruptionManager.TryInterruptWhileThinking()`** (added in 5.7.0) — the hold-duration gate it
+  served is gone.
+- **`DeferredPlayerStart`** and its tests, in the consumer. Its job was to stop a 276 ms brush of the
+  trigger from tearing down a turn in flight, and the attempt mechanism now does that better: a press
+  while the NPC has the floor is parked as an interruption attempt, and an unapproved attempt starts no
+  turn, sends no RuleSystem events and discards its audio. The threshold is the persona's
+  `persistenceTime` instead of a hard-coded 0.35 s.
+
 ## [5.7.0] - 2026-09-08
 
 ### Added

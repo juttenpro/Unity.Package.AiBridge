@@ -291,8 +291,8 @@ namespace Tsc.AIBridge.Audio.Interruption
                 Debug.Log("[InterruptionManager] User input started");
             }
 
-            // Check if NPC is currently responding
-            bool npcResponding = TurnOwnerClient?.IsTalking ?? false;
+            // Does the NPC have the floor — audibly speaking, or still thinking?
+            bool npcResponding = TurnOwnerHasFloor;
 
             if (npcResponding)
             {
@@ -500,11 +500,21 @@ namespace Tsc.AIBridge.Audio.Interruption
                 // Get user speaking state from VAD
                 bool userSpeaking = DetectUserSpeech();
 
-                // Get NPC responding state
-                bool npcResponding = turnOwner.IsTalking;
+                // Is the NPC audible, or still thinking? Both are its turn, and the player can talk over
+                // either — the thinking phase is several seconds of LLM plus TTS latency in which the NPC
+                // visibly has the floor. Before this, only the audible phase was watched: a press during
+                // thinking walked past this manager entirely, started a turn, and the answer already on
+                // its way was delivered over it (session log 2026-09-08 07:31).
+                bool npcAudible = turnOwner.IsTalking;
+                bool npcThinking = !npcAudible && (IsTurnOwnerAwaitingResponse?.Invoke() ?? false);
+                bool npcResponding = npcAudible || npcThinking;
 
-                // CRITICAL: Use VAD-based speech detection to distinguish actual speech from pauses
-                bool npcActuallySpeaking = GetNpcActualSpeech(turnOwner);
+                // CRITICAL: Use VAD-based speech detection to distinguish actual speech from pauses.
+                // A thinking NPC produces no audio to run VAD on, and it is not pausing either — it holds
+                // the floor continuously, so the overlap timer must accumulate on the player's speech
+                // alone. That speech IS the gate: the press by itself proves nothing, which is how
+                // interruption has always worked in the audible phase.
+                bool npcActuallySpeaking = npcAudible ? GetNpcActualSpeech(turnOwner) : npcThinking;
 
                 // Track NPC response time
                 if (npcResponding)
@@ -670,40 +680,42 @@ namespace Tsc.AIBridge.Audio.Interruption
                 DefaultPersistenceTimeFallback).AllowInterruption;
 
         /// <summary>
-        /// Interrupts a turn that is still in its thinking phase — requested, but not audible yet.
+        /// Whether the turn owner is between "the request went out" and "the first audio chunk plays" —
+        /// the thinking phase. Installed by the client, which owns the turn registry; this manager has no
+        /// way to know it. Null means "cannot tell", which counts as not thinking.
         ///
-        /// The client holds such a press back until it has lasted long enough to be deliberate
-        /// (DeferredPlayerStart) and then calls this. That hold is the deliberateness gate, standing in
-        /// for the overlap persistence the audible path uses; there is no audio to measure overlap
-        /// against. Whether the interruption is ALLOWED is this manager's decision either way, so a
-        /// persona configured as non-interruptible is not interruptible in either phase.
-        ///
-        /// Before this existed, a matured press in the thinking phase walked straight past this manager
-        /// and sent a plain PlayerStartsTalking with IsPlayerInterruption=false. Nothing then cancelled
-        /// the answer already on its way, so the NPC delivered it over the player's new turn — from the
-        /// player's seat, "I cannot interrupt her while she is thinking" (session log 2026-09-08 07:31).
+        /// A delegate rather than a flag on purpose: a flag would be a second copy of the turn registry's
+        /// state, kept in sync by hand, and the two subscribers to OnRecordingStarted have no defined
+        /// order — so a flag written from the client's handler might be read stale from this one.
         /// </summary>
-        /// <returns>False when this NPC may not be interrupted; the caller must then drop the press.</returns>
-        public bool TryInterruptWhileThinking()
-        {
-            if (!IsInterruptionAllowedForTurnOwner())
-            {
-                if (enableVerboseLogging)
-                {
-                    Debug.Log($"[InterruptionManager] {(TurnOwnerClient == null ? "NPC" : TurnOwnerClient.NpcName)} " +
-                              "may not be interrupted (AllowInterruption is off) — the held-back press is dropped.");
-                }
-                return false;
-            }
+        public Func<bool> IsTurnOwnerAwaitingResponse;
 
+        /// <summary>
+        /// Whether the turn owner has the floor: audibly speaking, or still thinking. Both are a turn in
+        /// progress that the player can talk over.
+        /// </summary>
+        private bool TurnOwnerHasFloor
+            => (TurnOwnerClient != null && TurnOwnerClient.IsTalking)
+               || (IsTurnOwnerAwaitingResponse?.Invoke() ?? false);
+
+        /// <summary>
+        /// Starts watching for an interruption now, whatever this manager's own view of the NPC is.
+        ///
+        /// The client calls this when it has decided the press is a possible interruption, and it has to
+        /// be the client's call rather than this manager's: both are subscribed to
+        /// SpeechInputHandler.OnRecordingStarted with no defined order, and the client pushes the
+        /// addressed NPC in its handler. Waiting for this manager's own handler to notice would mean
+        /// reading an NPC that had not been pushed yet. Idempotent.
+        /// </summary>
+        public void BeginOverlapMonitoring()
+        {
             if (enableVerboseLogging)
             {
-                Debug.Log("[InterruptionManager] Interrupting a turn that is still thinking — no audio to " +
-                          "stop, but the backend must stop generating and the RuleSystem must hear about it.");
+                Debug.Log($"[InterruptionManager] Overlap monitoring requested by the client for " +
+                          $"{(TurnOwnerClient == null ? "no NPC" : TurnOwnerClient.NpcName)}.");
             }
 
-            OnInterruptionDetected();
-            return true;
+            StartOverlapMonitoring();
         }
 
         /// <summary>
