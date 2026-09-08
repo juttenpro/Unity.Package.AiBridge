@@ -94,16 +94,60 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
-        public void PlaybackFinishingStopsRoutingIt()
+        public void RoutingEndsWhenTheBackendIsDoneAndTheAudioHasPlayed()
         {
-            // The moment routing really ends. The client calls in from OnNpcReactionFinished, which is
-            // the only place that knows the audio is done.
+            // Both halves have to have happened. Completion first here, then playback.
             StartTurn("esra-turn", "Esra");
-            _orchestrator.CompleteSession("esra-turn");
 
-            _orchestrator.ReleaseTurnRouting("esra-turn");
+            _orchestrator.CompleteSession("esra-turn");
+            AssertStillRouted("esra-turn", "Esra");
+
+            _orchestrator.NotifyTurnAudioFinished("esra-turn");
 
             AssertFullyTornDown("esra-turn");
+        }
+
+        [Test]
+        public void PlaybackFinishingAloneIsNotEnough()
+        {
+            // THE 2026-09-08 09:14 FAILURE, stated as a requirement. A same-NPC re-press displaces the
+            // previous turn WITHOUT a backend cancel, and the new request resets that NPC's decoder — so
+            // the displaced turn's playback "finishes" at once while the backend is still streaming it.
+            // Releasing the routing there left hundreds of chunks unroutable, and unroutable audio was a
+            // fatal error, so the lesson ended.
+            StartTurn("marc-turn", "Marc");
+
+            _orchestrator.NotifyTurnAudioFinished("marc-turn");
+
+            AssertStillRouted("marc-turn", "Marc");
+        }
+
+        [Test]
+        public void RoutingEndsWhenPlaybackFinishesAfterTheCompletionAlreadyArrived()
+        {
+            // The other order, which is the normal one: completion lands ~200 ms into the speech and
+            // playback ends seconds later.
+            StartTurn("esra-turn", "Esra");
+            _orchestrator.NotifyTurnAudioFinished("esra-turn");
+            AssertStillRouted("esra-turn", "Esra");
+
+            _orchestrator.CompleteSession("esra-turn");
+
+            AssertFullyTornDown("esra-turn");
+        }
+
+        [Test]
+        public void AnExplicitCancelStopsRoutingWithoutWaitingForPlayback()
+        {
+            // The backend was told to stop, so there is nothing left to wait for.
+            StartTurn("esra-turn", "Esra");
+
+            _orchestrator.ForceReleaseTurnRouting("esra-turn");
+
+            // Routing only — this method says nothing about the bookkeeping, which its callers release
+            // themselves.
+            Assert.IsFalse(IsRoutedByWebSocket("esra-turn"));
+            Assert.IsFalse(IsRoutedByRouter("esra-turn"));
         }
 
         [Test]
@@ -175,8 +219,10 @@ namespace Tsc.AIBridge.Tests.Editor
             // Every path can discover the same dead turn, so this runs more than once per turn.
             Invoke("ReleaseLiveSession", "never-existed");
             Invoke("ReleaseLiveSession", (string)null);
-            _orchestrator.ReleaseTurnRouting("never-existed");
-            _orchestrator.ReleaseTurnRouting(null);
+            _orchestrator.NotifyTurnAudioFinished("never-existed");
+            _orchestrator.NotifyTurnAudioFinished(null);
+            _orchestrator.ForceReleaseTurnRouting("never-existed");
+            _orchestrator.ForceReleaseTurnRouting(null);
 
             Assert.IsFalse(IsRoutedByRouter("never-existed"));
         }

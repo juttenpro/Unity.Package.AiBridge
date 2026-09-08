@@ -135,6 +135,10 @@ namespace Tsc.AIBridge.Core
         // makes the set of live turns addressable and — the actual work — forces the inventory of exits
         // to be complete before the watchdog and the mic/turn split start depending on it.
         // See Docs/Architecture/Concurrent-Turns-Plan.md, steps 6, 8, 11 and 12.
+        // Per-turn routing teardown bookkeeping — see NotifyTurnAudioFinished.
+        private readonly Dictionary<string, TurnRoutingState> _routingTeardown =
+            new Dictionary<string, TurnRoutingState>();
+
         private readonly Dictionary<string, ConversationSession> _liveSessions =
             new Dictionary<string, ConversationSession>();
         private INpcConfiguration _activeNpcConfig;
@@ -315,7 +319,7 @@ namespace Tsc.AIBridge.Core
             // at the same time as the bookkeeping.
             var abortedRequestId = _micSession?.RequestId;
             ReleaseLiveSession(abortedRequestId);
-            ReleaseTurnRouting(abortedRequestId);
+            ForceReleaseTurnRouting(abortedRequestId);
             _micSession = null;
             _isProcessingRequest = false;
         }
@@ -342,7 +346,7 @@ namespace Tsc.AIBridge.Core
                 Debug.LogWarning($"[RequestOrchestrator] Turn {requestId} failed — {context}. " +
                                  "The microphone's own turn is untouched.");
                 ReleaseLiveSession(requestId);
-                ReleaseTurnRouting(requestId);
+                ForceReleaseTurnRouting(requestId);
             }
         }
 
@@ -818,7 +822,7 @@ namespace Tsc.AIBridge.Core
                 // LetAnswerFinish the answer is still coming and still has to be routed and played.
                 ReleaseLiveSession(requestIdToCancel);
                 if (cancelBackendAnswer)
-                    ReleaseTurnRouting(requestIdToCancel);
+                    ForceReleaseTurnRouting(requestIdToCancel);
                 _micSession = null;
                 _activeNpcConfig = null;
                 _activeNpcClient = null;
@@ -1045,27 +1049,101 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// Stops routing everything keyed on <paramref name="requestId"/>: the WebSocket handler and the
-        /// NpcMessageRouter entry. The exact mirror of what `ProcessAudioRequest` / `ProcessTextRequest`
-        /// register, and deliberately separate from <see cref="ReleaseLiveSession"/> — see the note there
-        /// for why these two lifetimes are not the same one.
+        /// Records that this turn's audio has finished playing, and stops routing it if the backend is
+        /// also done with it.
         ///
-        /// Call this when the turn's audio can no longer arrive: its playback finished (the client knows
-        /// that moment and calls in), or the turn was cancelled with a backend cancel, timed out, or died
-        /// with the socket. Safe to call twice; both removals are idempotent.
+        /// **Playback ending is NOT on its own proof that no more audio can arrive**, and assuming it was
+        /// ended a lesson. A same-NPC re-press displaces the previous turn WITHOUT cancelling it on the
+        /// backend — ten rapid presses are one continuous session by design — and the new request resets
+        /// that NPC's decoder, so the displaced turn's playback "finishes" immediately while the backend
+        /// is still streaming it. Releasing the routing there left the rest of that stream unroutable,
+        /// and unroutable audio used to be a fatal error (session log 2026-09-08 09:14: routing released
+        /// at 09:14:36.936, hundreds of dropped chunks from 09:14:37.155, lesson over).
+        ///
+        /// So both sides have to agree: the backend has finished with the turn (conversationComplete) and
+        /// the audio has played. Whichever arrives second releases the routing. The paths that know no
+        /// audio can possibly arrive — an explicit backend cancel, a timeout, a dead socket — call
+        /// <see cref="ForceReleaseTurnRouting"/> instead.
         /// </summary>
-        public void ReleaseTurnRouting(string requestId)
+        public void NotifyTurnAudioFinished(string requestId)
         {
             if (string.IsNullOrEmpty(requestId))
                 return;
 
+            var state = RoutingStateFor(requestId);
+            state.PlaybackFinished = true;
+            ReleaseTurnRoutingIfSettled(requestId, state);
+        }
+
+        /// <summary>
+        /// Stops routing this turn now, for the paths where no audio can still arrive: the backend was
+        /// explicitly cancelled, the turn timed out, or the socket died. Idempotent.
+        /// </summary>
+        public void ForceReleaseTurnRouting(string requestId)
+        {
+            if (string.IsNullOrEmpty(requestId))
+                return;
+
+            _routingTeardown.Remove(requestId);
+            StopRoutingTurn(requestId, "no further audio is possible");
+        }
+
+        /// <summary>Called from the completion hook: the backend is finished with this turn.</summary>
+        private void MarkTurnFinishedByBackend(string requestId)
+        {
+            if (string.IsNullOrEmpty(requestId))
+                return;
+
+            var state = RoutingStateFor(requestId);
+            state.FinishedByBackend = true;
+            ReleaseTurnRoutingIfSettled(requestId, state);
+        }
+
+        private TurnRoutingState RoutingStateFor(string requestId)
+        {
+            if (!_routingTeardown.TryGetValue(requestId, out var state))
+            {
+                state = new TurnRoutingState();
+                _routingTeardown[requestId] = state;
+            }
+
+            return state;
+        }
+
+        private void ReleaseTurnRoutingIfSettled(string requestId, TurnRoutingState state)
+        {
+            if (!state.FinishedByBackend || !state.PlaybackFinished)
+            {
+                if (enableVerboseLogging)
+                    Debug.Log($"[RequestOrchestrator] Keeping routing for {requestId} — backend done: " +
+                              $"{state.FinishedByBackend}, audio played: {state.PlaybackFinished}.");
+                return;
+            }
+
+            _routingTeardown.Remove(requestId);
+            StopRoutingTurn(requestId, "the backend is done and the audio has played");
+        }
+
+        private void StopRoutingTurn(string requestId, string because)
+        {
             _webSocketClient?.UnregisterNpc(requestId);
 
             if (NpcMessageRouter.HasInstance)
                 NpcMessageRouter.Instance.ClearRequest(requestId);
 
             if (enableVerboseLogging)
-                Debug.Log($"[RequestOrchestrator] Stopped routing turn {requestId}.");
+                Debug.Log($"[RequestOrchestrator] Stopped routing turn {requestId} — {because}.");
+        }
+
+        /// <summary>
+        /// What still has to happen before a turn's message routing can come down. Kept outside
+        /// _liveSessions on purpose: a turn leaves the live set at conversationComplete, which is the
+        /// earliest of the two signals, not the latest.
+        /// </summary>
+        private sealed class TurnRoutingState
+        {
+            public bool FinishedByBackend;
+            public bool PlaybackFinished;
         }
 
         /// <summary>
@@ -1146,6 +1224,10 @@ namespace Tsc.AIBridge.Core
 
             var wasMicTurn = _micSession != null && _micSession.RequestId == requestId;
             ReleaseLiveSession(requestId);
+
+            // This is the other completion path — a turn that produced no audio, so the client closes it
+            // here instead. Either way the backend is finished with it.
+            MarkTurnFinishedByBackend(requestId);
 
             if (wasMicTurn)
                 _micSession = null;
@@ -1292,7 +1374,7 @@ namespace Tsc.AIBridge.Core
 
             // No answer is coming for a turn the backend never responded to, so stop routing it too.
             ReleaseLiveSession(requestId);
-            ReleaseTurnRouting(requestId);
+            ForceReleaseTurnRouting(requestId);
 
             // An NPC turn's timeout must not disarm the microphone or tell the RuleSystem the player
             // said nothing — the player may be mid-sentence into a turn of their own.
@@ -1693,6 +1775,9 @@ namespace Tsc.AIBridge.Core
             var wasMicTurn = _micSession != null && _micSession.RequestId == completedRequestId;
 
             ReleaseLiveSession(completedRequestId);
+
+            // The backend is done with this turn. Routing still waits for the audio to finish playing.
+            MarkTurnFinishedByBackend(completedRequestId);
 
             // Only the microphone's own turn may disarm the microphone. A character-speaks-first turn
             // completing while the player is recording used to clear all of this, and the push-to-talk

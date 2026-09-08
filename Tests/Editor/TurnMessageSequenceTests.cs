@@ -209,7 +209,7 @@ namespace Tsc.AIBridge.Tests.Editor
             StartTurn("marc-turn", "Marc");
             DeliverText(CompleteJson("marc-turn"));
 
-            _orchestrator.ReleaseTurnRouting("marc-turn");
+            _orchestrator.NotifyTurnAudioFinished("marc-turn");
 
             Assert.IsNull(NpcMessageRouter.Instance.GetActiveRequestForNpc("Marc"));
             DeliverText(StreamEndJson("marc-turn"));
@@ -218,15 +218,22 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
-        public void UnroutableAudioIsLoud()
+        public void UnroutableAudioWarnsOnceAndIsNeverFatal()
         {
-            // The other half of the contract: audio nobody can place must NOT pass silently. This is the
-            // error that would have ended the lesson above, so its presence is deliberate — a future
-            // change that starts dropping audio has to trip over this test.
-            LogAssert.Expect(LogType.Error,
+            // Audio nobody can place must be VISIBLE and must NOT end the lesson. It was a
+            // Debug.LogError, and ErrorHandler.Classify turns an unmatched error into the restart popup
+            // plus CloseApp — so on 2026-09-08 09:14 a displaced turn's leftover stream printed hundreds
+            // of them and the lesson was over. A dropped chunk for a turn that is already finished,
+            // cancelled or displaced is a degradation, not a fault.
+            LogAssert.Expect(LogType.Warning,
                 new System.Text.RegularExpressions.Regex("No NPC handler registered for RequestId"));
 
             DeliverAudio("nobody-registered-this", 1);
+
+            // And only once per turn. A dropped stream is hundreds of chunks; LogAssert fails on any
+            // unexpected message, so a second warning here would surface as a failure.
+            for (var i = 0; i < 50; i++)
+                DeliverAudio("nobody-registered-this", 2);
         }
 
         // --- driving the wire ------------------------------------------------------------------------

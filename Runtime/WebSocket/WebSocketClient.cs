@@ -101,6 +101,10 @@ namespace Tsc.AIBridge.WebSocket
 
         // NPC message routing (RequestId -> handler). Exactly one owner per turn.
         private readonly Dictionary<string, INpcMessageHandler> _npcHandlers = new();
+
+        // RequestIds already reported as unroutable. One warning per turn: a dropped stream is hundreds
+        // of chunks, and the first one says everything the rest would repeat.
+        private readonly HashSet<string> _unroutableAudioWarnedFor = new();
         private readonly object _routingLock = new();
 
         // Capability routing (wire type -> consumers), for messages that are NOT the turn's to own.
@@ -308,6 +312,10 @@ namespace Tsc.AIBridge.WebSocket
                     if (enableVerboseLogging)
                         Debug.Log($"[UnifiedWebSocket] Unregistered NPC for RequestId: {requestId}");
                 }
+
+                // A turn that comes back under the same id (it does not, ids are GUIDs) or a long lesson
+                // with many turns must not accumulate these forever.
+                _unroutableAudioWarnedFor.Remove(requestId);
             }
         }
 
@@ -981,7 +989,21 @@ namespace Tsc.AIBridge.WebSocket
                     }
                     else
                     {
-                        Debug.LogError($"[UnifiedWebSocket] No NPC handler registered for RequestId: {requestId}. Audio dropped.");
+                        // Deliberately a WARNING, and only the first one per turn.
+                        //
+                        // This was a Debug.LogError, and ErrorHandler.Classify turns an unmatched error
+                        // into the restart popup plus CloseApp — so late audio for a turn that was already
+                        // over ended the lesson, several hundred lines at a time (session log 2026-09-08
+                        // 09:14). Dropping audio nobody is waiting for is a degradation: the turn it
+                        // belonged to is finished, cancelled or displaced, and there is nothing to play it
+                        // into. It must be visible and it must not be fatal.
+                        if (_unroutableAudioWarnedFor.Add(requestId))
+                        {
+                            Debug.LogWarning($"[UnifiedWebSocket] No NPC handler registered for RequestId: " +
+                                             $"{requestId} — dropping its audio. The turn is over, cancelled or " +
+                                             "displaced while the backend was still streaming. Further chunks " +
+                                             "for this turn are dropped silently.");
+                        }
                     }
                 }
             }

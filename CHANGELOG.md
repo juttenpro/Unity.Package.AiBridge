@@ -6,6 +6,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.9.0] - 2026-09-08
+
+### Fixed
+- **Unroutable audio no longer ends the lesson.** It was a `Debug.LogError`, and `ErrorHandler.Classify`
+  turns an unmatched error into the restart popup plus `CloseApp`. On 2026-09-08 at 09:14 a displaced
+  turn's leftover stream printed several hundred of them and the session was over. Audio for a turn that
+  is already finished, cancelled or displaced is a degradation: it is now one **warning per turn**, and
+  the remaining chunks of that stream are dropped silently.
+- **Routing now ends only when the backend is done AND the audio has played**, whichever arrives second.
+  Playback ending is not on its own proof that no more audio can arrive: a same-NPC re-press displaces
+  the previous turn WITHOUT a backend cancel — ten rapid presses are one continuous session by design —
+  and the new request resets that NPC's decoder, so the displaced turn's playback "finishes" at once
+  while the backend is still streaming it. 5.7.0 released the routing there, which produced exactly the
+  fatal drop above.
+
+  `NotifyTurnAudioFinished(requestId)` reports the playback half; `conversationComplete` reports the
+  backend half. `ForceReleaseTurnRouting(requestId)` replaces `ReleaseTurnRouting` for the paths that
+  know no audio can arrive at all: an explicit backend cancel, a timeout, a dead socket.
+
+### Reverted
+- **The thinking phase is no longer part of the interruption path.** Two attempts shipped today and both
+  were wrong in a play session. 5.7.0 gated it on how long the talk button had been HELD, so a silent
+  half-second press cancelled an answer. 5.8.0 used real speech, but letting the thinking phase into
+  `OnUserInputStarted` made `_userInputStartedDuringNpcResponse` true there — and
+  `CheckNearEndCondition` reads a turn with no audio YET as "stream finished, buffer empty", so it
+  reported near-end and the persistence threshold collapsed to 25%. An ordinary press then became an
+  interruption after 100 ms.
+
+  Back to the 5.6.2 behaviour, which is known. `IsTurnOwnerAwaitingResponse`,
+  `BeginOverlapMonitoring()` and `TryInterruptWhileThinking()` are gone; `DeferredPlayerStart` is back
+  in the consumer. What a correct version needs is written up as Concurrent-Turns-Plan step 15 — the
+  near-end interaction, the classification, and the RuleSystem inputs that start a turn independently of
+  `PlayerStartsTalking`.
+
 ## [5.8.0] - 2026-09-08
 
 ### Changed
