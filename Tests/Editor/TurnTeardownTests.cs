@@ -23,8 +23,13 @@ namespace Tsc.AIBridge.Tests.Editor
     /// CancelCurrentSession, so an abandoned turn stayed resolvable there as well — and that router is
     /// what NpcAudioPlayer.SendPauseStream / SendResumeStream consult to find a turn's stream.
     ///
-    /// WHAT: teardown lives in ReleaseLiveSession, the one place a turn leaves the live set, instead of
-    /// being repeated (and forgotten) at each of its call sites. These tests pin that, per path.
+    /// WHAT: the router clear lives in ReleaseLiveSession, the one place a turn leaves the live set,
+    /// instead of being repeated (and forgotten) at each of its call sites. These tests pin that, per
+    /// path.
+    ///
+    /// The WebSocket handler is deliberately NOT torn down there, and one of these tests exists only to
+    /// keep it that way. v5.6.0 did tear it down there and broke every second turn — see
+    /// TheWebSocketHandlerOutlivesTheTurnsBookkeeping below.
     /// </summary>
     [TestFixture]
     public class TurnTeardownTests
@@ -143,7 +148,7 @@ namespace Tsc.AIBridge.Tests.Editor
             Invoke("ReleaseLiveSession", "never-existed");
             Invoke("ReleaseLiveSession", (string)null);
 
-            Assert.IsFalse(IsRoutedByWebSocket("never-existed"));
+            Assert.IsFalse(IsRoutedByRouter("never-existed"));
         }
 
         // --- helpers ---------------------------------------------------------------------------------
@@ -182,13 +187,48 @@ namespace Tsc.AIBridge.Tests.Editor
             Assert.IsTrue(IsRoutedByWebSocket(requestId), "precondition: the socket resolves this turn");
         }
 
+        [Test]
+        public void TheWebSocketHandlerOutlivesTheTurnsBookkeeping()
+        {
+            // THE v5.6.0 REGRESSION, stated as a requirement.
+            //
+            // conversationComplete arrives about 200 ms after the FIRST audio chunk of a turn, not after
+            // the last. Releasing the turn there is right for the bookkeeping and wrong for the routing:
+            // the rest of that turn's audio and its audioStreamEnd still have to reach the NpcClient.
+            // Without them the client never closes the stream, so the NPC stays "talking" with an empty
+            // buffer, the player's next press is read as an interruption attempt and silently dropped,
+            // and the turn only ends on the 15-second safety net (session log 2026-09-08 06:59).
+            //
+            // Binary audio with no handler is worse: WebSocketClient logs a Debug.LogError for it, and
+            // ErrorHandler.Classify turns an unmatched error into the restart popup — a dropped chunk
+            // would end the lesson. And PlayerTurnsAwayPolicy.LetAnswerFinish exists precisely so an
+            // answer keeps arriving after its turn was released locally.
+            StartTurn("esra-turn", "Esra");
+
+            _orchestrator.CompleteSession("esra-turn");
+
+            Assert.IsFalse(_orchestrator.IsTurnLive("esra-turn"), "the bookkeeping turn is over");
+            Assert.IsTrue(IsRoutedByWebSocket("esra-turn"),
+                "but its audio and audioStreamEnd must still find their NpcClient. Unregistering here is " +
+                "what broke every second turn in v5.6.0.");
+        }
+
+        [Test]
+        public void ACancelledTurnKeepsItsHandlerToo()
+        {
+            // Same reason, and one more: with OnPlayerTurnsAway = LetAnswerFinish the backend is
+            // deliberately NOT cancelled, so the whole answer still arrives over this handler.
+            GiveMicTurn("mic-turn", "Marc");
+            RegisterRouting("mic-turn", "Marc");
+
+            _orchestrator.CancelCurrentSession("player turned away", cancelBackendAnswer: false);
+
+            Assert.IsTrue(IsRoutedByWebSocket("mic-turn"));
+        }
+
         private void AssertFullyTornDown(string requestId)
         {
             Assert.IsFalse(_orchestrator.IsTurnLive(requestId), $"{requestId} must not be live");
-            Assert.IsFalse(IsRoutedByWebSocket(requestId),
-                $"WebSocketClient must stop routing {requestId}. Left registered, its handler table grows " +
-                "one entry per turn for the whole lesson and keeps delivering late audio to an NPC whose " +
-                "turn is already over.");
             Assert.IsFalse(IsRoutedByRouter(requestId),
                 $"NpcMessageRouter must stop resolving {requestId} — NpcAudioPlayer's pause/resume lookup " +
                 "goes through it and would find a turn that no longer exists.");

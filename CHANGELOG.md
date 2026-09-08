@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.6.1] - 2026-09-08
+
+### Fixed
+- **Every second turn was silently dropped.** 5.6.0 moved `WebSocketClient.UnregisterNpc` into
+  `ReleaseLiveSession`, which runs at `conversationComplete` — and the backend sends that about 200 ms
+  after the FIRST audio chunk of a turn, not after the last. The rest of that turn's audio and its
+  `audioStreamEnd` then arrived with no handler and were dropped, so the NpcClient never closed the
+  stream: the NPC stayed "talking" with a 0.00 s buffer, the player's next talk-button press was
+  classified as an interruption attempt and discarded without ever reaching the RuleSystem, and the turn
+  only ended on the 15-second playback safety net.
+
+  Two further consequences of the same mistake: binary audio with no handler logs a `Debug.LogError`,
+  which `ErrorHandler.Classify` turns into the restart popup — a single dropped chunk would have ended
+  the lesson. And `PlayerTurnsAwayPolicy.LetAnswerFinish` exists precisely so an answer keeps arriving
+  after its turn is released locally, which this made impossible.
+
+  A turn's bookkeeping and its message routing have different lifetimes. Bookkeeping ends at completion;
+  routing has to outlive it until the audio is actually done. `NpcMessageRouter.ClearRequest` stays in
+  `ReleaseLiveSession` (that is where it already was for the completion and timeout paths, and the cancel
+  path needed it). The `_npcHandlers` growth 5.6.0 set out to fix is open again and needs a hook at the
+  real end of the turn's audio — see Concurrent-Turns-Plan step 13.
+
 ## [5.6.0] - 2026-09-07
 
 ### Changed
