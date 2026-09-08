@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.11.0] - 2026-09-08
+
+### Fixed
+- **A refused request no longer waits out its timeout.** `WebSocketClient`'s error branch logged the
+  backend's message and then returned without delivering it, so nothing waiting on that requestId ever
+  heard. An analysis whose prompt the backend refused in 600 ms sat until its own 30-second timeout and
+  then reported *"timed out"* — the player waited 34.8 s and was given the wrong reason, while the real
+  one had been on screen for half a minute (session log 2026-09-08 10:36).
+
+  The delivery path already existed: `AnalysisService` registers ITSELF as the handler for its
+  requestId, exactly as an `NpcClient` does, and every other message for a requestId reaches its handler
+  that way. This branch was the one place that did not use it. Errors are now routed to the handler for
+  their requestId — only that one, with no broadcast fallback, because an error names one turn.
+
+### Added
+- **`AnalysisRefusedException`**, carrying the backend's own words. The reason usually says what to fix
+  — "Vertex AI conversation requires at least one user message" points a content creator straight at the
+  prompt — and only the original text says which. `TimeoutException` said nothing.
+- `AnalysisRefusalTests`, in two halves on purpose. Six tests cover the refusal logic; three cover the
+  WIRING, which is what was actually broken. Verified by breaking both halves: the six stay green, the
+  three fail. Testing a collaborator and testing that you call it are two different tests.
+
 ## [5.10.0] - 2026-09-08
 
 ### Changed

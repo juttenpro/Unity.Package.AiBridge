@@ -298,6 +298,36 @@ namespace Tsc.AIBridge.WebSocket
             => _typeRouter.Unsubscribe(messageType, handler);
 
         /// <summary>
+        /// Passes an error message to the handler registered for its requestId, if any. Errors without a
+        /// requestId, or for a request nobody is waiting on, are already logged and stop here.
+        /// </summary>
+        private void DeliverErrorToItsHandler(string json)
+        {
+            var requestId = ExtractRequestId(json);
+            if (string.IsNullOrEmpty(requestId))
+                return;
+
+            INpcMessageHandler handler;
+            lock (_routingLock)
+            {
+                _npcHandlers.TryGetValue(requestId, out handler);
+            }
+
+            if (handler == null)
+                return;
+
+            try
+            {
+                handler.OnTextMessage(json);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[UnifiedWebSocket] Error in handler while delivering a backend error for " +
+                               $"{requestId}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Unregister an NPC from receiving messages
         /// </summary>
         public void UnregisterNpc(string requestId)
@@ -894,7 +924,21 @@ namespace Tsc.AIBridge.WebSocket
                     Debug.LogError($"[UnifiedWebSocket] Failed to parse error message: {ex.Message}\nRaw message: {json}");
                 }
 
-                // Don't continue processing error messages
+                // Hand the error to whoever is waiting on this requestId, then stop.
+                //
+                // Logging it was all this branch did, and the request itself was left hanging: an
+                // analysis whose prompt the backend refused in 600 ms sat until its own 30-second
+                // timeout and then reported "timed out", so the player waited 34.8 s and was told the
+                // wrong reason — the real one had been on screen for half a minute (session log
+                // 2026-09-08 10:36). AnalysisService registers ITSELF as the handler for its requestId,
+                // exactly like an NpcClient does, so the delivery path already existed and this branch
+                // was the one place that did not use it.
+                //
+                // Deliberately routed only to the handler for THIS requestId, with no broadcast
+                // fallback: an error names one turn, and telling every NPC about it would be worse than
+                // telling none. A handler that does not recognise the message ignores it, which is the
+                // documented rule for unknown server messages.
+                DeliverErrorToItsHandler(json);
                 return;
             }
 

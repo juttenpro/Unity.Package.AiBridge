@@ -197,6 +197,17 @@ namespace Tsc.AIBridge.Services
                     return;
                 }
 
+                // An error for our own request: fail it now, with the backend's own words.
+                //
+                // Without this the request waited out its full 30-second timeout and then reported
+                // "timed out" — the wrong reason, half a minute late, while the real one had already
+                // been logged (session log 2026-09-08 10:36: refused at :10, reported at :40, and the
+                // player waited 34.8 s). Passing the backend's message through verbatim is the point:
+                // "requires at least one user message" tells a content creator exactly what to fix,
+                // "timed out" tells nobody anything.
+                if (TryFailPendingRequestFromError(json))
+                    return;
+
                 // Parse to check actual type value
                 var message = Newtonsoft.Json.JsonConvert.DeserializeObject<AnalysisResponseMessage>(json);
 
@@ -257,6 +268,50 @@ namespace Tsc.AIBridge.Services
         }
 
         /// <summary>
+        /// Is this an error message for a request we are waiting on? If so, complete that request with
+        /// the backend's reason and report true.
+        ///
+        /// Internal rather than private so a test can drive it with a real backend error payload.
+        /// </summary>
+        internal bool TryFailPendingRequestFromError(string json)
+        {
+            if (json == null ||
+                (!json.Contains("\"type\":\"Error\"", StringComparison.OrdinalIgnoreCase) &&
+                 !json.Contains("\"type\":\"ConfigurationError\"", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            string requestId = null;
+            string reason = null;
+            try
+            {
+                var error = Newtonsoft.Json.Linq.JObject.Parse(json);
+                requestId = (string)error["requestId"];
+                reason = (string)error["message"] ?? (string)error["error"];
+
+                var details = (string)error["details"];
+                if (!string.IsNullOrEmpty(details))
+                    reason = $"{reason} ({details})";
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[AnalysisService] Could not read a backend error message: {ex.Message}");
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(requestId) || !_pendingRequests.TryGetValue(requestId, out var tcs))
+                return false;
+
+            Debug.LogWarning($"[AnalysisService] The backend refused analysis {requestId}: " +
+                             $"{reason ?? "no reason given"}. Failing it now instead of waiting for the " +
+                             "30-second timeout.");
+
+            tcs.TrySetException(new AnalysisRefusedException(reason ?? "The backend refused the analysis request."));
+            return true;
+        }
+
+        /// <summary>
         /// Analysis response matching backend model
         /// </summary>
         [Serializable]
@@ -267,6 +322,16 @@ namespace Tsc.AIBridge.Services
             public object metadata;
             public object timing;
         }
+    }
+
+    /// <summary>
+    /// The backend refused an analysis request outright. Carries the backend's own words: the reason is
+    /// usually about the prompt that was sent, which is a content question, and only the original text
+    /// says which.
+    /// </summary>
+    public class AnalysisRefusedException : Exception
+    {
+        public AnalysisRefusedException(string message) : base(message) { }
     }
 
     /// <summary>
