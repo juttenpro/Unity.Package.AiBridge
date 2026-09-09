@@ -120,6 +120,15 @@ namespace Tsc.AIBridge.Messages
         public string sttProvider;
 
         /// <summary>
+        /// Which NPC or coach this turn belongs to — see
+        /// <see cref="SessionStartMessage.PersonaId"/> for what it fixes and why it is not
+        /// personal data. NPC-initiated turns travel through this context, so leaving it unset
+        /// here would leave exactly the coach turns unattributable.
+        /// </summary>
+        [JsonProperty("personaId")]
+        public string personaId;
+
+        /// <summary>
         /// TTS provider ("elevenlabs", "voxtral", "cartesia")
         /// </summary>
         [JsonProperty("ttsProvider")]

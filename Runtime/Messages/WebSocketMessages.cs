@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
@@ -85,6 +85,20 @@ namespace Tsc.AIBridge.Messages
         /// </summary>
         [JsonProperty("sttProvider")]
         public string SttProvider { get; set; }
+
+        /// <summary>
+        /// Which NPC or coach this turn belongs to — the persona's name, the same kind of
+        /// identifier as courseId and lessonId. Not personal data: a persona is a content
+        /// asset ("dokter Hansen"). The GDPR gate on this wire is UserId, which
+        /// <see cref="ObservabilityContext"/> deliberately lacks.
+        ///
+        /// Fills persona_id on the backend's turn_completed telemetry. That column and its
+        /// dashboard view existed since the observability rollout but were empty on every
+        /// turn, because nothing here ever sent a value — so a coach turn could not be told
+        /// from an NPC turn.
+        /// </summary>
+        [JsonProperty("personaId")]
+        public string PersonaId { get; set; }
 
         /// <summary>
         /// TTS provider ("elevenlabs", "voxtral", "cartesia")

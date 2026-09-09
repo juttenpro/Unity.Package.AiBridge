@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.12.0] - 2026-09-09
+
+### Added
+- **The persona now travels on the dialogue wire.** `SessionStartMessage.PersonaId` and
+  `ConversationContext.personaId` carry the name of the NPC or coach whose turn it is, and every
+  send site fills it: `NetworkMessageController` (which already knew the persona but only used it
+  for log prefixes), `NpcClientBase.CreateTextInputMessage` (from its own `NpcName`, the
+  authoritative answer for a client that owns one persona), and both `RequestOrchestrator` paths.
+
+  The backend has had `ConversationParameters.PersonaId` and the BigQuery column `persona_id`
+  since the observability rollout, and the dashboard shows that column — but it was empty on all
+  14.427 turns of the 31 days to 2026-09-09, 0 distinct values, because nothing here ever sent a
+  value. The cost of the gap: the "unknown" rows on the Cost tab could not be explained, because
+  AI coach usage from the menu looked identical to unattributed NPC usage. Requires
+  ApiOrchestrator `b0b46f1` or later, which maps the field in both dialogue mappers; older
+  backends ignore it.
+
+  Not personal data: a persona is a content asset ("dokter Hansen"), the same kind of identifier
+  as `courseId`. The GDPR gate on this wire remains `UserId`, which `ObservabilityContext` still
+  deliberately lacks.
+
 ## [5.11.1] - 2026-09-08
 
 ### Fixed

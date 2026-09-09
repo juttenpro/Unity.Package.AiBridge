@@ -183,5 +183,55 @@ namespace Tsc.AIBridge.Tests.Editor
             Assert.That(deserialized.OrganizationId, Is.EqualTo(9));
             Assert.That(deserialized.AppMode, Is.EqualTo("Development"));
         }
+
+        /// <summary>
+        /// BUSINESS REQUIREMENT: both dialogue messages carry the persona under the exact key
+        /// the backend maps, so turn_completed can tell a coach turn from an NPC turn.
+        ///
+        /// WHY: the backend has had ConversationParameters.PersonaId and the BigQuery column
+        /// persona_id since the observability rollout, and the dashboard shows the column — but
+        /// it was empty on all 14.427 turns of the 31 days to 2026-09-09, 0 distinct values,
+        /// because this package never sent a value. Without it the 'unknown' rows on the Cost
+        /// tab cannot be explained: menu coach usage looks identical to unattributed NPC usage.
+        ///
+        /// WHAT: key "personaId" on SessionStartMessage and inside the "context" object of
+        /// TextInputMessage — the two shapes the backend's dialogue mappers read.
+        ///
+        /// SUCCESS CRITERIA:
+        /// - SessionStartMessage serializes "personaId" at the top level.
+        /// - TextInputMessage serializes "personaId" inside "context", not at the top level.
+        /// - A message with no persona omits nothing the backend needs: the key may be null,
+        ///   which the backend treats as "older client".
+        /// </summary>
+        [Test]
+        public void SessionStartMessage_Should_Serialize_PersonaId_AtTheTopLevel()
+        {
+            var message = new SessionStartMessage { PersonaId = "dokter-hansen" };
+
+            var json = JObject.Parse(JsonConvert.SerializeObject(message));
+
+            Assert.That(json["personaId"]?.Value<string>(), Is.EqualTo("dokter-hansen"),
+                "the backend maps SessionStartMessage.personaId onto ConversationParameters; " +
+                "a drifted key is silently discarded and persona_id stays empty");
+        }
+
+        [Test]
+        public void TextInputMessage_Should_Serialize_PersonaId_InsideTheContext()
+        {
+            var message = new TextInputMessage
+            {
+                Text = "Hallo",
+                Context = new ConversationContext { personaId = "ai-coach" }
+            };
+
+            var json = JObject.Parse(JsonConvert.SerializeObject(message));
+
+            Assert.That(json["context"]?["personaId"]?.Value<string>(), Is.EqualTo("ai-coach"),
+                "NPC-initiated turns are mapped from the context object, not the envelope — " +
+                "the coach reaches the backend through exactly this path");
+            Assert.That(json["personaId"], Is.Null,
+                "the envelope must not also carry it: two sources for one field is how the " +
+                "two halves drift apart");
+        }
     }
 }

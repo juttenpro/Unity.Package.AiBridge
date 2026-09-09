@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -1973,6 +1973,9 @@ namespace Tsc.AIBridge.Core
                 {
                     RequestId = request.RequestId,
                     Messages = messages,
+                    // Fills persona_id on the backend's telemetry; it was empty on every turn,
+                    // so a coach turn could not be told from an NPC turn.
+                    PersonaId = npcName,
                     // Core audio settings
                     AudioFormat = parameters.AudioFormat,
                     SampleRate = parameters.SampleRate,
@@ -2208,6 +2211,8 @@ namespace Tsc.AIBridge.Core
                     Context = new ConversationContext
                     {
                         messages = messages,
+                        // Same field as on SessionStart; NPC-initiated turns arrive here.
+                        personaId = npcName,
                         systemPrompt = request.NpcConfig?.SystemPrompt,
                         voiceId = request.NpcConfig?.VoiceId,
                         ttsStreamingMode = request.NpcConfig?.TtsStreamingMode,

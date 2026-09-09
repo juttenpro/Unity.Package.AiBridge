@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -86,6 +86,9 @@ namespace Tsc.AIBridge.Controllers
                 LlmModel = parameters?.llmModel,
                 TtsModel = parameters?.ttsModel,
                 SttProvider = parameters?.sttProvider,
+                // Fills persona_id on the backend's telemetry. This controller already knew the
+                // persona but only used it for log prefixes, so the column stayed empty.
+                PersonaId = _personaName,
                 MaxTokens = parameters?.maxTokens ?? 500,
                 Temperature = parameters?.temperature ?? 0.7f,
                 // Use TTS streaming mode from PersonaSO via parameters
@@ -147,6 +150,9 @@ namespace Tsc.AIBridge.Controllers
                 Context = new ConversationContext
                 {
                     messages = messages ?? new List<ChatMessage>(),
+                    // See PersonaId on SessionStartMessage: NPC-initiated turns come through
+                    // here, so this is the half that carries the coach.
+                    personaId = _personaName,
                     voiceId = parameters?.voiceId,
                     ttsStreamingMode = parameters?.ttsStreamingMode,
                     llmModel = parameters?.llmModel,

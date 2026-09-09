@@ -554,6 +554,15 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         protected virtual TextInputMessage CreateTextInputMessage(string text, bool isNpcInitiated, ConversationContext context)
         {
+            // This client owns exactly one persona, so its name is the authoritative answer to
+            // "who is speaking on this turn" — the context is assembled elsewhere and had no way
+            // to know. Fills persona_id on the backend's telemetry, which was empty on every
+            // turn and left coach turns indistinguishable from NPC turns.
+            if (context != null)
+            {
+                context.personaId = NpcName;
+            }
+
             return new TextInputMessage
             {
                 RequestId = Guid.NewGuid().ToString(),
