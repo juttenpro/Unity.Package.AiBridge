@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.13.0] - 2026-09-10
+
+### Added
+- **`ObservabilityContext.IsCoach`** (`isCoach` on the wire) tells the backend whether the AI
+  coach or a case NPC held the turn. The coach runs over the same dialogue pipeline as any other
+  persona and keeps the `courseId` of the lesson it is opened in, so nothing in the data could
+  separate coach spend from lesson spend: the cost dashboard could not answer "what does the AI
+  coach cost this customer".
+
+  `courseId = "AICoach"` does not answer it either — the client only falls back to that label
+  when no course is attributable at all, which misses every coach conversation held inside a
+  lesson, and the coach orb lives in ten VR scenes.
+
+  Nullable on purpose: `null` means the client could not tell (no rule system to ask yet), which
+  is a different fact from `false`. Requires ApiOrchestrator `7a419c5` or later, which maps the
+  field onto the `turn_completed` event; older backends ignore it.
+
 ## [5.12.0] - 2026-09-09
 
 ### Added

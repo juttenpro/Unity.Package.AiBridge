@@ -71,5 +71,21 @@ namespace Tsc.AIBridge.Messages
         /// </summary>
         [JsonProperty("gameRoundId")]
         public int? GameRoundId;
+
+        /// <summary>
+        /// True when the AI coach owns this conversation, false when a case NPC does. The coach
+        /// runs over the same dialogue pipeline as any other persona, so without this flag the
+        /// backend cannot separate coach spend from lesson spend.
+        ///
+        /// <see cref="CourseId"/> does not answer the question: "AICoach" is only used when no
+        /// course is attributable at all, so a coach conversation held inside a course reports
+        /// that course — one field cannot carry both.
+        ///
+        /// Null when the client cannot tell (no rule system yet during boot). Deliberately
+        /// nullable rather than defaulting to false: "we do not know" and "this was not the
+        /// coach" are different facts.
+        /// </summary>
+        [JsonProperty("isCoach")]
+        public bool? IsCoach;
     }
 }

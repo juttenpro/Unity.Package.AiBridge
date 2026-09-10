@@ -138,6 +138,50 @@ namespace Tsc.AIBridge.Tests.Editor
             Assert.That(inner["organizationId"]!.Value<int>(), Is.EqualTo(3));
         }
 
+        /// <summary>
+        /// BUSINESS REQUIREMENT: the backend must be able to bill AI coach usage separately per
+        /// organisation. The coach runs over the same dialogue pipeline as any case NPC, so the
+        /// only thing that can tell the two apart on the wire is this flag.
+        ///
+        /// WHY NOT courseId: the client only reports "AICoach" when no course is attributable at
+        /// all. A coach conversation held inside a lesson keeps that lesson's course, which is
+        /// the more useful half for cost attribution — one field cannot carry both. That is
+        /// exactly the case pinned here.
+        /// </summary>
+        [Test]
+        public void ObservabilityContext_Should_Serialize_IsCoach_AlongsideTheCourse()
+        {
+            var context = new ConversationContext
+            {
+                observability = new ObservabilityContext
+                {
+                    CourseId = "Leefstijlgesprekken",
+                    LessonId = "Lesson_03",
+                    IsCoach = true
+                }
+            };
+
+            var inner = (JObject)JObject.Parse(JsonConvert.SerializeObject(context))["observability"]!;
+
+            Assert.That(inner["isCoach"]!.Value<bool>(), Is.True,
+                "a drifted key is silently discarded and the coach's spend stays invisible " +
+                "inside the lesson cost");
+            Assert.That(inner["courseId"]!.Value<string>(), Is.EqualTo("Leefstijlgesprekken"),
+                "the flag must not replace the course: the dashboard needs both to answer " +
+                "'what does the coach cost this customer, inside which course'");
+        }
+
+        [Test]
+        public void ObservabilityContext_WithoutCoachKnowledge_SendsNullNotFalse()
+        {
+            var json = JObject.Parse(
+                JsonConvert.SerializeObject(new ObservabilityContext { AppLogId = "log-1" }));
+
+            Assert.That(json["isCoach"]!.Type, Is.EqualTo(JTokenType.Null),
+                "'we cannot tell' and 'this was not the coach' are different facts; sending " +
+                "false would attribute unknown traffic to lessons as if it were certain");
+        }
+
         [Test]
         public void ObservabilityContext_HasNoUserIdField_PrivacyGate()
         {
