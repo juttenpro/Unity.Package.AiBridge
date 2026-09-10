@@ -988,8 +988,17 @@ namespace Tsc.AIBridge.Core
         }
 
         /// <summary>
-        /// The RequestId of another live turn belonging to <paramref name="npcId"/>, or null. Null or
-        /// empty npcId means "cannot tell", which must never look like a conflict.
+        /// The RequestId of another live turn belonging to <paramref name="npcId"/> that still OCCUPIES
+        /// that NPC, or null. Null or empty npcId means "cannot tell", which must never look like a
+        /// conflict.
+        ///
+        /// A turn whose audio has already finished playing is skipped. It is still live — the backend
+        /// may not be done with it, and its messages still have to route — but it no longer holds the
+        /// decoder, the streaming player or the metadata slot, which is the entire reason one NPC can
+        /// only run one turn at a time. Counting it as a conflict made the release of the NPC depend on
+        /// a backend message arriving: when conversationComplete was missing or late, the NPC could
+        /// speak exactly one character-speaks-first line and every later one was refused for the rest
+        /// of the scene (2026-09-10 — the text-only backend path sent none at all).
         /// </summary>
         private string FindOtherLiveTurnForNpc(string npcId, string exceptRequestId)
         {
@@ -998,7 +1007,8 @@ namespace Tsc.AIBridge.Core
 
             foreach (var live in _liveSessions)
             {
-                if (live.Value.NpcId == npcId && live.Key != exceptRequestId)
+                if (live.Value.NpcId == npcId && live.Key != exceptRequestId &&
+                    !live.Value.AudioPlaybackFinished)
                     return live.Key;
             }
 
@@ -1069,6 +1079,11 @@ namespace Tsc.AIBridge.Core
         {
             if (string.IsNullOrEmpty(requestId))
                 return;
+
+            // The NPC is free to speak again from here, whatever the backend still has to say about
+            // this turn — see FindOtherLiveTurnForNpc.
+            if (_liveSessions.TryGetValue(requestId, out var session))
+                session.AudioPlaybackFinished = true;
 
             var state = RoutingStateFor(requestId);
             state.PlaybackFinished = true;

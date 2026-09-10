@@ -57,6 +57,19 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public bool FirstSignalSeen { get; set; }
 
+        /// <summary>
+        /// Whether this turn's audio has finished playing on this client — naturally or cut short.
+        ///
+        /// The turn stays in the live set after this: its bookkeeping ends when the BACKEND says it is
+        /// done, and until then a late message still has to find its turn. But the NPC itself is free
+        /// again — the decoder, the streaming player and the metadata slot that make "one live turn per
+        /// NPC" a physical limit are all idle — so a turn in this state must not refuse the next
+        /// character-speaks-first line. Without that distinction a missing or late conversationComplete
+        /// left the NPC unable to speak again for the rest of the scene (2026-09-10: the text-only path
+        /// sent no conversationComplete at all, so every chained PromptComposer was refused).
+        /// </summary>
+        public bool AudioPlaybackFinished { get; set; }
+
         /// <param name="npcName">Name of the NPC</param>
         /// <param name="requestId">Optional request ID. If null, a new GUID will be generated</param>
         public ConversationSession(string npcName = null, string requestId = null, string npcId = null,

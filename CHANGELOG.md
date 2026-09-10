@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.14.0] - 2026-09-10
+
+### Fixed
+- **An NPC that has finished speaking can speak again, without waiting for the backend.** One live
+  turn per NPC is a physical limit — one audio decoder, one streaming player, one metadata slot —
+  so a second character-speaks-first line is refused while the first is running. That refusal used
+  to last until `conversationComplete` released the turn, which made the NPC's availability depend
+  on a backend message arriving. The backend's text-only path sent none at all, so after its first
+  NPC-initiated line an NPC was refused for the rest of the scene: reported 2026-09-10 as a second
+  PromptComposer on the first one's Finished exit producing a prompt but no reaction and no audio,
+  with "still has a turn in flight" in the console. Session log 2026-09-08 16:36 shows the same
+  gap from the routing side: "Keeping routing … backend done: False, audio played: True".
+
+  `NotifyTurnAudioFinished` now marks the turn's audio as played, and the same-NPC conflict check
+  skips a turn in that state. The turn stays live on purpose — the backend may not be done with it
+  and its messages still have to route — but it no longer holds the NPC.
+
+  The backend half is fixed too (ApiOrchestrator `ac9dddb`, a text turn now finalises when its
+  pipelines finish). This side makes a missing or late `conversationComplete` unable to wedge an
+  NPC again.
+
+### Added
+- **`ConversationSession.AudioPlaybackFinished`** — whether this turn's audio has finished playing
+  on this client. Distinct from "the turn is released", which still waits for the backend.
+
 ## [5.13.0] - 2026-09-10
 
 ### Added
