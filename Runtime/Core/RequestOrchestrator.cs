@@ -1435,6 +1435,25 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public void RaiseSttFailed(AIBridge.Messages.NoTranscriptMessage message)
         {
+            // Free the NPC BEFORE the event goes out, not after. The handler evaluates the rule graph
+            // SYNCHRONOUSLY, and what a lesson hangs on a failed turn is nearly always a
+            // character-speaks-first line from the same NPC the player was talking to — "sorry, I
+            // didn't catch that". While the failed turn still counted as occupying that NPC,
+            // StartConversation refused the line ("still has a turn in flight") and nothing ever
+            // retried it: a coach that goes silent for the rest of the onboarding as soon as the
+            // learner presses to talk and says nothing (reported 2026-09-11).
+            //
+            // A turn with no transcript makes no LLM call, so it produces no answer and no audio: it
+            // does not hold the decoder, the streaming player or the metadata slot that make "one live
+            // turn per NPC" a physical limit. Nothing else frees it in time either — the release added
+            // in 5.14.0 is driven by the turn's audio ENDING, and this turn has none, so the NPC waited
+            // on the backend's conversationComplete, which lands long after the rule pass is over.
+            //
+            // Same release as <see cref="NotifyTurnAudioFinished"/>, reached by the path where there
+            // was never any audio to finish: the turn stays live, because its completion and any late
+            // message still have to resolve to it.
+            NotifyTurnAudioFinished(message?.RequestId);
+
             OnSttFailed?.Invoke(message);
         }
 

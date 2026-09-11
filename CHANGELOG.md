@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.14.1] - 2026-09-11
+
+### Fixed
+- **A failed player turn no longer blocks the NPC's reply to that failure.** `OnSttFailed` is not a
+  notification the RuleSystem gets round to later: its handler evaluates the rule graph
+  synchronously, and what a lesson hangs on a failed turn is nearly always a character-speaks-first
+  line from the same NPC — "sorry, I didn't catch that". `RaiseSttFailed` raised the event while the
+  failed turn still counted as occupying that NPC, so `StartConversation` refused the line ("still
+  has a turn in flight") and nothing ever retried it. Reported 2026-09-11: in onboarding the coach
+  speaks a line, the learner presses to talk and says nothing, and the coach is silent from there
+  on.
+
+  Nothing else freed the NPC in time. A turn with no transcript makes no LLM call, so it produces no
+  answer and no audio: the release added in 5.14.0 is driven by a turn's audio ENDING, and this turn
+  has none. What was left was the backend's `conversationComplete`, which arrives long after the
+  rule pass is over.
+
+  `RaiseSttFailed` now frees the NPC before raising the event — the same release as
+  `NotifyTurnAudioFinished`, reached by the path where there was never any audio to finish. The turn
+  itself stays live on purpose: its completion and any late message still have to resolve to it.
+  A failure message that carries no `RequestId` names no turn and frees nothing.
+
+  Covers every path that reports a failed turn: the backend's `noTranscript`, an aborted turn on a
+  dead socket, the turn-response timeout and the reconnect timeout.
+
+  Tests: `NpcFreedByFailedTurnTests` (5; 3 proven red before the fix).
+
 ## [5.14.0] - 2026-09-10
 
 ### Fixed
