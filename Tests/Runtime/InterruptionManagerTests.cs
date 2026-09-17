@@ -65,7 +65,7 @@ namespace Tsc.AIBridge.Tests.Runtime
         public void OnInterruption_EventFires_WhenInterruptionDetected()
         {
             // Suppress expected warning when no active NPC
-            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No active NPC client to interrupt");
+            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No NPC client to interrupt");
 
             // Arrange
             bool eventFired = false;
@@ -82,7 +82,7 @@ namespace Tsc.AIBridge.Tests.Runtime
         public void OnInterruptionDetectedEvent_Fires_WithCorrectParameters()
         {
             // Suppress expected warning when no active NPC
-            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No active NPC client to interrupt");
+            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No NPC client to interrupt");
 
             // Arrange
             bool eventFired = false;
@@ -154,41 +154,31 @@ namespace Tsc.AIBridge.Tests.Runtime
         }
 
         /// <summary>
-        /// BUSINESS REQUIREMENT: User input during NPC silence should NOT start monitoring
+        /// BUSINESS REQUIREMENT: a press made while nothing is audible must earn the FULL persistence
+        /// time before it counts as an interruption.
         ///
-        /// WHY: No interruption possible if NPC is not responding
-        /// WHAT: Test that monitoring only starts when NPC is responding
-        /// HOW: Simulate user input with NPC silent, verify no monitoring started
+        /// WHY: _userInputStartedDuringNpcResponse is the only thing keeping CheckNearEndCondition away
+        /// from a turn with no audio yet. Such a turn reads as "stream finished, buffer empty", which is
+        /// the near-end shape, and near-end cuts the threshold to 25%: v5.8.0 shipped exactly that and
+        /// an ordinary press became an interruption after 100 ms.
+        /// WHAT: that the flag stays false when nothing was audible at the moment of the press.
+        /// HOW: call OnUserInputStarted with no NPC talking and read the flag back.
         ///
         /// SUCCESS CRITERIA:
-        /// - User input while NPC silent = no monitoring
-        /// - User input while NPC responding = monitoring starts
-        /// - Efficient resource usage (no unnecessary coroutines)
+        /// - Flag is false when nothing is audible at the press
         ///
         /// BUSINESS IMPACT:
-        /// - Failing = Wasted CPU cycles monitoring when no interruption possible
-        /// - Failing = Performance degradation in long sessions
+        /// - Failing = a learner merely starting their turn cuts the NPC off after 100 ms
+        ///
+        /// RENAMED: this was UserInput_WithoutNpcResponse_DoesNotStartMonitoring, which named a
+        /// behaviour it never asserted - and that behaviour was the defect. Monitoring that started
+        /// only when the NPC was already audible missed every press arriving a frame before the
+        /// addressed NPC or its first audio chunk did, and those presses could then never be approved.
+        /// The assertion below is unchanged.
         /// </summary>
         [Test]
-        public void UserInput_WithoutNpcResponse_DoesNotStartMonitoring()
+        public void UserInput_WithoutNpcResponse_DoesNotCountAsDuringNpcResponse()
         {
-            /// <summary>
-            /// BUSINESS REQUIREMENT: Overlap monitoring should only run when needed
-            ///
-            /// WHY: Running monitoring when NPC is silent wastes CPU
-            /// WHAT: Verify coroutine only starts when NPC is responding
-            /// HOW: Check _userInputStartedDuringNpcResponse flag
-            ///
-            /// SUCCESS CRITERIA:
-            /// - Flag is false when NPC silent
-            /// - Flag is true when NPC responding
-            /// - Monitoring coroutine only runs when flag is true
-            ///
-            /// BUSINESS IMPACT:
-            /// - Failing = Battery drain on Quest devices
-            /// - Failing = Performance issues with many concurrent players
-            /// </summary>
-
             // Arrange - no active NPC set (simulate NPC not responding)
 
             // Act - Use reflection to call OnUserInputStarted (it's private)
@@ -299,7 +289,7 @@ namespace Tsc.AIBridge.Tests.Runtime
         public void ClearInterruptionFlag_ResetsDetectionState()
         {
             // Suppress expected warning when no active NPC
-            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No active NPC client to interrupt");
+            LogAssert.Expect(LogType.Warning, "[InterruptionManager] No NPC client to interrupt");
 
             // Arrange - trigger an interruption
             _interruptionManager.OnInterruptionDetected();

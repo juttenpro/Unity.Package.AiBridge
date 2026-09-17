@@ -6,6 +6,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.14.2] - 2026-09-17
+
+### Fixed
+- **A learner talking over an NPC could not interrupt it; their turn only arrived once the NPC had
+  finished.** Reported 2026-09-17 from the aggression training, where the whole lesson is about
+  setting boundaries against a shouting man. Session log `interrupt Emotional1_17-09-2026_12-26-30`:
+  "Nee meneer, stop eens eventjes" reaches the RuleSystem at 146.371, 33 ms after the NPC's
+  `ReactionFinished` at 146.338 — fourteen recognised words in the 1.5 s the event claims the learner
+  spoke, because the press happened seconds earlier and was held.
+
+  `AIBridgeRulesHandler` withholds `PlayerStartsTalking` as soon as it sees the addressed NPC holding
+  the floor, on the promise that the overlap monitor either approves the interruption or the NPC falls
+  silent. `OnUserInputStarted` made that promise once, at the press, from
+  `TurnOwnerClient?.IsTalking`, and nothing revisited it. Two things routinely settle a frame later:
+
+  - WHICH NPC is being talked over. `AIBridgeRulesHandler` pushes it in through `SetAddressedNpc` from
+    its own handler for the same `OnRecordingStarted` event, and no execution order is pinned between
+    the two. Until that push lands the manager still holds the NPC of the previous press — in a room
+    with two speakers, a silent one.
+  - WHETHER it is audible. The press can land between the turn arriving and its first chunk playing.
+    The handler's gate closes on `IsReceivingResponse` as well, which is true from the start of the
+    response; the monitor only ever looked at `IsTalking`, set when playback starts.
+
+  Either way the gate was shut and nothing was watching. The monitor now runs for as long as the talk
+  input is active and re-reads the turn owner, its audible state and its policy every frame, so a late
+  `SetAddressedNpc` applies its persona's `AllowInterruption` and persistence time for the rest of the
+  press instead of being ignored for the whole turn.
+
+  The thinking phase still cannot approve an interruption — the loop passes through it, but with no
+  audio there is nothing to overlap and `_userInputStartedDuringNpcResponse` keeps
+  `CheckNearEndCondition` off a turn that reads as "stream finished, buffer empty". That is the trap
+  v5.8.0 fell into; approving a thinking-phase interruption remains Concurrent-Turns-Plan step 15.
+
+  Tests: `InterruptionHandoverContractTests` (3; 2 proven red before the fix, the third is the control
+  that proves the monitor itself works — without it red would also fit a broken fixture). They drive a
+  real `SpeechInputHandler`, real VAD on a fixed threshold fed real frames, and the real coroutine over
+  real frames; only the microphone and the NPC's audio player are faked. Not covered, and a play
+  session is still the only proof: real microphone input, streamed NPC audio, the adaptive VAD, and
+  which of the two subscribers a given scene actually invokes first.
+
+- **`GetNpcActualSpeech` no longer calls `GetComponent` every frame** — it reads the
+  `StreamingAudioPlayer` that `SetAddressedNpc` and `HandleActiveNpcChanged` already cache, and falls
+  back to the lookup only for a turn owner neither resolved one for. It was a per-frame lookup before;
+  the loop now runs on every press, which is what makes it worth removing.
+
+- **Talk input arriving while the component is inactive says so once**, instead of logging a Unity
+  error per press. A C# subscription outlives the subscriber being disabled, so the presses keep
+  arriving; interruption is genuinely off until the object is enabled again.
+
+### Changed
+- **`UserInput_WithoutNpcResponse_DoesNotStartMonitoring` renamed to
+  `..._DoesNotCountAsDuringNpcResponse`.** It never asserted the monitoring it named — only the
+  `_userInputStartedDuringNpcResponse` flag, which this release leaves exactly as it was — and the
+  behaviour in its name was the defect above. The assertion is unchanged.
+- **Three `LogAssert.Expect` calls in `InterruptionManagerTests` now name the message the code
+  actually logs** ("No NPC client to interrupt"). They expected "No active NPC client to interrupt",
+  which nothing has produced for several releases, so those three tests were already failing before
+  this change.
+
 ## [5.14.1] - 2026-09-11
 
 ### Fixed

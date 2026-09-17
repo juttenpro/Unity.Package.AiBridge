@@ -154,6 +154,9 @@ namespace Tsc.AIBridge.Audio.Interruption
         // Coroutine tracking
         private Coroutine _overlapMonitorCoroutine;
 
+        // One warning per disabled stretch, not one per press.
+        private bool _reportedInactiveWhileMonitoringRequested;
+
         private void Awake()
         {
             if (speechInputHandler == null)
@@ -263,11 +266,14 @@ namespace Tsc.AIBridge.Audio.Interruption
             if (npcClient == null)
                 return false;
 
-            // Try to find StreamingAudioPlayer on the NPC client or its children
-            var audioPlayer = npcClient.GetComponent<StreamingAudioPlayer>();
+            // The cache SetAddressedNpc and HandleActiveNpcChanged fill, for the same reason they fill
+            // it: this runs every frame of every press now, and GetComponent there is too expensive.
+            // The lookup stays as the fallback for a turn owner neither of them resolved a player for.
+            var audioPlayer = TurnOwnerAudioPlayer;
             if (audioPlayer == null)
             {
-                audioPlayer = npcClient.GetComponentInChildren<StreamingAudioPlayer>();
+                audioPlayer = npcClient.GetComponent<StreamingAudioPlayer>()
+                              ?? npcClient.GetComponentInChildren<StreamingAudioPlayer>();
             }
 
             if (audioPlayer != null)
@@ -291,7 +297,21 @@ namespace Tsc.AIBridge.Audio.Interruption
                 Debug.Log("[InterruptionManager] User input started");
             }
 
-            // Check if NPC is currently responding
+            // Whether the NPC is audible RIGHT NOW decides one thing only: near-end. It does not decide
+            // whether to watch. Watching is what the press asked for, and two things routinely become
+            // true a frame or more later:
+            //
+            // - WHICH NPC is being talked over. AIBridgeRulesHandler pushes it in through
+            //   SetAddressedNpc from its own handler for this same OnRecordingStarted event, and no
+            //   execution order is pinned between the two. Until that push lands this still holds the
+            //   NPC of the previous press - in a room with several speakers, a silent one.
+            // - WHETHER it is audible. The press may land between the turn arriving and its first chunk
+            //   playing. AIBridgeRulesHandler already treats that window as "the NPC has the floor" -
+            //   its gate closes on IsReceivingResponse too - and withholds PlayerStartsTalking for it.
+            //
+            // Deciding once, here, made both of those unwinnable: the gate was shut and nothing was
+            // watching, so the learner's turn only landed once the NPC had finished talking. The loop
+            // re-reads both facts every frame instead.
             bool npcResponding = TurnOwnerClient?.IsTalking ?? false;
 
             if (npcResponding)
@@ -304,23 +324,23 @@ namespace Tsc.AIBridge.Audio.Interruption
                 {
                     _npcResponseStartTime = Time.time;
                 }
-
-                if (enableVerboseLogging)
-                {
-                    Debug.Log("[InterruptionManager] User input started during NPC response - starting overlap monitoring");
-                }
-
-                // Start monitoring for interruption
-                StartOverlapMonitoring();
             }
             else
             {
+                // Deliberately NOT set when nothing is audible at the press: this flag is what keeps
+                // CheckNearEndCondition off a turn with no audio yet, which reads as "stream finished,
+                // buffer empty" and collapsed the threshold to 100 ms in v5.8.0. Such a press earns the
+                // full persistence time.
                 _userInputStartedDuringNpcResponse = false;
-                if (enableVerboseLogging)
-                {
-                    Debug.Log("[InterruptionManager] User input started - NPC not responding, no monitoring needed");
-                }
             }
+
+            if (enableVerboseLogging)
+            {
+                Debug.Log("[InterruptionManager] User input started - watching for overlap " +
+                          $"(NPC audible at the press: {npcResponding})");
+            }
+
+            StartOverlapMonitoring();
         }
 
         /// <summary>
@@ -342,12 +362,32 @@ namespace Tsc.AIBridge.Audio.Interruption
         }
 
         /// <summary>
-        /// Start the overlap monitoring coroutine
+        /// Start the overlap monitoring coroutine.
         /// </summary>
+        /// <remarks>
+        /// The disabled case is real, not defensive padding: this runs off a SpeechInputHandler event,
+        /// and a C# subscription outlives the subscriber being disabled. Disable the player object
+        /// mid-session and the presses keep arriving here, where StartCoroutine would log an error per
+        /// press. Say it once instead - interruption is genuinely off until the object is back.
+        /// </remarks>
         private void StartOverlapMonitoring()
         {
             // Stop any existing monitoring
             StopOverlapMonitoring();
+
+            if (!isActiveAndEnabled)
+            {
+                if (!_reportedInactiveWhileMonitoringRequested)
+                {
+                    _reportedInactiveWhileMonitoringRequested = true;
+                    Debug.LogWarning(
+                        "[InterruptionManager] Talk input arrived while this component is inactive - " +
+                        "the NPC cannot be interrupted until it is enabled again.");
+                }
+                return;
+            }
+
+            _reportedInactiveWhileMonitoringRequested = false;
 
             // Start new monitoring coroutine
             _overlapMonitorCoroutine = StartCoroutine(MonitorOverlapCoroutine());
@@ -469,49 +509,72 @@ namespace Tsc.AIBridge.Audio.Interruption
             float npcPauseAccumulator = 0f;
             float maxOverlapReached = 0f; // Tracked for production diagnostics on failure.
 
-            // Get interruption settings from cached config.
+            // Resolved per frame, not once: SetAddressedNpc can land after the press, and it carries the
+            // persona whose AllowInterruption and persistence time this decision is supposed to use.
+            // Resolving once meant a late push had its policy ignored for the whole turn.
+            //
             // Before v1.6.16 the fallback was 1.5f, which silently made interruption 3.75x
             // harder when config was unavailable. Now it matches the PersonaSO default and
             // logs a warning so the fallback is visible instead of silent.
-            var target = ResolveInterruptionTarget(
-                _addressedPolicy, TargetFrom(_activeNpcConfig), DefaultPersistenceTimeFallback);
-            var allowInterruption = target.AllowInterruption;
-            var persistenceTime = target.PersistenceTime;
+            var allowInterruption = false;
+            var persistenceTime = DefaultPersistenceTimeFallback;
+            var reportedMissingConfiguration = false;
+            var loggedStart = false;
 
-            if (!_addressedPolicy.IsPresent && _activeNpcConfig == null)
+            while (speechInputHandler != null && speechInputHandler.IsUserInputActive)
             {
-                Debug.LogWarning(
-                    $"[InterruptionManager] No NPC configuration for this turn — using fallback " +
-                    $"persistence {DefaultPersistenceTimeFallback:F2}s. " +
-                    $"This usually indicates a timing issue during scene load.");
-            }
+                // Both re-read every frame. Which NPC is being talked over and whether it is audible are
+                // the two facts this loop exists to watch; a press that arrives a frame before either of
+                // them settles used to be judged on the answer it had at that instant and never again.
+                var turnOwner = TurnOwnerClient;
 
-            if (enableVerboseLogging)
-            {
-                Debug.Log($"[InterruptionManager] Overlap monitoring started - " +
-                          $"allowInterruption: {allowInterruption}, persistence: {persistenceTime:F2}s, " +
-                          $"nearEndMultiplier: {nearEndPersistenceMultiplier:F2}, " +
-                          $"npcPauseTolerance: {npcPauseTolerance:F2}s");
-            }
+                var target = ResolveInterruptionTarget(
+                    _addressedPolicy, TargetFrom(_activeNpcConfig), DefaultPersistenceTimeFallback);
+                allowInterruption = target.AllowInterruption;
+                persistenceTime = target.PersistenceTime;
 
-            var turnOwner = TurnOwnerClient;
-            while (turnOwner != null && speechInputHandler != null && speechInputHandler.IsUserInputActive)
-            {
+                // Only worth saying when there IS an NPC whose policy we failed to find. The loop now
+                // runs on every press, and a press with nobody speaking has nothing to configure.
+                if (turnOwner != null && !_addressedPolicy.IsPresent && _activeNpcConfig == null
+                    && !reportedMissingConfiguration)
+                {
+                    reportedMissingConfiguration = true;
+                    Debug.LogWarning(
+                        $"[InterruptionManager] No NPC configuration for this turn — using fallback " +
+                        $"persistence {DefaultPersistenceTimeFallback:F2}s. " +
+                        $"This usually indicates a timing issue during scene load.");
+                }
+
+                if (enableVerboseLogging && !loggedStart && turnOwner != null)
+                {
+                    loggedStart = true;
+                    Debug.Log($"[InterruptionManager] Overlap monitoring on {turnOwner.NpcName} - " +
+                              $"allowInterruption: {allowInterruption}, persistence: {persistenceTime:F2}s, " +
+                              $"nearEndMultiplier: {nearEndPersistenceMultiplier:F2}, " +
+                              $"npcPauseTolerance: {npcPauseTolerance:F2}s");
+                }
+
                 // Get user speaking state from VAD
                 bool userSpeaking = DetectUserSpeech();
 
                 // Get NPC responding state
-                bool npcResponding = turnOwner.IsTalking;
+                bool npcResponding = turnOwner != null && turnOwner.IsTalking;
 
                 // CRITICAL: Use VAD-based speech detection to distinguish actual speech from pauses
                 bool npcActuallySpeaking = GetNpcActualSpeech(turnOwner);
 
-                // The thinking phase is deliberately NOT watched here. Two attempts on 2026-09-08 both
-                // shipped broken: v5.7.0 gated it on how long the talk button was held, so a silent press
+                // The loop runs through the thinking phase but the thinking phase still CANNOT approve an
+                // interruption: with no audio there is nothing to overlap, so UpdateOverlapTimer holds
+                // the timer at zero, and _userInputStartedDuringNpcResponse keeps CheckNearEndCondition
+                // out of it. Both matter. Two attempts on 2026-09-08 shipped broken for want of exactly
+                // these: v5.7.0 gated it on how long the talk button was held, so a silent press
                 // cancelled an answer; v5.8.0 used real speech but let CheckNearEndCondition see "stream
                 // finished, buffer empty" — which is what a turn with no audio YET looks like — so the
                 // persistence threshold collapsed to 25% and an ordinary press became an interruption
-                // after 100 ms. See Concurrent-Turns-Plan step 15 for what a correct version needs.
+                // after 100 ms. Approving one is still open; see Concurrent-Turns-Plan step 15.
+                //
+                // What the loop being here DOES buy is the frame the audio starts on: from then on this
+                // is an ordinary overlap that has to earn the full persistence time.
 
                 // Track NPC response time
                 if (npcResponding)
