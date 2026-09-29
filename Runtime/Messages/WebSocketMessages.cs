@@ -1037,11 +1037,64 @@ namespace Tsc.AIBridge.Messages
         /// Optional performance metrics for this conversation turn
         /// </summary>
         [JsonProperty("metrics")]
-        public object Metrics;
+        public ConversationCompleteMetrics Metrics;
+
+        /// <summary>
+        /// True when the backend cut this turn short, so any reaction text it produced was never meant
+        /// to be heard in full.
+        /// </summary>
+        [JsonProperty("wasInterrupted")]
+        public bool WasInterrupted;
 
         public ConversationCompleteMessage()
         {
             Type = "conversationComplete";
         }
+    }
+
+    /// <summary>
+    /// The part of a conversationComplete's metrics the client acts on. The backend sends more
+    /// (latencies, transcript, raw response); those are only logged and are not read here.
+    /// </summary>
+    [Serializable]
+    public class ConversationCompleteMetrics
+    {
+        /// <summary>
+        /// TTS audio chunks the backend sent for this turn. Null when the message carries no count.
+        /// </summary>
+        [JsonProperty("audioChunksSent")]
+        public int? AudioChunksSent;
+    }
+
+    /// <summary>
+    /// A completed turn as the backend reports it, next to what the client itself saw of it.
+    ///
+    /// WHY both views: <see cref="AudioReceived"/> is the client's own record and is true only once
+    /// playback of the turn has STARTED. That is the right question for turn cleanup, but it cannot
+    /// tell "the backend produced no voice" from "the voice is still waiting to play" (queued behind
+    /// other audio, or credited to another turn whose stream it continued). The backend knows which:
+    /// <see cref="AudioChunksSent"/> counts the audio it actually sent for this turn.
+    /// </summary>
+    public sealed class ConversationCompleteReport
+    {
+        public ConversationCompleteReport(string requestId, bool audioReceived, int? audioChunksSent, bool wasInterrupted)
+        {
+            RequestId = requestId;
+            AudioReceived = audioReceived;
+            AudioChunksSent = audioChunksSent;
+            WasInterrupted = wasInterrupted;
+        }
+
+        /// <summary>The turn that completed.</summary>
+        public string RequestId { get; }
+
+        /// <summary>Client view: playback of this turn had started when the completion arrived.</summary>
+        public bool AudioReceived { get; }
+
+        /// <summary>Backend view: TTS audio chunks sent for this turn; null when the backend did not report it.</summary>
+        public int? AudioChunksSent { get; }
+
+        /// <summary>Backend view: the turn was cut short.</summary>
+        public bool WasInterrupted { get; }
     }
 }

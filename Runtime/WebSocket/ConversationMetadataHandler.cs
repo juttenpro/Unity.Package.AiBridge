@@ -53,7 +53,15 @@ namespace Tsc.AIBridge.WebSocket
         /// only the bool and had to infer the turn from shared state, which is why the gate below exists.
         /// </summary>
         public event Action<string, bool> OnConversationComplete;
-        
+
+        /// <summary>
+        /// Raised with every <see cref="OnConversationComplete"/>, same gate, carrying the backend's own
+        /// account of the turn next to the client's. Use it for any decision about whether the turn
+        /// produced a voice at all — the bool on <see cref="OnConversationComplete"/> only says whether
+        /// playback had started yet. See <see cref="ConversationCompleteReport"/>.
+        /// </summary>
+        public event Action<ConversationCompleteReport> OnConversationCompleteReport;
+
         // Track last NPC response for interruption handling
         public string LastNpcResponse { get; private set; }
         
@@ -330,6 +338,8 @@ namespace Tsc.AIBridge.WebSocket
 
                             // Notify listeners — only for the turn that is actually current.
                             OnConversationComplete?.Invoke(completeRequestId, audioReceived);
+                            OnConversationCompleteReport?.Invoke(new ConversationCompleteReport(
+                                completeRequestId, audioReceived, completeMsg.Metrics?.AudioChunksSent, completeMsg.WasInterrupted));
                         }
                         else if(_enableVerboseLogging)
                         {
@@ -341,6 +351,8 @@ namespace Tsc.AIBridge.WebSocket
                         // No orchestrator (left the lesson scene with the socket still open): keep the
                         // legacy unconditional notification so remaining listeners can settle.
                         OnConversationComplete?.Invoke(completeRequestId, false);
+                        OnConversationCompleteReport?.Invoke(new ConversationCompleteReport(
+                            completeRequestId, false, completeMsg.Metrics?.AudioChunksSent, completeMsg.WasInterrupted));
                     }
                     break;
                     

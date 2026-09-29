@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using Tsc.AIBridge.Core;
+using Tsc.AIBridge.Messages;
 using Tsc.AIBridge.WebSocket;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -184,6 +185,98 @@ namespace Tsc.AIBridge.Tests.Editor
 
         private static string CompleteJson(string requestId) =>
             "{\"type\":\"conversationComplete\",\"requestId\":\"" + requestId + "\"}";
+
+        /// <summary>The backend's shape, trimmed to the fields under test (see the 2026-09-23 session logs).</summary>
+        private static string CompleteJson(string requestId, int audioChunksSent, bool wasInterrupted) =>
+            "{\"metrics\":{\"audioChunksReceived\":141,\"audioChunksSent\":" + audioChunksSent + "}," +
+            "\"wasInterrupted\":" + (wasInterrupted ? "true" : "false") + "," +
+            "\"type\":\"conversationComplete\",\"requestId\":\"" + requestId + "\"}";
+
+        #endregion
+
+        #region Report: the backend's account of the turn
+
+        /// <summary>
+        /// The field symptom (menu coach, 2026-09-10 and 2026-09-28): "spraak niet beschikbaar" with the
+        /// coach's text on screen while the same line was being spoken. The completion arrived before
+        /// playback of the turn had started, so the client's own view said "no audio" — yet the backend
+        /// had sent it. The report must carry the backend's count so that case is recognisable.
+        /// </summary>
+        [Test]
+        public void Report_CompletionBeforePlaybackStarted_CarriesTheBackendsChunkCount()
+        {
+            SetCurrentSession("turn-1"); // live, StreamsReceived == 0: playback has not started
+            ConversationCompleteReport report = null;
+            _handler.OnConversationCompleteReport += r => report = r;
+
+            _handler.ProcessMessage(CompleteJson("turn-1", audioChunksSent: 242, wasInterrupted: false));
+
+            Assert.IsNotNull(report, "a completion for a live turn must raise the report");
+            Assert.AreEqual("turn-1", report.RequestId);
+            Assert.IsFalse(report.AudioReceived, "the client had not played anything of this turn yet");
+            Assert.AreEqual(242, report.AudioChunksSent,
+                "the backend sent 242 chunks; without this count the turn reads as a TTS failure and its " +
+                "line is shown as a 'voice unavailable' caption while it is being spoken");
+        }
+
+        /// <summary>
+        /// A real TTS failure (2026-09-23, Voxtral "Invalid speaker") completes with audioChunksSent 0.
+        /// Zero must survive as zero: it is the one value that proves the voice never existed.
+        /// </summary>
+        [Test]
+        public void Report_BackendSentNoAudio_ReportsZero_NotUnknown()
+        {
+            SetCurrentSession("turn-1");
+            ConversationCompleteReport report = null;
+            _handler.OnConversationCompleteReport += r => report = r;
+
+            _handler.ProcessMessage(CompleteJson("turn-1", audioChunksSent: 0, wasInterrupted: false));
+
+            Assert.IsNotNull(report);
+            Assert.AreEqual(0, report.AudioChunksSent,
+                "0 chunks sent is the TTS-failure signal and must not be confused with 'not reported'");
+        }
+
+        [Test]
+        public void Report_WithoutMetrics_ReportsTheChunkCountAsUnknown()
+        {
+            SetCurrentSession("turn-1");
+            ConversationCompleteReport report = null;
+            _handler.OnConversationCompleteReport += r => report = r;
+
+            _handler.ProcessMessage(CompleteJson("turn-1"));
+
+            Assert.IsNotNull(report);
+            Assert.IsNull(report.AudioChunksSent,
+                "a message without metrics says nothing about audio; reporting 0 would fake a TTS failure");
+        }
+
+        [Test]
+        public void Report_InterruptedTurn_SaysSo()
+        {
+            SetCurrentSession("turn-1");
+            ConversationCompleteReport report = null;
+            _handler.OnConversationCompleteReport += r => report = r;
+
+            _handler.ProcessMessage(CompleteJson("turn-1", audioChunksSent: 0, wasInterrupted: true));
+
+            Assert.IsNotNull(report);
+            Assert.IsTrue(report.WasInterrupted,
+                "a turn cut short has no voice by design; the client must be able to tell it from a failure");
+        }
+
+        /// <summary>Same gate as the legacy event: a report for a stale turn is as dangerous as its completion.</summary>
+        [Test]
+        public void Report_StaleCompletion_RaisesNoReport()
+        {
+            SetCurrentSession("turn-2");
+            var raised = false;
+            _handler.OnConversationCompleteReport += _ => raised = true;
+
+            _handler.ProcessMessage(CompleteJson("turn-1", audioChunksSent: 5, wasInterrupted: false));
+
+            Assert.IsFalse(raised, "a completion for a turn that is no longer live must not be reported");
+        }
 
         #endregion
     }

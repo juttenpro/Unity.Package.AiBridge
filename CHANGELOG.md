@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.15.0] - 2026-09-29
+
+### Added
+- **`ConversationMetadataHandler.OnConversationCompleteReport`: the backend's own account of a
+  completed turn.** Raised with every `OnConversationComplete`, behind the same live-turn gate, with a
+  `ConversationCompleteReport`: the client's `AudioReceived` next to the backend's
+  `AudioChunksSent` (TTS chunks it sent for this turn; null when not reported) and `WasInterrupted`.
+
+  Why: `audioReceived` is true only once playback of the turn has STARTED. That is what turn cleanup
+  needs, but it was also read as "this turn has a voice", and the two differ whenever playback
+  starts late. Reported from the menu coach (2026-09-10, again 2026-09-28): the "voice unavailable"
+  caption with the coach's line appeared while that same line was being spoken. The completion had
+  arrived before the turn's playback started — queued behind audio still playing, or continuing
+  another turn's stream so its start was credited there. The backend already sent the fact that
+  settles it (`metrics.audioChunksSent`, `wasInterrupted`); the client parsed neither. Real TTS
+  failures still report 0 chunks (2026-09-23, Voxtral "Invalid speaker"), so they stay recognisable.
+
+### Changed
+- `ConversationCompleteMessage.Metrics` is now a typed `ConversationCompleteMetrics` instead of
+  `object`, and the message carries `WasInterrupted`. Only `audioChunksSent` is mapped; nothing in
+  the package or its known consumers read `Metrics` before.
+
 ## [5.14.2] - 2026-09-17
 
 ### Fixed
