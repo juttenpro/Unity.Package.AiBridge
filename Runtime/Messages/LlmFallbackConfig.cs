@@ -62,5 +62,11 @@ namespace Tsc.AIBridge.Messages
         /// <summary>"json_object" for clean-JSON output (OpenAI/Azure/Vertex). Omitted → provider default.</summary>
         [JsonProperty("responseFormat", NullValueHandling = NullValueHandling.Ignore)]
         public string ResponseFormat { get; set; }
+
+        /// <summary>Azure OpenAI resource for an Azure fallback (e.g. "ConversationReactions-WestEurope"),
+        /// so it can run on another resource/region than the primary. Omitted → the backend's default
+        /// Azure resource. A name the backend environment does not know fails the fallback.</summary>
+        [JsonProperty("azureResourceName", NullValueHandling = NullValueHandling.Ignore)]
+        public string AzureResourceName { get; set; }
     }
 }

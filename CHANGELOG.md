@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.16.0] - 2026-10-01
+
+### Added
+- **`LlmFallbackConfig.AzureResourceName`: an Azure fallback can run on a second Azure resource.**
+  Sent as `llmFallback.azureResourceName` on SessionStart, omitted when null. The backend maps the
+  name to a resource registered in its environment (endpoint + own key); omitted = the backend's
+  default Azure resource, an unknown name fails the fallback.
+
+  Why: after the Azure OpenAI disruption of 2026-09-29 a fallback is wanted outside the primary's
+  resource. The backend held one Azure endpoint and key, so an Azure fallback always landed on the
+  primary's resource. A second resource in West Europe has its own quota and region.
+
 ## [5.15.0] - 2026-09-29
 
 ### Added
