@@ -356,6 +356,13 @@ namespace Tsc.AIBridge.Messages
         public string BaseEmotion { get; set; }
 
         /// <summary>
+        /// Cartesia pronunciation dictionary of this persona (course-specific terms fixed in the
+        /// Cartesia playground). Null = none. Cartesia-only; ignored by ElevenLabs and Voxtral.
+        /// </summary>
+        [JsonProperty("pronunciationDictId")]
+        public string PronunciationDictId { get; set; }
+
+        /// <summary>
         /// Anonymous observability correlation IDs (AppLogId, LessonId, CourseId,
         /// OrganizationId, AppMode). Null when the client has no context to supply.
         /// Never contains UserId — see <see cref="ObservabilityContext"/> for the privacy gate.

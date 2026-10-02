@@ -129,6 +129,12 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public string BaseEmotion { get; set; }
 
+        /// <summary>
+        /// Optional Cartesia pronunciation dictionary id for course-specific terms, from the
+        /// persona's AI API Template entry. Null = none. Ignored by ElevenLabs and Voxtral.
+        /// </summary>
+        public string PronunciationDictId { get; set; }
+
         #region Context Caching (Gemini Cost Optimization)
 
         /// <summary>

@@ -226,6 +226,13 @@ namespace Tsc.AIBridge.Messages
         public string baseEmotion;
 
         /// <summary>
+        /// Cartesia pronunciation dictionary of this turn's persona (course-specific terms fixed in
+        /// the Cartesia playground). Null = none. Cartesia-only; ignored by ElevenLabs and Voxtral.
+        /// </summary>
+        [JsonProperty("pronunciationDictId")]
+        public string pronunciationDictId;
+
+        /// <summary>
         /// Anonymous observability correlation IDs, carried by TextInputMessage and
         /// AnalysisRequestMessage via this context object. See <see cref="ObservabilityContext"/>.
         /// </summary>

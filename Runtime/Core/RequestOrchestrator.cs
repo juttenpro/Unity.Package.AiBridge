@@ -2035,6 +2035,8 @@ namespace Tsc.AIBridge.Core
                     TtsLanguageCode = request.Request.TtsLanguageCode, // Force TTS language (e.g., "nl" to prevent Flemish)
                     // Cartesia base emotion (ignored by ElevenLabs/Voxtral backend-side)
                     BaseEmotion = request.Request.BaseEmotion,
+                    // Cartesia pronunciation dictionary (ignored by ElevenLabs/Voxtral backend-side)
+                    PronunciationDictId = request.Request.PronunciationDictId,
                     // LLM settings
                     LlmProvider = parameters.LlmProvider,
                     LlmModel = parameters.LlmModel,
@@ -2273,6 +2275,8 @@ namespace Tsc.AIBridge.Core
                         ttsLanguageCode = request.Request.TtsLanguageCode, // Force TTS language
                         // Cartesia base emotion (ignored by ElevenLabs/Voxtral backend-side)
                         baseEmotion = request.Request.BaseEmotion,
+                        // Cartesia pronunciation dictionary (ignored by ElevenLabs/Voxtral backend-side)
+                        pronunciationDictId = request.Request.PronunciationDictId,
                         // Context caching (Gemini cost optimization)
                         contextCacheName = request.Request.ContextCacheName,
                         // Anonymous observability correlation IDs; null when host project

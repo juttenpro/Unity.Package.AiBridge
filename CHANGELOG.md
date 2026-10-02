@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.17.0] - 2026-10-02
+
+### Added
+- **`ConversationRequest.PronunciationDictId`: a persona's Cartesia pronunciation dictionary.** Sent as
+  `pronunciationDictId` on SessionStart and on `ConversationContext` (NPC-initiated turns). The backend
+  forwards it to Cartesia as `pronunciation_dict_id` only when set; ElevenLabs and Voxtral ignore it.
+  Null keeps the previous behaviour.
+
+  Why: course-specific terms are mispronounced by Cartesia; content creators fix them in a dictionary
+  per persona in the Cartesia playground.
+- `PronunciationDictSerializationTests` pins the wire key to the one the backend reads.
+
 ## [5.16.1] - 2026-10-02
 
 ### Fixed
