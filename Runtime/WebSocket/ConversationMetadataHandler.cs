@@ -268,8 +268,11 @@ namespace Tsc.AIBridge.WebSocket
                     
                 case WebSocketMessageTypes.Error:
                     var errorMsg = JsonConvert.DeserializeObject<ErrorMessage>(json);
-                    UserErrorLogger.LogError(
-                        errorMsg.Message,
+                    // Warning, not error: WebSocketClient's error branch already logged this error as
+                    // "[BACKEND ERROR - …]", which the host reports as non-fatal. A second LogError here
+                    // raised the host's "restart the app" popup — one guardrail-refused TTS sentence ended
+                    // the session (2026-10-02, Agressietraining).
+                    Debug.LogWarning(
                         $"[{_personaName}] Server error [{errorMsg.Code}]: {errorMsg.Message} - {errorMsg.Details}");
                     OnError?.Invoke($"[{errorMsg.Code}] {errorMsg.Message}");
                     break;

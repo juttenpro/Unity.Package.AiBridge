@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.16.1] - 2026-10-02
+
+### Fixed
+- **A backend error on one turn no longer ends the session.** `ConversationMetadataHandler` logged a
+  routed `Error` message as a `[UserError:...]` `LogError`. The host's ErrorHandler shows every
+  `LogError` as the fatal "restart the app" popup, whose button quits the app. The same error had
+  already been logged by `WebSocketClient` as `[BACKEND ERROR - …]`, which the host treats as
+  non-fatal on purpose. The handler's line is now a warning.
+
+  Why: since 5.11.0 errors reach the turn's handler, and that case had never run before. Reported
+  2026-10-02 (Agressietraining, VR): Voxtral's guardrail refused one NPC sentence, the "voice
+  unavailable" caption showed the text, and the popup behind it closed the app.
+
+### Added
+- `BackendTurnErrorSeverityTests` sends a refused TTS sentence through `WebSocketClient` and asserts one
+  Error line, the `[BACKEND ERROR` one. Red before the fix with exactly the two lines from the report.
+
 ## [5.16.0] - 2026-10-01
 
 ### Added
