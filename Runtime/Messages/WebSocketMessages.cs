@@ -168,6 +168,13 @@ namespace Tsc.AIBridge.Messages
         public string LlmModel { get; set; } = "gemini-2.5-flash";
 
         /// <summary>
+        /// Azure OpenAI resource of the LLM (e.g. "ConversationReactions-WestEurope"). Omitted when
+        /// null, so the backend keeps its default resource; an unknown name fails the call.
+        /// </summary>
+        [JsonProperty("azureResourceName", NullValueHandling = NullValueHandling.Ignore)]
+        public string AzureResourceName { get; set; }
+
+        /// <summary>
         /// TTS model to use (e.g., "eleven_flash_v2_5", "eleven_turbo_v2_5")
         /// </summary>
         [JsonProperty("ttsModel")]

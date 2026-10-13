@@ -38,6 +38,7 @@ namespace Tsc.AIBridge.Core
         public string SttProvider { get; set; } = "google";
         public string LlmProvider { get; set; } = "openai";  // vertexai, openai, azure-openai
         public string LlmModel { get; set; } = "gpt-4o-mini";
+        public string AzureResourceName { get; set; } // Azure OpenAI resource of the LLM; null = backend default resource
         public string TtsProvider { get; set; } = "elevenlabs";
         public string TtsModel { get; set; } = "eleven_turbo_v2_5";
         public string Language { get; set; } = "nl-NL";

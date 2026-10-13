@@ -76,6 +76,7 @@ namespace Tsc.AIBridge.Services
         /// -1 = dynamic. Positive = explicit token reservation. See
         /// <c>ConversationContext.thinkingBudget</c> for full semantics.
         /// </param>
+        /// <param name="azureResourceName">Azure OpenAI resource of the LLM; null = the backend's default resource</param>
         /// <returns>Task that completes with AnalysisResponse when analysis is done</returns>
         /// <exception cref="InvalidOperationException">Thrown when WebSocket is not connected</exception>
         /// <exception cref="ArgumentException">Thrown when messages array is null or empty</exception>
@@ -90,7 +91,8 @@ namespace Tsc.AIBridge.Services
             string location = null,
             int? thinkingBudget = null,
             string thinkingLevel = null,
-            float? topP = null)
+            float? topP = null,
+            string azureResourceName = null)
         {
             // Check WebSocket connection
             if (!WebSocketAdapter.IsConnected)
@@ -117,6 +119,7 @@ namespace Tsc.AIBridge.Services
                     messages = messages,
                     llmProvider = llmProvider,
                     llmModel = llmModel,
+                    azureResourceName = azureResourceName,
                     temperature = temperature,
                     maxTokens = maxTokens,
                     // Optional nucleus sampling (top-p) from the AI API Template; null -> backend 0.95 fallback.

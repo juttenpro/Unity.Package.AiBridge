@@ -2040,6 +2040,7 @@ namespace Tsc.AIBridge.Core
                     // LLM settings
                     LlmProvider = parameters.LlmProvider,
                     LlmModel = parameters.LlmModel,
+                    AzureResourceName = request.Request.AzureResourceName,
                     Temperature = parameters.Temperature,
                     MaxTokens = parameters.MaxTokens,
                     // Gemini 2.5+ reasoning-token budget from the AI API Template.
@@ -2254,6 +2255,7 @@ namespace Tsc.AIBridge.Core
                         ttsStreamingMode = request.NpcConfig?.TtsStreamingMode,
                         llmModel = request.NpcConfig?.LlmModel,
                         llmProvider = request.NpcConfig?.LlmProvider,
+                        azureResourceName = request.Request.AzureResourceName,
                         language = request.NpcConfig?.Language,
                         temperature = request.NpcConfig?.Temperature ?? 0,
                         maxTokens = request.NpcConfig?.MaxTokens ?? 0,

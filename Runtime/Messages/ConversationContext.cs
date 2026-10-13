@@ -45,6 +45,13 @@ namespace Tsc.AIBridge.Messages
         public string llmProvider;
 
         /// <summary>
+        /// Azure OpenAI resource of the LLM. Omitted when null, so the backend keeps its default
+        /// resource; an unknown name fails the call.
+        /// </summary>
+        [JsonProperty("azureResourceName", NullValueHandling = NullValueHandling.Ignore)]
+        public string azureResourceName;
+
+        /// <summary>
         /// Temperature for LLM response generation (0.0-1.0)
         /// </summary>
         [Range(0f, 2f)]

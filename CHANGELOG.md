@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.18.0] - 2026-10-13
+
+### Added
+- **`ConversationRequest.AzureResourceName`: the Azure OpenAI resource of the main LLM.** Sent as
+  `azureResourceName` on SessionStart and on `ConversationContext` (NPC-initiated turns), and as the new
+  optional `azureResourceName` parameter of `AnalysisService.RequestAnalysisAsync`. Omitted when null,
+  so the backend keeps its default resource; an unknown name fails the call.
+
+  Why: the AI API Template names a resource for the main LLM, but only the fallback sent one, so every
+  main call ran on the backend default whatever the creator filled in.
+- `AzureResourceNameSerializationTests` pins the wire key to the one the backend reads.
+
 ## [5.17.0] - 2026-10-02
 
 ### Added
