@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.19.0] - 2026-10-14
+
+### Added
+- **`RequestOrchestrator.CancelLiveTurnForNpc(npcId, reason)`: end the turn that occupies an NPC.** Sends
+  SessionCancel and releases the turn and its routing. The player's own microphone turn counts too and
+  goes through `CancelCurrentSession`. Returns the cancelled turn id, or null when the NPC was free.
+  Stops no audio: the caller silences the NPC first.
+- **`RequestOrchestrator.OnNpcFreed(npcId)`: an NPC can speak again.** Raised once per busy-to-free
+  transition, whichever path freed it (playback end, completion, cancel, timeout, failure). Raised from
+  inside the release: handlers must defer starting a turn.
+
+  Why: a character-speaks-first line for a busy NPC was refused with no retry, so the Flow Exit's play
+  mode (Queue / Replace) had no effect. The client now replaces the running turn or waits for this event.
+- `NpcTurnCancelledForReplacementTests`.
+
 ## [5.18.0] - 2026-10-13
 
 ### Added

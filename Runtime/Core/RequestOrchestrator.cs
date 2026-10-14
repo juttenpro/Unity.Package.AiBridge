@@ -120,6 +120,16 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public event Action<AIBridge.Messages.NoTranscriptMessage> OnSttFailed;
 
+        /// <summary>
+        /// (npcId) — the NPC has no turn occupying it any more and can speak again. Raised once per
+        /// transition from busy to free, whichever path freed it: playback ending, completion, cancel,
+        /// timeout or failure. A line queued behind a running turn waits for this.
+        ///
+        /// Raised synchronously from inside the release, while the orchestrator may still be mid-update:
+        /// a handler must not start a turn on the spot, but defer it (e.g. to the next frame).
+        /// </summary>
+        public event Action<string> OnNpcFreed;
+
         #endregion
 
         #region Private Fields
@@ -1023,6 +1033,54 @@ namespace Tsc.AIBridge.Core
         public bool HasLiveTurnForNpc(string npcId) => FindOtherLiveTurnForNpc(npcId, null) != null;
 
         /// <summary>
+        /// Ends the turn that occupies <paramref name="npcId"/> so a new line can take its place (play
+        /// mode Replace). The backend is told to stop generating, and the turn is released together
+        /// with its routing: after a cancel no more audio for it is wanted.
+        ///
+        /// The player's own microphone turn counts too. Cutting off a player who talks too long is
+        /// exactly what content uses this for, so that turn goes through <see cref="CancelCurrentSession"/>,
+        /// which also stops the recording.
+        ///
+        /// Stops nothing that is already playing: the caller silences the NPC itself, before calling
+        /// this — the interrupted reaction still has to report finished under its own turn id.
+        /// </summary>
+        /// <returns>The cancelled turn's id, or null when nothing occupied the NPC.</returns>
+        public string CancelLiveTurnForNpc(string npcId, string reason)
+        {
+            var requestId = FindOtherLiveTurnForNpc(npcId, null);
+            if (requestId == null)
+                return null;
+
+            if (enableVerboseLogging)
+                Debug.Log($"[RequestOrchestrator] Cancelling turn {requestId} of '{npcId}': {reason}");
+
+            if (_micSession != null && _micSession.RequestId == requestId)
+            {
+                CancelCurrentSession(reason);
+                return requestId;
+            }
+
+            _ = CancelSessionOnBackendAsync(requestId, reason);
+            ReleaseLiveSession(requestId);
+            ForceReleaseTurnRouting(requestId);
+            return requestId;
+        }
+
+        /// <summary>
+        /// Raises <see cref="OnNpcFreed"/> when <paramref name="npcId"/> was occupied before a release
+        /// and is not any more. Comparing before and after keeps it to one report per transition: a
+        /// turn whose playback already freed the NPC is released again by its completion, and a second
+        /// report would start a second queued line.
+        /// </summary>
+        private void RaiseNpcFreedIfReleased(string npcId, bool wasOccupied)
+        {
+            if (!wasOccupied || string.IsNullOrEmpty(npcId) || HasLiveTurnForNpc(npcId))
+                return;
+
+            OnNpcFreed?.Invoke(npcId);
+        }
+
+        /// <summary>
         /// Drops a turn from the live set. Nothing else: a turn's BOOKKEEPING ends at
         /// `conversationComplete`, and its message ROUTING must outlive that. Tearing routing down here
         /// is a mistake this method has now made twice.
@@ -1052,10 +1110,12 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         private void ReleaseLiveSession(string requestId)
         {
-            if (string.IsNullOrEmpty(requestId))
+            if (string.IsNullOrEmpty(requestId) || !_liveSessions.TryGetValue(requestId, out var session))
                 return;
 
+            var wasOccupied = HasLiveTurnForNpc(session.NpcId);
             _liveSessions.Remove(requestId);
+            RaiseNpcFreedIfReleased(session.NpcId, wasOccupied);
         }
 
         /// <summary>
@@ -1083,7 +1143,11 @@ namespace Tsc.AIBridge.Core
             // The NPC is free to speak again from here, whatever the backend still has to say about
             // this turn — see FindOtherLiveTurnForNpc.
             if (_liveSessions.TryGetValue(requestId, out var session))
+            {
+                var wasOccupied = HasLiveTurnForNpc(session.NpcId);
                 session.AudioPlaybackFinished = true;
+                RaiseNpcFreedIfReleased(session.NpcId, wasOccupied);
+            }
 
             var state = RoutingStateFor(requestId);
             state.PlaybackFinished = true;
