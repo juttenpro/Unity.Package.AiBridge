@@ -200,12 +200,12 @@ namespace Tsc.AIBridge.Core
             if (timing != null && timing.TotalProcessingMs > 0)
             {
                 _sttLatency = (long)timing.TotalProcessingMs;
-                UnityEngine.Debug.Log($"[{_personaName}] STT: \"{transcript}\" ({_sttLatency}ms from backend, actual wait: {sttWaitTime}ms)");
+                UnityEngine.Debug.Log($"[{_personaName}] STT: \"{ConversationContentLogging.Content(transcript)}\" ({_sttLatency}ms from backend, actual wait: {sttWaitTime}ms)");
             }
             else
             {
                 _sttLatency = 0; // No backend timing available
-                UnityEngine.Debug.Log($"[{_personaName}] STT: \"{transcript}\" (no backend timing, actual wait: {sttWaitTime}ms)");
+                UnityEngine.Debug.Log($"[{_personaName}] STT: \"{ConversationContentLogging.Content(transcript)}\" (no backend timing, actual wait: {sttWaitTime}ms)");
             }
 
             // Store the actual wait time as this is what affects perceived latency

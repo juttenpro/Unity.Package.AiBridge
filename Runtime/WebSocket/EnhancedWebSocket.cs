@@ -101,7 +101,7 @@ namespace Tsc.AIBridge.WebSocket
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[EnhancedWebSocket] Failed to decode JSON message: {ex.Message}");
+                    Debug.LogError($"[EnhancedWebSocket] Failed to decode JSON message: {ConversationContentLogging.Content(ex.Message)}");
                 }
             }
             else if (_isReceivingAudioStream)

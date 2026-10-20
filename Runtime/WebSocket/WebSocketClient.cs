@@ -123,6 +123,23 @@ namespace Tsc.AIBridge.WebSocket
         // Public property for API base URL
         public string ApiBaseUrl => apiBaseUrl;
 
+        bool _connectionSequenceStarted;
+
+        /// <summary>
+        /// Sets the orchestrator base URL from code, for apps that keep it outside the scene. Call it before this
+        /// component's Start, which opens the connection; later it throws instead of silently keeping the old URL.
+        /// </summary>
+        public void SetApiBaseUrl(string baseUrl)
+        {
+            if (_connectionSequenceStarted)
+                throw new InvalidOperationException("The connection has started; set the base URL before Start.");
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "https" && uri.Scheme != "http"))
+                throw new ArgumentException($"Not an http(s) URL: '{baseUrl}'.", nameof(baseUrl));
+            apiBaseUrl = baseUrl.TrimEnd('/');
+            if (_authService != null)
+                _authService = new JwtAuthenticationService(apiBaseUrl);
+        }
+
         [Header("Connection Settings")]
         [SerializeField]
         [Tooltip("Establish WebSocket connection during scene initialization for instant availability")]
@@ -204,6 +221,7 @@ namespace Tsc.AIBridge.WebSocket
         private void Start()
         {
             // Start initialization sequence after scene is properly loaded
+            _connectionSequenceStarted = true;
             StartCoroutine(InitializeConnectionSequence());
         }
 
@@ -611,7 +629,7 @@ namespace Tsc.AIBridge.WebSocket
 
             await webSocket.SendJsonAsync(message);
             if (enableVerboseLogging)
-                Debug.Log($"[UnifiedWebSocket] Sent TextInput for RequestId: {message.RequestId}, Text: '{message.Text}'");
+                Debug.Log($"[UnifiedWebSocket] Sent TextInput for RequestId: {message.RequestId}, Text: '{ConversationContentLogging.Content(message.Text)}'");
         }
 
         /// <summary>
@@ -636,7 +654,7 @@ namespace Tsc.AIBridge.WebSocket
 
             await webSocket.SendJsonAsync(message);
             if (enableVerboseLogging)
-                Debug.Log($"[UnifiedWebSocket] Sent DirectTTS for RequestId: {message.RequestId}, Text: '{message.Text}', Voice: {message.Voice ?? "default"}");
+                Debug.Log($"[UnifiedWebSocket] Sent DirectTTS for RequestId: {message.RequestId}, Text: '{ConversationContentLogging.Content(message.Text)}', Voice: {message.Voice ?? "default"}");
         }
 
         /// <summary>
@@ -916,12 +934,12 @@ namespace Tsc.AIBridge.WebSocket
 
                         // Also log full error for debugging
                         if (enableVerboseLogging)
-                            Debug.Log($"[ERROR DETAILS] {json}");
+                            Debug.Log($"[ERROR DETAILS] {ConversationContentLogging.Content(json)}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[UnifiedWebSocket] Failed to parse error message: {ex.Message}\nRaw message: {json}");
+                    Debug.LogError($"[UnifiedWebSocket] Failed to parse error message: {ConversationContentLogging.Content(ex.Message)}\nRaw message: {ConversationContentLogging.Content(json)}");
                 }
 
                 // Hand the error to whoever is waiting on this requestId, then stop.
@@ -946,7 +964,7 @@ namespace Tsc.AIBridge.WebSocket
             if (!json.Contains("BufferHint") && !json.Contains("Transcription"))
             {
                 if (enableVerboseLogging)
-                    Debug.Log($"[UnifiedWebSocket] RECEIVED MESSAGE: {json.Substring(0, Math.Min(200, json.Length))}...");
+                    Debug.Log($"[UnifiedWebSocket] RECEIVED MESSAGE: {ConversationContentLogging.Content(json.Substring(0, Math.Min(200, json.Length)))}...");
             }
 
             // Capability-owned types first: these describe the player or the session, not the turn,

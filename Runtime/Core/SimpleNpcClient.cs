@@ -325,7 +325,7 @@ namespace Tsc.AIBridge.Core
             if (!string.IsNullOrWhiteSpace(message))
             {
                 AddMessageToHistory("user", message);
-                Debug.Log($"[SimpleNpcClient] Added player message for {npcName}: {message}");
+                Debug.Log($"[SimpleNpcClient] Added player message for {npcName}: {ConversationContentLogging.Content(message)}");
             }
         }
 

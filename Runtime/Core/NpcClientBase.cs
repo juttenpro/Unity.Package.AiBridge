@@ -333,7 +333,7 @@ namespace Tsc.AIBridge.Core
             if (enableVerboseLogging)
             {
                 // DEBUG: Track how many times this is called
-                Debug.Log($"[{NpcName}] HandleTranscription called with: {transcript}");
+                Debug.Log($"[{NpcName}] HandleTranscription called with: {ConversationContentLogging.Content(transcript)}");
                 Debug.Log($"[{NpcName}] Stack trace: {Environment.StackTrace}");
             }
 
@@ -347,7 +347,7 @@ namespace Tsc.AIBridge.Core
             OnTranscriptionReceivedStatic?.Invoke(NpcName, transcript);
 
             if (enableVerboseLogging)
-                Debug.Log($"[{NpcName}] Transcription: {transcript}");
+                Debug.Log($"[{NpcName}] Transcription: {ConversationContentLogging.Content(transcript)}");
         }
 
         /// <summary>
@@ -498,7 +498,7 @@ namespace Tsc.AIBridge.Core
         public virtual void StartTextConversation(string userInput, ConversationContext context)
         {
             if (enableVerboseLogging)
-                Debug.Log($"[{GetType().Name}] Starting text conversation: {userInput}");
+                Debug.Log($"[{GetType().Name}] Starting text conversation: {ConversationContentLogging.Content(userInput)}");
 
             // Create text input message with context
             var textMessage = CreateTextInputMessage(userInput, false, context);
@@ -517,7 +517,7 @@ namespace Tsc.AIBridge.Core
         public virtual async void SendDirectTTS(string text, string voice = null, string model = null)
         {
             if (enableVerboseLogging)
-                Debug.Log($"[{GetType().Name}] Sending DirectTTS: {text} (voice: {voice ?? "default"})");
+                Debug.Log($"[{GetType().Name}] Sending DirectTTS: {ConversationContentLogging.Content(text)} (voice: {voice ?? "default"})");
 
             // Create DirectTTS message
             var directTtsMessage = new DirectTTSMessage
@@ -622,7 +622,7 @@ namespace Tsc.AIBridge.Core
             }
 
             if (enableVerboseLogging)
-                Debug.Log($"[{GetType().Name}] AI response: {responseData.Text}");
+                Debug.Log($"[{GetType().Name}] AI response: {ConversationContentLogging.Content(responseData.Text)}");
 
             // Store last response (cleaned text)
             LastResponseText = responseData.Text;
@@ -894,7 +894,7 @@ namespace Tsc.AIBridge.Core
             if (enableVerboseLogging)
             {
                 // Handle text messages - typically JSON messages like AiResponse, AudioStreamStart, etc.
-                Debug.Log($"[{GetType().Name}] Received text message: {json}");
+                Debug.Log($"[{GetType().Name}] Received text message: {ConversationContentLogging.Content(json)}");
             }
 
             // Forward to metadata handler for processing

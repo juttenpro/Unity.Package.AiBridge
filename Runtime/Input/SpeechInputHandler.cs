@@ -186,6 +186,8 @@ namespace Tsc.AIBridge.Input
         [Tooltip("Domain-specific words for better STT recognition. One word per line or separated by commas.")]
         [TextArea(3, 5)]
         [SerializeField] private string customVocabularyText = "";
+        [Tooltip("How strongly the STT favours the custom vocabulary. 10 was the fixed value before 5.20.0.")]
+        [SerializeField] private float customVocabularyBoost = 10f;
 
         [Header("Debug")]
         [SerializeField] private bool enableVerboseLogging;
@@ -267,6 +269,43 @@ namespace Tsc.AIBridge.Input
         /// Gets the parsed custom vocabulary list
         /// </summary>
         public List<string> ParsedCustomVocabulary => ParseCustomVocabulary();
+
+        /// <summary>How strongly the STT favours <see cref="ParsedCustomVocabulary"/>; sent with every turn.</summary>
+        public float CustomVocabularyBoost => customVocabularyBoost;
+
+        /// <summary>Silence (seconds) that ends a voice-activated recording.</summary>
+        public float VoiceActivationSilenceTimeout => voiceActivationSilenceTimeout;
+
+        /// <summary>
+        /// Sets the custom vocabulary from code, for apps that keep it in their own data instead of the Inspector.
+        /// Call it while setting up, before the first turn: every turn sends the vocabulary as it is then.
+        /// </summary>
+        /// <exception cref="ArgumentException">A word contains a separator (comma, semicolon, line break) or is blank:
+        /// it would silently be split or dropped.</exception>
+        public void SetCustomVocabulary(IReadOnlyList<string> words, float boost)
+        {
+            if (words == null) throw new ArgumentNullException(nameof(words));
+            if (float.IsNaN(boost) || boost <= 0f)
+                throw new ArgumentOutOfRangeException(nameof(boost), boost, "Boost must be positive.");
+            foreach (var word in words)
+            {
+                if (string.IsNullOrWhiteSpace(word) || word.IndexOfAny(new[] { ',', ';', '\n', '\r' }) >= 0)
+                    throw new ArgumentException($"Vocabulary word '{word}' is blank or contains a separator.", nameof(words));
+            }
+            customVocabularyText = string.Join("\n", words);
+            customVocabularyBoost = boost;
+        }
+
+        /// <summary>
+        /// Sets the silence that ends a voice-activated recording, from code. Same range as the Inspector (0.3 to 2.0 s).
+        /// Takes effect at the next silence check.
+        /// </summary>
+        public void SetVoiceActivationSilenceTimeout(float seconds)
+        {
+            if (float.IsNaN(seconds) || seconds < 0.3f || seconds > 2.0f)
+                throw new ArgumentOutOfRangeException(nameof(seconds), seconds, "Silence timeout must be within 0.3..2.0 s.");
+            voiceActivationSilenceTimeout = seconds;
+        }
 
         #endregion
 

@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.20.0] - 2026-10-20
+
+### Added
+- **Speech settings from code, for apps that keep them in their own data.** All additive; the Inspector values and
+  defaults are unchanged.
+  - `SpeechInputHandler.SetCustomVocabulary(words, boost)` with the getters `ParsedCustomVocabulary` and
+    `CustomVocabularyBoost`. A word with a separator (comma, semicolon, line break) or a blank word throws instead of
+    being split or dropped.
+  - `SpeechInputHandler.SetVoiceActivationSilenceTimeout(seconds)` (0.3 to 2.0 s, as in the Inspector) and the getter
+    `VoiceActivationSilenceTimeout`.
+  - `WebSocketClient.SetApiBaseUrl(url)`: before `Start`, which opens the connection; afterwards it throws.
+- **`ConversationContentLogging.Enabled`: keep conversation content out of the log.** On by default (unchanged
+  behaviour). Set it once at start-up; it is app-wide configuration. When off, no transcript, player or model text, text
+  input, DirectTTS text, chat message or raw backend message reaches the log, also not with `enableVerboseLogging` on:
+  every such line in `LatencyTracker`, `ConversationMetadataHandler`, `NpcClientBase`, `SimpleNpcClient`,
+  `RequestOrchestrator`, `WebSocketClient`, `EnhancedWebSocket` and `NetworkMessageController` logs `<content hidden>` instead, also for the message of a JSON parse exception. Timings, ids
+  and error codes stay.
+- `SpeechSetupFromCodeTests`, `ConversationContentLoggingTests`.
+
+### Changed
+- The custom vocabulary boost sent with SessionStart comes from `SpeechInputHandler.CustomVocabularyBoost` (default 10,
+  the previously fixed value) instead of a constant.
+
+Why: the Assistant Platform (medical context) sets its STT vocabulary, VAD silence and backend URL from module data
+and may not log speech (privacy rule B11). Before, all three were private Inspector fields, and every transcript was
+logged.
+
 ## [5.19.0] - 2026-10-14
 
 ### Added

@@ -543,7 +543,7 @@ namespace Tsc.AIBridge.Core
                         var preview = msg.Content?.Length > maxLength
                             ? msg.Content.Substring(0, maxLength) + $"... [TRUNCATED, total {msg.Content.Length} chars]"
                             : msg.Content;
-                        Debug.Log($"  - [{msg.Role}] {preview}");
+                        Debug.Log($"  - [{msg.Role}] {ConversationContentLogging.Content(preview)}");
                     }
                 }
             }
@@ -2135,7 +2135,7 @@ namespace Tsc.AIBridge.Core
                     LanguageCode = parameters.Language,  // Note: field is called LanguageCode, not Language
                     // Get custom vocabulary from SpeechInputHandler
                     CustomVocabulary = speechInputHandler?.ParsedCustomVocabulary,
-                    CustomVocabularyBoost = 10.0f, // Fixed boost value for Google STT
+                    CustomVocabularyBoost = speechInputHandler != null ? speechInputHandler.CustomVocabularyBoost : 10.0f, // 10 = the fixed value before 5.20.0
                     // Enable metrics if configured
                     EnableMetrics = enableMetrics,
                     // Context caching (Gemini cost optimization)
@@ -2256,7 +2256,7 @@ namespace Tsc.AIBridge.Core
             try
             {
                 if (enableVerboseLogging)
-                    Debug.Log($"[RequestOrchestrator] Processing text request: {request.Text}");
+                    Debug.Log($"[RequestOrchestrator] Processing text request: {ConversationContentLogging.Content(request.Text)}");
 
                 // Validate NPC client is available
                 if (request.NpcClient == null)
@@ -2447,7 +2447,7 @@ namespace Tsc.AIBridge.Core
                         var contentPreview = msg.Content?.Length > 500
                             ? msg.Content.Substring(0, 500) + "... [TRUNCATED]"
                             : msg.Content;
-                        Debug.Log($"[RequestOrchestrator] Message[{i}] role={msg.Role}:\n{contentPreview}");
+                        Debug.Log($"[RequestOrchestrator] Message[{i}] role={msg.Role}:\n{ConversationContentLogging.Content(contentPreview)}");
                     }
                 }
                 return new List<ChatMessage>(npcConfig.Messages);
@@ -2489,7 +2489,7 @@ namespace Tsc.AIBridge.Core
                         var contentPreview = msg.Content?.Length > 500
                             ? msg.Content.Substring(0, 500) + "... [TRUNCATED]"
                             : msg.Content;
-                        Debug.Log($"[RequestOrchestrator] Message[{i}] role={msg.Role}:\n{contentPreview}");
+                        Debug.Log($"[RequestOrchestrator] Message[{i}] role={msg.Role}:\n{ConversationContentLogging.Content(contentPreview)}");
                     }
                 }
                 else

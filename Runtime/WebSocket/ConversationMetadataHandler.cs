@@ -113,12 +113,12 @@ namespace Tsc.AIBridge.WebSocket
                     }
                 }
 
-                Debug.LogWarning($"[{_personaName ?? "Unknown"}] Message without Type field: {message}");
+                Debug.LogWarning($"[{_personaName ?? "Unknown"}] Message without Type field: {ConversationContentLogging.Content(message)}");
             }
             catch (Exception ex)
             {
                 // Log full exception details for better debugging
-                Debug.LogError($"[{_personaName ?? "Unknown"}] Error processing message: {ex.Message}\nStack trace: {ex.StackTrace}\nMessage: {message}");
+                Debug.LogError($"[{_personaName ?? "Unknown"}] Error processing message: {ConversationContentLogging.Content(ex.Message)}\nStack trace: {ex.StackTrace}\nMessage: {ConversationContentLogging.Content(message)}");
             }
         }
         
@@ -190,7 +190,7 @@ namespace Tsc.AIBridge.WebSocket
                     
                     // CRITICAL: Log the COMPLETE response for debugging audio artifacts
                     if (_enableVerboseLogging)
-                        Debug.Log($"[{_personaName}] COMPLETE AI RESPONSE (full text):\n{aiMsg.Text}");
+                        Debug.Log($"[{_personaName}] COMPLETE AI RESPONSE (full text):\n{ConversationContentLogging.Content(aiMsg.Text)}");
                     //Debug.Log($"[{_personaName}] Response length: {aiMsg.Text?.Length ?? 0} characters, estimated sentences: {aiMsg.Text?.Split(new[] {'.', '!', '?'}, System.StringSplitOptions.RemoveEmptyEntries).Length ?? 0}")
                     
                     // Debug logging to investigate timing issue
@@ -389,7 +389,7 @@ namespace Tsc.AIBridge.WebSocket
                     }
                     else
                     {
-                        Debug.LogError($"[{_personaName}] Failed to deserialize LlmEmptyResponse message: {json}");
+                        Debug.LogError($"[{_personaName}] Failed to deserialize LlmEmptyResponse message: {ConversationContentLogging.Content(json)}");
                     }
                     break;
                     
@@ -419,7 +419,7 @@ namespace Tsc.AIBridge.WebSocket
                     }
                     else
                     {
-                        Debug.LogError($"[{_personaName}] Failed to deserialize BufferHint message: {json}");
+                        Debug.LogError($"[{_personaName}] Failed to deserialize BufferHint message: {ConversationContentLogging.Content(json)}");
                     }
                     break;
                 

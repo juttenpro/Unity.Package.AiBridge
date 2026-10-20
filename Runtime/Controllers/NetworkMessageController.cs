@@ -171,12 +171,12 @@ namespace Tsc.AIBridge.Controllers
             _ = WebSocketClient.Instance.SendTextInputAsync(textInputMsg);
             
             if (_enableVerboseLogging)
-                Debug.Log($"[{_personaName}] Sending TextInput: '{text}'");
+                Debug.Log($"[{_personaName}] Sending TextInput: '{ConversationContentLogging.Content(text)}'");
             
             OnTextInputSent?.Invoke(session.RequestId);
             
             if (_enableVerboseLogging)
-                Debug.Log($"[{_personaName}] TextInput sent: '{text}'");
+                Debug.Log($"[{_personaName}] TextInput sent: '{ConversationContentLogging.Content(text)}'");
         }
 
         /// <summary>
@@ -212,13 +212,13 @@ namespace Tsc.AIBridge.Controllers
             _ = WebSocketClient.Instance.SendDirectTTSAsync(directTtsMsg);
 
             if (_enableVerboseLogging)
-                Debug.Log($"[{_personaName}] Sending DirectTTS: '{text}' (voice: {voice ?? "default"}, model: {model ?? "default"})");
+                Debug.Log($"[{_personaName}] Sending DirectTTS: '{ConversationContentLogging.Content(text)}' (voice: {voice ?? "default"}, model: {model ?? "default"})");
 
             // Signal that DirectTTS was sent (could add event if needed)
             OnTextInputSent?.Invoke(session.RequestId);
 
             if (_enableVerboseLogging)
-                Debug.Log($"[{_personaName}] DirectTTS sent: '{text}'");
+                Debug.Log($"[{_personaName}] DirectTTS sent: '{ConversationContentLogging.Content(text)}'");
         }
 
         /// <summary>
