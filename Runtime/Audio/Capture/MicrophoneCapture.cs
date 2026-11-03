@@ -172,6 +172,11 @@ namespace Tsc.AIBridge.Audio.Capture
         private int lastReadPosition = 0;
         private Coroutine captureCoroutine;
         private Coroutine retryCoroutine;
+        // A start waits for the first samples before IsCapturing turns true. Until then a second
+        // StartCapture would call Microphone.Start again: on Android that tears down the recording
+        // that is warming up (or fails with error 80), and both waits later report a capture.
+        private Coroutine startCoroutine;
+        private bool isStarting;
         private bool hasReportedStartFailure;
         private AudioSource audioSource;
 
@@ -243,10 +248,7 @@ namespace Tsc.AIBridge.Audio.Capture
 
         private void OnDestroy()
         {
-            if (IsCapturing)
-            {
-                StopCapture();
-            }
+            StopCapture();
 
             if (recordingClip != null)
             {
@@ -262,8 +264,8 @@ namespace Tsc.AIBridge.Audio.Capture
         {
             if (pauseStatus)
             {
-                // Headset removed / app paused - stop capture
-                if (IsCapturing)
+                // Headset removed / app paused - stop capture, or the start that is still warming up
+                if (IsCapturing || isStarting)
                 {
                     StopCapture();
                     if (enableVerboseLogging)
@@ -281,7 +283,7 @@ namespace Tsc.AIBridge.Audio.Capture
                 // because permission had not landed — into a microphone that never came back for the
                 // rest of the app run, with no error and no log. StartCapture judges availability
                 // itself and keeps retrying.
-                if (!IsCapturing)
+                if (!IsCapturing && !isStarting)
                 {
                     if (enableVerboseLogging)
                         Debug.Log("[MicrophoneCapture] Restarting capture after application resume (headset put back on)");
@@ -299,6 +301,13 @@ namespace Tsc.AIBridge.Audio.Capture
             if (IsCapturing)
             {
                 Debug.LogWarning("[MicrophoneCapture] Already capturing");
+                return;
+            }
+
+            if (isStarting)
+            {
+                if (enableVerboseLogging)
+                    Debug.Log("[MicrophoneCapture] Already starting - waiting for the first samples");
                 return;
             }
 
@@ -353,8 +362,10 @@ namespace Tsc.AIBridge.Audio.Capture
             // Configure AudioSource for echo prevention
             audioSource.clip = recordingClip;
 
-            // Start waiting for microphone to be ready (like RecorderBase)
-            StartCoroutine(WaitForMicrophoneReady());
+            // Start waiting for microphone to be ready (like RecorderBase). The flag is set before the
+            // coroutine runs: it may finish within StartCoroutine when the device is ready at once.
+            isStarting = true;
+            startCoroutine = StartCoroutine(WaitForMicrophoneReady());
         }
 
         /// <summary>
@@ -403,6 +414,10 @@ namespace Tsc.AIBridge.Audio.Capture
 
         public void StopCapture()
         {
+            // A stop means no microphone: also while a start is warming up or a retry is waiting,
+            // which would otherwise switch it on after this call.
+            CancelPendingStart();
+
             if (!IsCapturing)
             {
                 return;
@@ -446,6 +461,40 @@ namespace Tsc.AIBridge.Audio.Capture
             RecordingStopped?.Invoke(); // Fire static event for RecorderBase compatibility
             if (enableVerboseLogging)
                 Debug.Log("[MicrophoneCapture] Stopped capture");
+        }
+
+        private void CancelPendingStart()
+        {
+            if (retryCoroutine != null)
+            {
+                StopCoroutine(retryCoroutine);
+                retryCoroutine = null;
+            }
+
+            if (!isStarting)
+                return;
+
+            isStarting = false;
+            if (startCoroutine != null)
+            {
+                StopCoroutine(startCoroutine);
+                startCoroutine = null;
+            }
+
+            if (Microphone.IsRecording(SelectedDevice))
+                Microphone.End(SelectedDevice);
+
+            if (audioSource != null)
+                audioSource.clip = null;
+
+            if (recordingClip != null)
+            {
+                Destroy(recordingClip);
+                recordingClip = null;
+            }
+
+            if (enableVerboseLogging)
+                Debug.Log("[MicrophoneCapture] Cancelled a start that was still waiting for the first samples");
         }
 
         public bool SelectDevice(string deviceName)
@@ -548,6 +597,7 @@ namespace Tsc.AIBridge.Audio.Capture
                     {
                         if (!Microphone.IsRecording(SelectedDevice))
                         {
+                            EndStartAttempt();
                             ScheduleCaptureRetry("microphone reported not recording");
                             yield break;
                         }
@@ -561,6 +611,7 @@ namespace Tsc.AIBridge.Audio.Capture
                 if (readyTimer <= 0)
                 {
                     Microphone.End(SelectedDevice);
+                    EndStartAttempt();
                     ScheduleCaptureRetry($"no audio after {READY_TIMEOUT:0.#}s");
                     yield break;
                 }
@@ -574,6 +625,7 @@ namespace Tsc.AIBridge.Audio.Capture
             audioSource.Play();
 
             lastReadPosition = 0;
+            EndStartAttempt();
             IsCapturing = true;
 
             // Only a capture that actually produced audio clears the failure notice, so a dry spell
@@ -587,6 +639,12 @@ namespace Tsc.AIBridge.Audio.Capture
             RecordingStarted?.Invoke(); // Fire static event for RecorderBase compatibility
             if (enableVerboseLogging)
                 Debug.Log($"[MicrophoneCapture] Started capture - Device: {SelectedDevice}, SampleRate: {SAMPLE_RATE}Hz, Channels: {Channels}");
+        }
+
+        private void EndStartAttempt()
+        {
+            isStarting = false;
+            startCoroutine = null;
         }
 
         private IEnumerator CaptureRoutine()

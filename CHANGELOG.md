@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.20.1] - 2026-11-03
+
+### Fixed
+- **`MicrophoneCapture` started the microphone twice when `StartCapture` was called while a start was still warming
+  up.** `IsCapturing` only turns true once the first samples arrive, so a second call in that time called
+  `Microphone.Start` again. On Android that tears down the recording that is warming up, or fails with error 80; both
+  waits then reported a capture (`OnCaptureStarted` twice). The second call now does nothing.
+- **`StopCapture` during a start, or while a retry waits, now leaves the microphone off.** Before, it returned early
+  and the start switched the microphone on after the stop. `OnDestroy` and an application pause cancel such a start
+  too.
+- `MicrophoneCaptureStartTests` (PlayMode, uses the machine's microphone; ignored without one).
+
+Why: in the Assistant Platform on a Pixel 9 Pro XL the patient talked and the app heard nothing. The app enabled the
+capture and called `StartCapture`; the capture's own `Start()` called it again a few frames later, before the phone's
+microphone had woken (~100 ms). Android's recording log showed the first recording stopped 20 ms after it began. In
+the Editor the microphone is ready sooner, so it never showed there.
+
 ## [5.20.0] - 2026-10-20
 
 ### Added
