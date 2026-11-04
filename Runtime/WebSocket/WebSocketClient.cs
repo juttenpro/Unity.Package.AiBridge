@@ -733,25 +733,39 @@ namespace Tsc.AIBridge.WebSocket
         }
 
         /// <summary>
-        /// Sends the client's telemetry about one listen (opt-in; the backend never answers it). Returns false when there
-        /// is no connection: telemetry is not a user error, so nothing is shown to the user and the caller decides whether
-        /// to log it.
+        /// Sends the client's telemetry about one listen (opt-in; the backend never answers it). Telemetry must never
+        /// disturb a turn: it never opens a connection (no connection: false, no attempt) and never throws (a socket that
+        /// closes while sending: false, logged only with verbose logging). Nothing is shown to the user.
         /// </summary>
-        public virtual async Task<bool> SendClientTurnMetricsAsync(ClientTurnMetricsMessage message)
+        public virtual Task<bool> SendClientTurnMetricsAsync(ClientTurnMetricsMessage message)
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
-            if (!await EnsureConnectionAsync())
-                return false;
-
             // Capture local reference to prevent race condition
             var webSocket = _webSocket;
-            if (webSocket == null || !webSocket.IsConnected)
-                return false;
+            return SendTelemetryAsync(
+                () => webSocket != null && webSocket.IsConnected,
+                () => webSocket.SendJsonAsync(message),
+                e =>
+                {
+                    if (enableVerboseLogging)
+                        Debug.Log($"[UnifiedWebSocket] ClientTurnMetrics for RequestId {message.RequestId} not sent: {e.GetType().Name}");
+                });
+        }
 
-            await webSocket.SendJsonAsync(message);
-            if (enableVerboseLogging)
-                Debug.Log($"[UnifiedWebSocket] Sent ClientTurnMetrics for RequestId: {message.RequestId}");
-            return true;
+        /// <summary>The send path of telemetry: only when already connected, and every failure becomes false.</summary>
+        internal static async Task<bool> SendTelemetryAsync(Func<bool> isConnected, Func<Task> send, Action<Exception> failed)
+        {
+            if (!isConnected()) return false;
+            try
+            {
+                await send();
+                return true;
+            }
+            catch (Exception e)
+            {
+                failed(e);
+                return false;
+            }
         }
 
         /// <summary>
