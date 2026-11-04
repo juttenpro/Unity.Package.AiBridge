@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.20.2] - 2026-11-03
+
+### Fixed
+- **`SetNpcSpeaking(true)` now pauses the adaptive VAD threshold also with voice activation (no push-to-talk).** The
+  exception for the first 2 s of a PTT press checked only `pttDuration < 2`, and without PTT the duration is always 0,
+  so the pause never held: the NPC's own voice through the speaker filled the VAD's loud samples and set the threshold
+  at her level. The exception now applies only while PTT is held (`pttDuration > 0`). PTT behaviour is unchanged.
+  Behaviour only changes for voice activation with `SetNpcSpeaking(true)`; there were no callers of `SetNpcSpeaking`
+  in the Assistant Platform or the Training Platform before this release.
+- `VadNpcSpeakingTests` (EditMode).
+
+Why: in the Assistant Platform on a Pixel the patient had to talk loudly before the VAD fired. After the assistant's
+20-second opening the threshold had risen from 0.018 to her level (the test's synthetic voice: 0.031).
+
 ## [5.20.1] - 2026-11-03
 
 ### Fixed

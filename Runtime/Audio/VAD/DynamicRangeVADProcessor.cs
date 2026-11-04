@@ -175,8 +175,11 @@ namespace Tsc.AIBridge.Audio.VAD
 
             // CRITICAL: Collect samples for adaptation
             // Allow sample collection during first 2 seconds of PTT even if NPC is speaking
-            // This ensures we can adapt to the user's voice level during first turn
-            var allowAdaptation = !_isNpcSpeaking || pttDuration < 2.0f;
+            // This ensures we can adapt to the user's voice level during first turn.
+            // Only while PTT is held (pttDuration > 0): without PTT (voice activation) the duration is
+            // always 0, and "< 2s" made the exception permanent, so the NPC's own voice through the
+            // speaker taught the threshold and users had to talk loudly (Assistant Platform, 2026-11-03).
+            var allowAdaptation = !_isNpcSpeaking || (pttDuration > 0f && pttDuration < 2.0f);
 
             if (allowAdaptation)
             {
