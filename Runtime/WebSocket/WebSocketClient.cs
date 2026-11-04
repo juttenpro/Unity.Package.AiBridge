@@ -733,6 +733,28 @@ namespace Tsc.AIBridge.WebSocket
         }
 
         /// <summary>
+        /// Sends the client's telemetry about one listen (opt-in; the backend never answers it). Returns false when there
+        /// is no connection: telemetry is not a user error, so nothing is shown to the user and the caller decides whether
+        /// to log it.
+        /// </summary>
+        public virtual async Task<bool> SendClientTurnMetricsAsync(ClientTurnMetricsMessage message)
+        {
+            if (message == null) throw new ArgumentNullException(nameof(message));
+            if (!await EnsureConnectionAsync())
+                return false;
+
+            // Capture local reference to prevent race condition
+            var webSocket = _webSocket;
+            if (webSocket == null || !webSocket.IsConnected)
+                return false;
+
+            await webSocket.SendJsonAsync(message);
+            if (enableVerboseLogging)
+                Debug.Log($"[UnifiedWebSocket] Sent ClientTurnMetrics for RequestId: {message.RequestId}");
+            return true;
+        }
+
+        /// <summary>
         /// Ensure WebSocket connection is established.
         /// Uses SemaphoreSlim to guarantee only one connection attempt runs at a time,
         /// preventing duplicate WebSocket connections from concurrent callers.

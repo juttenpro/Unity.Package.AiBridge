@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace Tsc.AIBridge.Messages
 {
@@ -406,6 +407,76 @@ namespace Tsc.AIBridge.Messages
         public EndOfAudioMessage()
         {
             Type = WebSocketMessageTypes.EndOfAudio;
+        }
+    }
+
+    /// <summary>How one listen ended. The names are the wire values the backend accepts (case-sensitive).</summary>
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum ClientTurnOutcome
+    {
+        Answered,
+        NoSpeech,
+        Error,
+        Stopped,
+    }
+
+    /// <summary>
+    /// Telemetry about one listen: what the client measured (microphone level, VAD threshold and noise floor, timing,
+    /// the answer time the user felt). The backend writes it to Cloud Logging and never answers it. Opt-in: AIBridge never
+    /// sends it by itself, the app does (<see cref="WebSocket.WebSocketClient.SendClientTurnMetricsAsync"/>).
+    /// Only numbers, ids, the outcome and the device: never a user id or conversation text.
+    /// </summary>
+    [Serializable]
+    public class ClientTurnMetricsMessage : WebSocketMessageBase
+    {
+        [JsonProperty("outcome")]
+        public ClientTurnOutcome Outcome { get; set; }
+
+        [JsonProperty("listenMs")]
+        public double ListenMs { get; set; }
+
+        [JsonProperty("vadStarted")]
+        public bool VadStarted { get; set; }
+
+        [JsonProperty("speechMs")]
+        public double SpeechMs { get; set; }
+
+        [JsonProperty("bytesSent")]
+        public long BytesSent { get; set; }
+
+        /// <summary>The loudest frame RMS during the listen (0..1).</summary>
+        [JsonProperty("peakRms")]
+        public double PeakRms { get; set; }
+
+        [JsonProperty("thresholdStart")]
+        public double ThresholdStart { get; set; }
+
+        [JsonProperty("thresholdEnd")]
+        public double ThresholdEnd { get; set; }
+
+        /// <summary>Null when the VAD measures no noise floor (only the noise-floor VAD does).</summary>
+        [JsonProperty("noiseFloorStart")]
+        public double? NoiseFloorStart { get; set; }
+
+        [JsonProperty("noiseFloorEnd")]
+        public double? NoiseFloorEnd { get; set; }
+
+        /// <summary>Null when no answer came.</summary>
+        [JsonProperty("endOfSpeechToAnswerMs")]
+        public double? EndOfSpeechToAnswerMs { get; set; }
+
+        [JsonProperty("deviceModel")]
+        public string DeviceModel { get; set; }
+
+        [JsonProperty("os")]
+        public string Os { get; set; }
+
+        [JsonProperty("appVersion")]
+        public string AppVersion { get; set; }
+
+        public ClientTurnMetricsMessage()
+        {
+            Type = WebSocketMessageTypes.ClientTurnMetrics;
         }
     }
 

@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.22.0] - 2026-11-04
+
+### Added
+- **`ClientTurnMetricsMessage` and `WebSocketClient.SendClientTurnMetricsAsync`: telemetry about one listen, opt-in.**
+  The app sends what it measured (peak frame RMS, VAD threshold and noise floor at start and end, listen and speech
+  time, bytes sent, the answer time the user felt, device model, OS, app version); the ApiOrchestrator writes it to
+  Cloud Logging (`event_type="ClientTurnMetrics"`) and never answers it. AIBridge never sends it by itself. Returns
+  false without a connection, and shows the user nothing. No user id, no conversation text.
+- `ClientTurnMetricsSerializationTests` (EditMode): the JSON keys and wire strings the backend validates.
+
 ## [5.21.0] - 2026-11-04
 
 ### Added

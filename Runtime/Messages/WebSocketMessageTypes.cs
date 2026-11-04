@@ -16,6 +16,7 @@ namespace Tsc.AIBridge.Messages
         public const string PauseState = "PauseState";
         public const string InterruptionOccurred = "InterruptionOccurred"; // User interrupted NPC - stop TTS but keep LLM for metadata
         public const string SessionCancel = "SessionCancel"; // Emergency cancel - stop everything (crash, scene switch)
+        public const string ClientTurnMetrics = "clientTurnMetrics"; // Telemetry per listen, fire-and-forget: never answered
 
         // Server -> Client messages
         public const string ConnectionEstablished = "ConnectionEstablished";
