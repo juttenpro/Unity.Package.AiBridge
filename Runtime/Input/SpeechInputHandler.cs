@@ -162,6 +162,22 @@ namespace Tsc.AIBridge.Input
                  "Lower this to allow close-talk headsets in silent rooms to trigger detection.")]
         private float minimumThreshold = 0.006f;
 
+        [SerializeField]
+        [Tooltip("Noise-floor VAD instead of the adaptive or fixed one above: threshold = max(minimum, room noise x factor), " +
+                 "room noise = the quietest 10% of the last 5 s. For open-mic phones, where a normal voice is quiet.")]
+        private bool useNoiseFloorVAD;
+
+        [SerializeField]
+        [Range(0.002f, 0.03f)]
+        [Tooltip("Noise-floor VAD: the threshold never goes below this, also in a silent room.")]
+        private float noiseFloorVadMinimumThreshold = NoiseFloorVADProcessor.DefaultMinimumThreshold;
+
+        [SerializeField]
+        [Range(1.5f, 10f)]
+        [Tooltip("Noise-floor VAD: how far above the room noise speech must be. Lower hears softer voices over a TV, " +
+                 "higher starts fewer turns on the TV itself.")]
+        private float noiseFloorVadFactor = NoiseFloorVADProcessor.DefaultNoiseFactor;
+
         [Header("Voice Activation")]
         [SerializeField]
         [Tooltip("Enable voice activation without PTT (open mic mode)")]
@@ -566,6 +582,15 @@ namespace Tsc.AIBridge.Input
         /// </summary>
         private VADManager CreateConfiguredVadManager()
         {
+            if (useNoiseFloorVAD)
+            {
+                if (enableVerboseLogging)
+                    Debug.Log($"[SpeechInputHandler] VADManager initialized with NOISE-FLOOR VAD - minimum: {noiseFloorVadMinimumThreshold:F4}, factor: {noiseFloorVadFactor:F1}");
+                return new VADManager(
+                    new NoiseFloorVADProcessor("Player", noiseFloorVadMinimumThreshold, noiseFloorVadFactor, enableVerboseLogging),
+                    enableVerboseLogging);
+            }
+
             var manager = new VADManager(enableVerboseLogging);
 
             if (useAdaptiveVAD)

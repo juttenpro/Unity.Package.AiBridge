@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.21.0] - 2026-11-04
+
+### Added
+- **`NoiseFloorVADProcessor`: a simple adaptive VAD for open-mic phones, opt-in.** Threshold = max(minimum, room noise
+  x factor); room noise = the 10th percentile of the frame RMS over the last 5 s. The quietest frames of a few seconds
+  are the room, so speech pauses, the patient's own voice and the NPC's echo do not lift it; a steady noise does.
+  While `SetNpcSpeaking(true)` the frames stay out of the noise window.
+  - `SpeechInputHandler`: `useNoiseFloorVAD` (default off), `noiseFloorVadMinimumThreshold` (0.006),
+    `noiseFloorVadFactor` (3), shown in the SpeechInputHandler Inspector under Voice Activation.
+  - `VADManager(VADProcessorBase processor, …)` and `VADManager.NoiseFloor` (null for the other processors).
+- `NoiseFloorVadTests` (EditMode), on the levels measured on a Pixel.
+
+Why: on a Pixel microphone a normal voice is RMS 0.010-0.017 in a room at 0.0003-0.0005. `DynamicRangeVADProcessor`
+stayed at 0.013-0.014 (a noise floor of at least 0.003, plus 35% of the way to earlier loud speech) and rose to ~0.02
+while the patient spoke, because his speech pauses counted as noise: "I have to talk far too loudly" (Assistant
+Platform, 2026-11-04). Off by default: the Training Platform's push-to-talk headsets keep `DynamicRangeVADProcessor`.
+
 ## [5.20.2] - 2026-11-03
 
 ### Fixed

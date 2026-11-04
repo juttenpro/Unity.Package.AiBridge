@@ -25,6 +25,9 @@ namespace Tsc.AIBridge.Editor
         private SerializedProperty _voiceActivationPreBufferTime;
         private SerializedProperty _voiceActivationOnsetTime;
         private SerializedProperty _voiceActivationSilenceTimeout;
+        private SerializedProperty _useNoiseFloorVAD;
+        private SerializedProperty _noiseFloorVadMinimumThreshold;
+        private SerializedProperty _noiseFloorVadFactor;
 
         // Custom Vocabulary
         private SerializedProperty _customVocabularyText;
@@ -46,6 +49,9 @@ namespace Tsc.AIBridge.Editor
             _voiceActivationPreBufferTime = serializedObject.FindProperty("voiceActivationPreBufferTime");
             _voiceActivationOnsetTime = serializedObject.FindProperty("voiceActivationOnsetTime");
             _voiceActivationSilenceTimeout = serializedObject.FindProperty("voiceActivationSilenceTimeout");
+            _useNoiseFloorVAD = serializedObject.FindProperty("useNoiseFloorVAD");
+            _noiseFloorVadMinimumThreshold = serializedObject.FindProperty("noiseFloorVadMinimumThreshold");
+            _noiseFloorVadFactor = serializedObject.FindProperty("noiseFloorVadFactor");
 
             _customVocabularyText = serializedObject.FindProperty("customVocabularyText");
 
@@ -116,6 +122,18 @@ namespace Tsc.AIBridge.Editor
                         EditorGUILayout.PropertyField(_voiceActivationOnsetTime);
                     if (_voiceActivationSilenceTimeout != null)
                         EditorGUILayout.PropertyField(_voiceActivationSilenceTimeout);
+                    // Tuned on the device without code, so it must be visible here (5.21.0).
+                    if (_useNoiseFloorVAD != null)
+                    {
+                        EditorGUILayout.PropertyField(_useNoiseFloorVAD, new GUIContent("Noise-Floor VAD"));
+                        using (new EditorGUI.DisabledGroupScope(!_useNoiseFloorVAD.boolValue))
+                        {
+                            EditorGUI.indentLevel++;
+                            EditorGUILayout.PropertyField(_noiseFloorVadMinimumThreshold, new GUIContent("Minimum Threshold"));
+                            EditorGUILayout.PropertyField(_noiseFloorVadFactor, new GUIContent("Noise Factor"));
+                            EditorGUI.indentLevel--;
+                        }
+                    }
                     EditorGUI.indentLevel--;
                 }
 

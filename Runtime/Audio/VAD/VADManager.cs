@@ -23,6 +23,9 @@ namespace Tsc.AIBridge.Audio.VAD
         /// </summary>
         public float CurrentThreshold => _vadProcessor?.CurrentThreshold ?? 0f;
 
+        /// <summary>The room noise the noise-floor VAD measures; null for the other processors.</summary>
+        public float? NoiseFloor => _vadProcessor is NoiseFloorVADProcessor noiseFloorVad ? noiseFloorVad.NoiseFloor : null;
+
         /// <summary>
         /// Get the underlying VAD processor for advanced operations
         /// </summary>
@@ -37,6 +40,13 @@ namespace Tsc.AIBridge.Audio.VAD
 
             if(enableLogging)
                 Debug.Log($"[VADManager] Initialized (logging: TRUE)");
+        }
+
+        /// <summary>A manager around a given processor, such as the opt-in <see cref="NoiseFloorVADProcessor"/>.</summary>
+        public VADManager(VADProcessorBase processor, bool enableLogging = false)
+        {
+            _vadProcessor = processor ?? throw new ArgumentNullException(nameof(processor));
+            _enableLogging = enableLogging;
         }
 
         /// <summary>
@@ -71,6 +81,10 @@ namespace Tsc.AIBridge.Audio.VAD
                 {
                     Debug.Log($"[VADManager] NPC speaking: {isSpeaking}");
                 }
+            }
+            else if (_vadProcessor is NoiseFloorVADProcessor noiseFloorVad)
+            {
+                noiseFloorVad.SetNpcSpeaking(isSpeaking);
             }
         }
 
