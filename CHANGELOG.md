@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.23.0] - 2026-11-05
+
+### Fixed
+- **Voice activation no longer starts a recording while `SpeechInputHandler.ShouldBlockRecording` returns true.** Before,
+  only push-to-talk checked it: an open microphone started recording on the NPC's voice through the speaker, and that
+  recording stayed open into the user's turn, so the start of a quick answer was swallowed (OnePlus 9, Assistant
+  Platform). Apps that block recording for other reasons (UI interaction) now also get no voice-activated start then.
+
+### Added
+- `SpeechInputHandler.ResetVoiceActivation()`: ends a recording held by voice activation, forgets the onset and resets
+  the VAD (speaking state and smoothing; NoiseFloor keeps its room noise, DynamicRange resets fully). The pre-buffer is
+  kept. Call it when the user's turn may begin.
+- `NoiseFloorVADProcessor.FrameMeasured`: per frame the smoothed level, the threshold and the frame length, for
+  diagnostics.
+- `ClientTurnMetricsMessage.MaxSmoothedRms` and `NearThresholdMs` (optional, the ApiOrchestrator logs them as
+  `max_smoothed_rms` and `near_threshold_ms`): what the VAD compared, and how long a voice stayed just under the threshold.
+- `InitializeForTesting` also creates the voice-activation pre-buffer and subscribes to the capture provider.
+- `VoiceActivationBlockTests` (EditMode).
+
 ## [5.22.0] - 2026-11-04
 
 ### Added

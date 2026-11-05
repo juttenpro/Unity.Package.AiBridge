@@ -452,6 +452,22 @@ namespace Tsc.AIBridge.Input
         }
 
         /// <summary>
+        /// Starts voice activation over: ends a recording it holds (not one held by push-to-talk), forgets the onset, and
+        /// resets the VAD (its speaking state and smoothing; the noise-floor VAD keeps its room noise, DynamicRange resets
+        /// fully). Call it when the user's turn may begin, so only a voice heard from now on starts a recording: neither a
+        /// recording that began on the NPC's echo nor the VAD's 0.3 s pause tolerance after it. The pre-buffer is kept, so a
+        /// user who already speaks still has the start of the answer sent.
+        /// </summary>
+        public void ResetVoiceActivation()
+        {
+            _isVoiceActivated = false;
+            _voiceOnsetTimer = 0;
+            _vadManager?.ResetForNewSession();
+            if (!_isPttPressed)
+                StopRecording();
+        }
+
+        /// <summary>
         /// Stop recording manually
         /// </summary>
         public void StopRecording()
@@ -562,6 +578,13 @@ namespace Tsc.AIBridge.Input
             {
                 _vadManager = CreateConfiguredVadManager();
             }
+
+            // As Awake and Start do: the pre-buffer and the audio subscription, so a test can drive voice activation
+            // through its capture provider.
+            if (useVoiceActivation && _preBuffer == null)
+                _preBuffer = new CircularAudioBuffer(Mathf.CeilToInt(voiceActivationPreBufferTime * MicrophoneCapture.Frequency));
+            _microphoneCapture.OnAudioDataAvailable -= HandleAudioData;
+            _microphoneCapture.OnAudioDataAvailable += HandleAudioData;
 
             // StartRecording needs this: without it the encoder call logs an error instead of
             // exercising the path under test.
@@ -773,6 +796,15 @@ namespace Tsc.AIBridge.Input
 
                 if (!_isVoiceActivated)
                 {
+                    // The app blocks recording while its NPC speaks. Her voice through the speaker must not start a
+                    // recording: it would stay open into the patient's turn and swallow the start of the answer
+                    // (Assistant Platform, OnePlus 9, 2026-11-05). Before 5.23.0 only push-to-talk checked this.
+                    if (ShouldBlockRecording?.Invoke() == true)
+                    {
+                        _voiceOnsetTimer = 0;
+                        return;
+                    }
+
                     _voiceOnsetTimer += samples.Length / (float)MicrophoneCapture.Frequency;
 
                     if (_voiceOnsetTimer >= voiceActivationOnsetTime)

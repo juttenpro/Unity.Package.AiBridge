@@ -465,6 +465,17 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("endOfSpeechToAnswerMs")]
         public double? EndOfSpeechToAnswerMs { get; set; }
 
+        /// <summary>The highest smoothed level the VAD compared during the listen (mean of 5 frames, 0..1); null without VAD frames.</summary>
+        [JsonProperty("maxSmoothedRms")]
+        public double? MaxSmoothedRms { get; set; }
+
+        /// <summary>
+        /// How long the smoothed level stayed just under the threshold without a voice start, in ms (0..listenMs): a voice
+        /// the VAD nearly heard. Null without VAD frames.
+        /// </summary>
+        [JsonProperty("nearThresholdMs")]
+        public double? NearThresholdMs { get; set; }
+
         [JsonProperty("deviceModel")]
         public string DeviceModel { get; set; }
 

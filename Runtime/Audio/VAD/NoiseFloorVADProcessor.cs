@@ -38,6 +38,13 @@ namespace Tsc.AIBridge.Audio.VAD
 
         public override float CurrentThreshold => Math.Max(_minimumThreshold, NoiseFloor * _noiseFactor);
 
+        /// <summary>
+        /// Every frame: the smoothed level (the mean of the last 5 frame RMS values, what is compared with the threshold),
+        /// the threshold, and the frame's length in seconds. For diagnostics: a peak frame says little, this says why a
+        /// voice did or did not start.
+        /// </summary>
+        public event Action<float, float, float> FrameMeasured;
+
         public NoiseFloorVADProcessor(string name, float minimumThreshold = DefaultMinimumThreshold,
             float noiseFactor = DefaultNoiseFactor, bool enableVerboseLogging = false)
             : base(name, enableVerboseLogging)
@@ -71,7 +78,9 @@ namespace Tsc.AIBridge.Audio.VAD
             foreach (var volume in _recentVolumes) smoothed += volume;
             smoothed /= _recentVolumes.Count;
 
-            _aboveThresholdTime = smoothed > CurrentThreshold ? _aboveThresholdTime + seconds : 0f;
+            var threshold = CurrentThreshold;
+            _aboveThresholdTime = smoothed > threshold ? _aboveThresholdTime + seconds : 0f;
+            FrameMeasured?.Invoke(smoothed, threshold, seconds);
             return ProcessSpeechDetection(_aboveThresholdTime >= SustainedSpeechTime, seconds);
         }
 

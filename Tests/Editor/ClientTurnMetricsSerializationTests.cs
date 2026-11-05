@@ -24,7 +24,8 @@ namespace Tsc.AIBridge.Tests.Editor
         static readonly string[] BackendKeys =
         {
             "type", "requestId", "timestamp", "outcome", "listenMs", "vadStarted", "speechMs", "bytesSent", "peakRms",
-            "thresholdStart", "thresholdEnd", "noiseFloorStart", "noiseFloorEnd", "endOfSpeechToAnswerMs", "deviceModel",
+            "thresholdStart", "thresholdEnd", "noiseFloorStart", "noiseFloorEnd", "endOfSpeechToAnswerMs", "maxSmoothedRms",
+            "nearThresholdMs", "deviceModel",
             "os", "appVersion",
         };
 
@@ -59,6 +60,8 @@ namespace Tsc.AIBridge.Tests.Editor
             Assert.That(json["endOfSpeechToAnswerMs"]!.Type, Is.EqualTo(JTokenType.Null),
                 "0 ms would read as an instant answer in Cloud Logging.");
             Assert.That(json["noiseFloorStart"]!.Type, Is.EqualTo(JTokenType.Null));
+            Assert.That(json["maxSmoothedRms"]!.Type, Is.EqualTo(JTokenType.Null), "0 would read as silence in Cloud Logging.");
+            Assert.That(json["nearThresholdMs"]!.Type, Is.EqualTo(JTokenType.Null));
         }
     }
 }
