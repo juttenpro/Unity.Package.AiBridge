@@ -77,6 +77,8 @@ namespace Tsc.AIBridge.Services
         /// <c>ConversationContext.thinkingBudget</c> for full semantics.
         /// </param>
         /// <param name="azureResourceName">Azure OpenAI resource of the LLM; null = the backend's default resource</param>
+        /// <param name="llmFallback">LLM fallback the backend uses when the primary analysis call fails; null = none</param>
+        /// <param name="decisionsScales">Decisions API only: score scale per integer variable name; null = none</param>
         /// <returns>Task that completes with AnalysisResponse when analysis is done</returns>
         /// <exception cref="InvalidOperationException">Thrown when WebSocket is not connected</exception>
         /// <exception cref="ArgumentException">Thrown when messages array is null or empty</exception>
@@ -92,7 +94,9 @@ namespace Tsc.AIBridge.Services
             int? thinkingBudget = null,
             string thinkingLevel = null,
             float? topP = null,
-            string azureResourceName = null)
+            string azureResourceName = null,
+            LlmFallbackConfig llmFallback = null,
+            Dictionary<string, DecisionsScale> decisionsScales = null)
         {
             // Check WebSocket connection
             if (!WebSocketAdapter.IsConnected)
@@ -131,6 +135,8 @@ namespace Tsc.AIBridge.Services
                     thinkingLevel = thinkingLevel,
                     responseFormat = responseFormat,
                     location = location,
+                    llmFallback = llmFallback,
+                    decisionsScales = decisionsScales,
                     // Language and VoiceId are optional - backend provides defaults
                     language = null,
                     voiceId = null,

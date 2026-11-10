@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.24.0] - 2026-11-10
+
+### Added
+- **`ConversationContext.llmFallback` and `AnalysisService.RequestAnalysisAsync(..., LlmFallbackConfig llmFallback = null)`:
+  an LLM fallback for analysis requests.** The same object, with the same JSON keys, as `SessionStartMessage.llmFallback`.
+  When the primary analysis call fails (for example Decisions on Azure EU), the ApiOrchestrator retries it once on the
+  fallback. Omitted when null: callers that pass nothing send no fallback, exactly as before.
+- `AnalysisLlmFallbackSerializationTests` (EditMode): no key without a fallback; with one, the keys and values equal the
+  SessionStart fallback.
+- `AnalysisServiceLlmFallbackTests`: the passed fallback reaches the outgoing context; none when omitted.
+- **`ConversationContext.decisionsScales` and `DecisionsScale`: the score scale of every integer variable, for the
+  Decisions API.** `{ "<name>": { "levels": [0,1,2,3,4,5], "zeroNotAssessable": true } }`, keyed by the JSON FORMAT
+  name; omitted when null. `RequestAnalysisAsync(..., decisionsScales = null)`. The client reads the scale from the
+  prompt texts it knows; the backend no longer reads it from the composed prompt.
+- `DecisionsScalesSerializationTests` (EditMode): the exact JSON shape; no key without scales.
+
 ## [5.23.0] - 2026-11-05
 
 ### Fixed

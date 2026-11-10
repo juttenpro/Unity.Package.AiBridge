@@ -246,6 +246,23 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("observability")]
         public ObservabilityContext observability;
 
+        /// <summary>
+        /// Optional LLM fallback for an analysis request: the same object, with the same JSON keys, as
+        /// <see cref="SessionStartMessage.LlmFallback"/>. When the primary analysis call fails, the backend
+        /// retries it once on this provider/model with the fallback's own sampling knobs. Omitted when null:
+        /// no fallback, the analysis fails as before. Dialogue turns carry their fallback on SessionStart.
+        /// </summary>
+        [JsonProperty("llmFallback", NullValueHandling = NullValueHandling.Ignore)]
+        public LlmFallbackConfig llmFallback;
+
+        /// <summary>
+        /// Decisions API only: the score scale of every integer variable of the analysis, keyed by its JSON FORMAT
+        /// name. The client reads it from the prompt texts it knows; the backend no longer reads a scale from the
+        /// composed prompt. Omitted when null (no Decisions, or no integer variable).
+        /// </summary>
+        [JsonProperty("decisionsScales", NullValueHandling = NullValueHandling.Ignore)]
+        public Dictionary<string, DecisionsScale> decisionsScales;
+
         // REMOVED: audioFormat, sampleRate, opusBitrate
         // These are misleading - API always uses opus_48000_64 hardcoded
         // ElevenLabs supports different bitrates but API doesn't expose this
