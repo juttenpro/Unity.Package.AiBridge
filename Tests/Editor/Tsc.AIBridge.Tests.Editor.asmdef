@@ -4,6 +4,7 @@
     "references": [
         "Tsc.AIBridge",
         "Tsc.AIBridge.Editor",
+        "OpusSharp.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "endel.nativewebsocket"

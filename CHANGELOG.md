@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.26.0] - 2026-11-11
+
+### Added
+- **An Opus library for 32-bit Android (armeabi-v7a).** `runtimes/android-arm/native/libopus.so` is the stock build from
+  OpusSharp.Natives 1.5.2.1, the same version as OpusSharp.Core and as the ARM64 library before its 16 KB rebuild.
+  `OpusPluginInstaller` copies it to `Assets/Plugins/OpusSharp/Android/ARMv7/libopus.so` for CPU ARMv7. Apps that
+  tick ARMv7 next to ARM64 now install on phones that run 32-bit Android (Galaxy A13, SM-A136B). The ARM64 library
+  (16 KB-aligned) is unchanged.
+- `OpusAndroidNativesTests` (EditMode): every shipped Android ABI is copied for its own CPU, and the package copies stay
+  disabled for Android.
+
+### Changed
+- `OpusPluginInstaller` reads its Android libraries from one table (`AndroidLibraries`). `CurrentVersion` is 1.4.0.
+  It now also installs when an Android library is missing, so a project gets a newly added ABI even when this
+  machine's `OpusSharp.InstalledVersion` (shared by all projects) is already current.
 ## [5.25.0] - 2026-11-10
 
 ### Added

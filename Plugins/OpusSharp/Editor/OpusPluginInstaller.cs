@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEditor;
+using System.Collections.Generic;
 using System.IO;
 
 namespace OpusSharp.Editor
@@ -20,7 +21,33 @@ namespace OpusSharp.Editor
         private const string PackageNativesPath = "Packages/com.simulationcrew.aibridge/Plugins/OpusSharp/OpusSharp.Natives/runtimes";
         private const string TargetPluginsPath = "Assets/Plugins/OpusSharp";
         private const string InstalledVersionKey = "OpusSharp.InstalledVersion";
-        private const string CurrentVersion = "1.3.1";
+        private const string CurrentVersion = "1.4.0";
+
+        /// <summary>
+        /// The Android ABIs this package ships an Opus library for. Each is copied to
+        /// Assets/Plugins/OpusSharp/Android/&lt;Cpu&gt;/libopus.so and enabled for Android with that CPU.
+        /// The package copies themselves stay disabled for Android (their .meta), so a build never sees two.
+        /// </summary>
+        public static readonly IReadOnlyList<AndroidOpusLibrary> AndroidLibraries = new[]
+        {
+            new AndroidOpusLibrary("android-arm64", "ARM64"),
+            new AndroidOpusLibrary("android-arm", "ARMv7"),
+        };
+
+        public readonly struct AndroidOpusLibrary
+        {
+            public readonly string Runtime;
+            public readonly string Cpu;
+
+            public AndroidOpusLibrary(string runtime, string cpu)
+            {
+                Runtime = runtime;
+                Cpu = cpu;
+            }
+
+            public string SourcePath => $"{PackageNativesPath}/{Runtime}/native/libopus.so";
+            public string TargetPath => $"{TargetPluginsPath}/Android/{Cpu}/libopus.so";
+        }
 
         static OpusPluginInstaller()
         {
@@ -53,8 +80,15 @@ namespace OpusSharp.Editor
 
         private static bool PluginsExist()
         {
-            // Check if at least the Windows x64 DLL exists (included in package)
-            return File.Exists(Path.Combine(TargetPluginsPath, "Windows/x86_64/opus.dll"));
+            // The Windows x64 DLL (included in package) and every Android library: a project that installed
+            // before an ABI was added gets it, even when this machine's InstalledVersion is already current
+            // (EditorPrefs are shared by all projects on the machine)
+            if (!File.Exists(Path.Combine(TargetPluginsPath, "Windows/x86_64/opus.dll"))) return false;
+            foreach (var library in AndroidLibraries)
+            {
+                if (!File.Exists(library.TargetPath)) return false;
+            }
+            return true;
         }
 
         private static void InstallPlugins(bool forceReinstall)
@@ -92,12 +126,11 @@ namespace OpusSharp.Editor
                 "Linux x64"
             );
 
-            // Install Android ARM64
-            anyInstalled |= InstallLibrary(
-                $"{PackageNativesPath}/android-arm64/native/libopus.so",
-                $"{TargetPluginsPath}/Android/ARM64/libopus.so",
-                "Android ARM64"
-            );
+            // Install Android, one library per ABI
+            foreach (var library in AndroidLibraries)
+            {
+                anyInstalled |= InstallLibrary(library.SourcePath, library.TargetPath, $"Android {library.Cpu}");
+            }
 
             // Install iOS ARM64 (device)
             anyInstalled |= InstallLibrary(
@@ -430,13 +463,16 @@ namespace OpusSharp.Editor
                 editorCPU: "x86_64"
             );
 
-            // Android ARM64
-            ConfigurePlugin(
-                $"{TargetPluginsPath}/Android/ARM64/libopus.so",
-                BuildTarget.Android,
-                editorEnabled: false,
-                platformCPU: "ARM64"
-            );
+            // Android, one library per ABI, each for its own CPU
+            foreach (var library in AndroidLibraries)
+            {
+                ConfigurePlugin(
+                    library.TargetPath,
+                    BuildTarget.Android,
+                    editorEnabled: false,
+                    platformCPU: library.Cpu
+                );
+            }
 
             // iOS ARM64 (device) - static library, linked at compile time (NOT embedded in Frameworks)
             ConfigurePlugin(
