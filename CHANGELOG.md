@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.25.0] - 2026-11-10
+
+### Added
+- **`ClientTurnMetricsMessage.VadStartMs` (`vadStartMs`): when the VAD first started in a listen, in ms from the listen
+  start.** Null without a voice start. With it the ApiOrchestrator's `vad_start_ms` tells a listen that started on the
+  speaker's tail (a loud phone, no words heard) from the patient's answer. The backend accepts it since 2026-11-10 and
+  ignored the key before.
+- `ClientTurnMetricsSerializationTests`: the new key, its value, and null rather than 0 without a start.
+
 ## [5.24.0] - 2026-11-10
 
 ### Added

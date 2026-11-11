@@ -476,6 +476,13 @@ namespace Tsc.AIBridge.Messages
         [JsonProperty("nearThresholdMs")]
         public double? NearThresholdMs { get; set; }
 
+        /// <summary>
+        /// When the VAD first started, in ms from the listen start (0..listenMs; any echo guard of the app is inside it).
+        /// Null without a voice start. A start just after the guard with no words heard is the speaker's tail.
+        /// </summary>
+        [JsonProperty("vadStartMs")]
+        public double? VadStartMs { get; set; }
+
         [JsonProperty("deviceModel")]
         public string DeviceModel { get; set; }
 

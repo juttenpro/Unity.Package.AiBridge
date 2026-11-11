@@ -25,7 +25,7 @@ namespace Tsc.AIBridge.Tests.Editor
         {
             "type", "requestId", "timestamp", "outcome", "listenMs", "vadStarted", "speechMs", "bytesSent", "peakRms",
             "thresholdStart", "thresholdEnd", "noiseFloorStart", "noiseFloorEnd", "endOfSpeechToAnswerMs", "maxSmoothedRms",
-            "nearThresholdMs", "deviceModel",
+            "nearThresholdMs", "vadStartMs", "deviceModel",
             "os", "appVersion",
         };
 
@@ -62,6 +62,19 @@ namespace Tsc.AIBridge.Tests.Editor
             Assert.That(json["noiseFloorStart"]!.Type, Is.EqualTo(JTokenType.Null));
             Assert.That(json["maxSmoothedRms"]!.Type, Is.EqualTo(JTokenType.Null), "0 would read as silence in Cloud Logging.");
             Assert.That(json["nearThresholdMs"]!.Type, Is.EqualTo(JTokenType.Null));
+            Assert.That(json["vadStartMs"]!.Type, Is.EqualTo(JTokenType.Null), "0 would read as the speaker's tail in Cloud Logging.");
+        }
+
+        /// <summary>When the VAD first started, from the listen start: it tells the speaker's tail from the patient's answer.</summary>
+        [Test]
+        public void VadStartTime_IsSentInMs()
+        {
+            var json = Serialize(new ClientTurnMetricsMessage
+            {
+                RequestId = "r1", Outcome = ClientTurnOutcome.NoSpeech, VadStarted = true, VadStartMs = 740,
+            });
+
+            Assert.That(json["vadStartMs"]!.Value<double>(), Is.EqualTo(740), "The backend logs vad_start_ms from this key.");
         }
     }
 }
