@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using UnityEngine;
 using UnityEngine.Events;
 using Tsc.AIBridge.Audio.VAD;
@@ -257,6 +258,62 @@ namespace Tsc.AIBridge.Audio.Playback
         public bool IsStreamActive => _isStreamActive;
         public bool HasBufferedAudio => _audioBuffer.Count > 0;
         public float BufferLevel => _audioBuffer.Count / (float)_sampleRate; // In seconds
+
+        #region Audio ahead of playback (5.27.0)
+
+        // Why: a lipsync model needs each utterance's audio some 100 ms before it is heard. The queue
+        // above already holds it (priming 250 ms, then the adaptive buffer); these members only make it
+        // readable from outside, without lipsync types, so the package stays free of a display package.
+
+        /// <summary>
+        /// Sample rate of the current stream, as passed to <see cref="StartStream"/>. The queue holds mono
+        /// samples at this rate. Read on the main thread.
+        /// </summary>
+        public int SampleRate => _sampleRate;
+
+        /// <summary>
+        /// Raised on the main thread when an utterance opens: at the end of <see cref="StartStream"/>, and
+        /// again by <see cref="ResumePlaybackForLateChunks"/> when late chunks reopen an utterance that
+        /// <see cref="StreamEnded"/> already closed. The argument is <see cref="SampleRate"/>.
+        /// <see cref="PlayedFrames"/> is reset by StartStream only, so a listener takes PlayedFrames at this
+        /// moment as the utterance's starting point.
+        /// Raised while the player holds its state lock (the audio thread does not take it): a handler stays
+        /// short and never starts, stops, pauses or feeds this player.
+        /// </summary>
+        public event Action<int> StreamStarted;
+
+        /// <summary>
+        /// Raised by <see cref="AddAudioData"/> after the samples are queued, on the thread that calls it
+        /// (the main thread: WebSocket dispatch, then the Opus decoder). The argument is the caller's own
+        /// array, not a copy: a listener that keeps the samples must copy them before it returns. Changing
+        /// the array does not change what plays, since the samples are already queued. Can be raised
+        /// before <see cref="StreamStarted"/> when audio arrives before StartStream; a listener ignores
+        /// samples outside an open utterance. An exception in a handler reaches the caller (the decoder):
+        /// a handler catches its own.
+        /// </summary>
+        public event Action<float[]> AudioQueued;
+
+        /// <summary>
+        /// Raised on the main thread when the utterance that <see cref="StreamStarted"/> opened is closed:
+        /// a natural end (false) or an interruption, a new StartStream over an open stream, or a shutdown
+        /// (true). Raised once per StreamStarted; a repeated stop raises nothing.
+        /// Raised while the player holds its state lock (the audio thread does not take it): a handler stays
+        /// short and never starts, stops, pauses or feeds this player.
+        /// </summary>
+        public event Action<bool> StreamEnded;
+
+        /// <summary>
+        /// Mono frames taken from the queue by the audio callback since the last <see cref="StartStream"/>.
+        /// Not output samples: with a stereo output one frame fills two samples and counts once. Stands
+        /// still while paused and during an underrun. Written on the audio thread with Interlocked (no
+        /// allocation), safe to read from any thread.
+        /// </summary>
+        public long PlayedFrames => Interlocked.Read(ref _playedFrames);
+
+        private long _playedFrames;
+        private bool _utteranceOpenForListeners;
+
+        #endregion
 
         #region Pipeline State Machine
 
@@ -731,6 +788,10 @@ namespace Tsc.AIBridge.Audio.Playback
 
                 if(enableVerboseLogging)
                     Debug.Log($"[{_cachedGameObjectName}] Stream started at {sampleRate}Hz, buffer: {currentBuffer:F3}s (dynamic max)");
+
+                Interlocked.Exchange(ref _playedFrames, 0);
+                _utteranceOpenForListeners = true;
+                StreamStarted?.Invoke(sampleRate);
             }
         }
 
@@ -787,6 +848,14 @@ namespace Tsc.AIBridge.Audio.Playback
 
                 if (enableVerboseLogging)
                     Debug.Log($"[{_cachedGameObjectName}] ResumePlaybackForLateChunks — playback re-armed for late chunks");
+
+                // The utterance continues: PlayedFrames keeps counting, but a listener that saw it close
+                // must hear that it is open again.
+                if (!_utteranceOpenForListeners)
+                {
+                    _utteranceOpenForListeners = true;
+                    StreamStarted?.Invoke(_sampleRate);
+                }
             }
         }
 
@@ -870,6 +939,9 @@ namespace Tsc.AIBridge.Audio.Playback
                     Debug.Log($"[{_cachedGameObjectName}] Buffer: {BufferLevel:F2}s, Received: {_totalSamplesReceived}, Played: {_totalSamplesPlayed}");
                 }
             }
+
+            // After the samples are queued, so a listener that writes into the array cannot change the voice.
+            AudioQueued?.Invoke(samples);
         }
 
         /// <summary>
@@ -1021,6 +1093,12 @@ namespace Tsc.AIBridge.Audio.Playback
             // StopPlayback runs on teardown paths that may never have played anything, and it can run
             // twice for one turn (interruption followed by shutdown).
             CloseReportedPlayback(wasInterrupted);
+
+            if (_utteranceOpenForListeners)
+            {
+                _utteranceOpenForListeners = false;
+                StreamEnded?.Invoke(wasInterrupted);
+            }
         }
 
         /// <summary>
@@ -1342,6 +1420,10 @@ namespace Tsc.AIBridge.Audio.Playback
 
             _totalSamplesPlayed += samplesProvided;
             _samplesPlayedSinceStart += samplesProvided; // Track samples played since StartPlayback()
+            if (samplesProvided > 0)
+            {
+                Interlocked.Add(ref _playedFrames, samplesProvided); // mono frames taken from the queue
+            }
 
             // Mark when first audio sample is actually output
             // This is the TRUE perceived latency moment - when user actually hears audio

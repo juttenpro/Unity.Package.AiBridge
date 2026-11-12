@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.27.0] - 2026-11-12
+
+### Added
+- **`StreamingAudioPlayer` makes its queued audio readable ahead of playback**, for a lipsync model that needs each
+  utterance's audio some 100 ms before it is heard. The queue itself is unchanged (priming 250 ms, then the adaptive
+  buffer); nothing is added to it, and the package still has no lipsync types.
+  - `SampleRate`: the current stream's rate (the queue holds mono samples at this rate).
+  - `StreamStarted(int sampleRate)`: main thread, at the end of `StartStream`, and again from
+    `ResumePlaybackForLateChunks` when late chunks reopen an utterance that was closed.
+  - `AudioQueued(float[] samples)`: raised by `AddAudioData` after the samples are queued, on the caller's thread (the
+    main thread). It passes the caller's array; a listener that keeps samples copies them before it returns.
+  - `StreamEnded(bool wasInterrupted)`: main thread, once per `StreamStarted`, from every stop path (natural end,
+    interruption, a new `StartStream` over an open stream, shutdown).
+  - `PlayedFrames`: mono frames taken from the queue by the audio callback since the last `StartStream` (not output
+    samples: a stereo output counts each frame once). Kept with `Interlocked` on the audio thread, no allocation;
+    stands still while paused and during an underrun.
+- `StreamingAudioPlayerAheadOfPlaybackTests` (EditMode, 13): event order, sample counts, stereo output, underrun,
+  pause, late-chunk reopen, one end per start, a listener writing into its array, and no allocation in
+  `FillAudioBuffer`.
+
 ## [5.26.0] - 2026-11-11
 
 ### Added
