@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.27.1] - 2026-11-13
+
+### Fixed
+- **A token request that never reached the server is repeated once, after 2 s.** `JwtAuthenticationService` treated a
+  first DNS failure as final: "Cannot resolve destination host" ended in "Authentication failed", while Cloud Run shows
+  the same network getting a token 8 s later (Training Platform production report, Quest 3S, 2026-11-12). Only
+  `UnityWebRequest.Result.ConnectionError` is repeated; an answer from the server (401, any 4xx or 5xx) never is. The
+  first failure logs a warning; only a failed repeat reports the error, as before.
+- **Each token request times out after 15 s** (`JwtAuthenticationService.AttemptTimeoutSeconds`). Before, a request into
+  a network that drops packets never ended and so never got its repeat. Start-up now waits at most 2 x 15 s + 2 s for a
+  token.
+- `TokenRequestRetryTests` (EditMode): one repeat after 2 s when the server was not reached, none on a server answer,
+  no second repeat, no wait when the first request succeeds.
+
+The repeat helps when the network or DNS is not ready yet at start-up. It does not help when a firewall blocks the host.
+Known edge case: concurrent callers each send their own request. When one caller's repeat also fails after another
+caller already got a token, that caller still reports "Authentication failed".
+
 ## [5.27.0] - 2026-11-12
 
 ### Added

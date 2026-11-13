@@ -62,35 +62,28 @@ namespace Tsc.AIBridge.Auth
             
             //Debug.Log($"[AuthenticationService] Requesting new JWT token for user: {userId}");
             var fullUrl = $"{_baseUrl}{ApiEndpoints.AuthToken}";
-            
-            using var request = new UnityWebRequest(fullUrl, "POST");
-            var tokenRequest = new { userId, role };
-            var jsonBody = JsonConvert.SerializeObject(tokenRequest);
-            
-            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader(ApiEndpoints.ContentTypeHeader, ApiEndpoints.ContentTypeJson);
-            request.SetRequestHeader(ApiEndpoints.ApiKeyHeader, apiKey);
-            
-            var operation = request.SendWebRequest();
-            
-            while (!operation.isDone)
-            {
-                await Task.Yield();
-            }
-            
-            if (request.result != UnityWebRequest.Result.Success)
+            var jsonBody = JsonConvert.SerializeObject(new { userId, role });
+
+            var attempt = await TokenRequestRetry.SendAsync(
+                () => SendTokenRequestAsync(fullUrl, jsonBody, apiKey),
+                a => a.Result == UnityWebRequest.Result.ConnectionError,
+                a => Debug.LogWarning(
+                    $"[AuthenticationService] Token request did not reach the server ({a.Error}); " +
+                    $"trying once more in {TokenRequestRetry.RetryDelay.TotalSeconds:F0}s"),
+                Task.Delay);
+
+            if (attempt.Result != UnityWebRequest.Result.Success)
             {
                 var duration = (DateTime.Now - startTime).TotalMilliseconds;
                 UserErrorLogger.LogError(
                     "Authentication failed. Please check your connection and try again.",
-                    $"[AuthenticationService] Failed to get auth token after {duration:F0}ms: {request.error}");
+                    $"[AuthenticationService] Failed to get auth token after {duration:F0}ms: {attempt.Error}");
                 return null;
             }
-            
+
             try
             {
-                var response = JsonConvert.DeserializeObject<TokenResponse>(request.downloadHandler.text);
+                var response = JsonConvert.DeserializeObject<TokenResponse>(attempt.Text);
                 //var duration = (DateTime.Now - startTime).TotalMilliseconds;
                 //Debug.Log($"[AuthenticationService] Successfully obtained auth token for user: {userId} ({duration:F0}ms)");
                 
@@ -113,6 +106,46 @@ namespace Tsc.AIBridge.Auth
             }
         }
         
+        /// <summary>
+        /// Seconds one token request may take. Without it a request into a network that drops packets never ends, and
+        /// never gets its one repeat. With the repeat, start-up waits at most 2 x 15 s + 2 s for a token.
+        /// </summary>
+        internal const int AttemptTimeoutSeconds = 15;
+
+        private static async Task<TokenAttempt> SendTokenRequestAsync(string fullUrl, string jsonBody, string apiKey)
+        {
+            using var request = new UnityWebRequest(fullUrl, "POST");
+            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.timeout = AttemptTimeoutSeconds;
+            request.SetRequestHeader(ApiEndpoints.ContentTypeHeader, ApiEndpoints.ContentTypeJson);
+            request.SetRequestHeader(ApiEndpoints.ApiKeyHeader, apiKey);
+
+            var operation = request.SendWebRequest();
+
+            while (!operation.isDone)
+            {
+                await Task.Yield();
+            }
+
+            // Read everything before the request is disposed.
+            return new TokenAttempt(request.result, request.error, request.downloadHandler?.text);
+        }
+
+        private readonly struct TokenAttempt
+        {
+            public readonly UnityWebRequest.Result Result;
+            public readonly string Error;
+            public readonly string Text;
+
+            public TokenAttempt(UnityWebRequest.Result result, string error, string text)
+            {
+                Result = result;
+                Error = error;
+                Text = text;
+            }
+        }
+
         [Serializable]
         private class TokenResponse
         {
