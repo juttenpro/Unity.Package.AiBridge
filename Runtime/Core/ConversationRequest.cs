@@ -87,6 +87,12 @@ namespace Tsc.AIBridge.Core
         /// </summary>
         public Messages.LlmFallbackConfig LlmFallback { get; set; }
 
+        /// <summary>
+        /// The persona's listener reactions (DA3): nods and short "uhu"s while the player holds the button and pauses.
+        /// Null = none. Carried verbatim into <see cref="Messages.SessionStartMessage.ListenerReactions"/>.
+        /// </summary>
+        public Messages.ListenerReactionSet ListenerReactions { get; set; }
+
         public string VoiceId { get; set; }  // TTS voice identifier
 
         /// <summary>

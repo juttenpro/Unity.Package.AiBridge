@@ -752,6 +752,26 @@ namespace Tsc.AIBridge.WebSocket
                 });
         }
 
+        /// <summary>
+        /// Asks the backend for a listener reaction (DA3) for the turn <paramref name="requestId"/>, while the player holds
+        /// the talk button and pauses. Like telemetry it must never disturb the turn: it never opens a connection and never
+        /// throws on sending (false when not sent). The answer, if any, arrives as NpcClientBase.OnListenerReaction.
+        /// </summary>
+        public virtual Task<bool> SendListenerReactionRequestAsync(string requestId)
+        {
+            if (string.IsNullOrEmpty(requestId)) throw new ArgumentException("A listener reaction belongs to a turn.", nameof(requestId));
+            var webSocket = _webSocket;
+            var message = new ListenerReactionRequestMessage { RequestId = requestId };
+            return SendTelemetryAsync(
+                () => webSocket != null && webSocket.IsConnected,
+                () => webSocket.SendJsonAsync(message),
+                e =>
+                {
+                    if (enableVerboseLogging)
+                        Debug.Log($"[UnifiedWebSocket] ListenerReactionRequest for RequestId {requestId} not sent: {e.GetType().Name}");
+                });
+        }
+
         /// <summary>The send path of telemetry: only when already connected, and every failure becomes false.</summary>
         internal static async Task<bool> SendTelemetryAsync(Func<bool> isConnected, Func<Task> send, Action<Exception> failed)
         {

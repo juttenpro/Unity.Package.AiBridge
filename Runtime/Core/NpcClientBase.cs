@@ -238,6 +238,9 @@ namespace Tsc.AIBridge.Core
             // placeholder belongs in the client where ChatHistory lives.
             _metadataHandler.OnLlmEmptyResponse += HandleLlmEmptyResponse;
 
+            // Listener reactions (DA3): forwarded as-is; playing them (and refusing after release) is the client's job.
+            _metadataHandler.OnListenerReaction += HandleListenerReaction;
+
             // Subscribe to SessionStarted event and forward to public OnSessionStarted event
             _metadataHandler.OnSessionStarted += () =>
             {
@@ -388,6 +391,8 @@ namespace Tsc.AIBridge.Core
             OnLlmEmptyResponse?.Invoke(message);
         }
 
+        private void HandleListenerReaction(Messages.ListenerReactionMessage message) => OnListenerReaction?.Invoke(message);
+
         protected abstract void ValidateConfiguration();
 
         protected virtual void OnDestroy()
@@ -398,6 +403,7 @@ namespace Tsc.AIBridge.Core
                 _metadataHandler.OnTranscription -= HandleTranscription;
                 _metadataHandler.OnNoTranscript -= HandleSttFailed;
                 _metadataHandler.OnLlmEmptyResponse -= HandleLlmEmptyResponse;
+                _metadataHandler.OnListenerReaction -= HandleListenerReaction;
                 // Note: OnSessionStarted and OnAIResponse use lambdas, automatically cleaned up when _metadataHandler is disposed
                 // Note: AudioStreamEnd handler removed - stream end now detected via AudioPlayer events
             }
@@ -457,6 +463,12 @@ namespace Tsc.AIBridge.Core
         /// the human-readable <c>Reason</c> field. Added v1.18.0.
         /// </remarks>
         public event Action<Messages.LlmEmptyResponseMessage> OnLlmEmptyResponse;
+
+        /// <summary>
+        /// The backend chose a listener reaction (DA3) while the player held the talk button and paused. One that arrives
+        /// after the release must not be played: it would land on the NPC's answer.
+        /// </summary>
+        public event Action<Messages.ListenerReactionMessage> OnListenerReaction;
 
         /// <summary>
         /// Event fired when conversation starts

@@ -46,6 +46,9 @@ namespace Tsc.AIBridge.WebSocket
         /// </summary>
         public event Action<LlmEmptyResponseMessage> OnLlmEmptyResponse;
 
+        /// <summary>The backend chose a listener reaction (DA3) for this NPC's turn.</summary>
+        public event Action<ListenerReactionMessage> OnListenerReaction;
+
         public event Action<BufferHintMessage> OnBufferHint;
         public event Action<SentenceMetadataMessage> OnSentenceMetadata;
         /// <summary>
@@ -393,6 +396,14 @@ namespace Tsc.AIBridge.WebSocket
                     }
                     break;
                     
+                case WebSocketMessageTypes.ListenerReaction:
+                    var listenerReaction = JsonConvert.DeserializeObject<ListenerReactionMessage>(json);
+                    if (listenerReaction != null)
+                        OnListenerReaction?.Invoke(listenerReaction);
+                    else
+                        Debug.LogError($"[{_personaName}] Failed to deserialize ListenerReaction message: {ConversationContentLogging.Content(json)}");
+                    break;
+
                 case WebSocketMessageTypes.BufferHint:
                 case "bufferHint": // Backend sends lowercase "bufferHint"
                     var bufferHintMsg = JsonConvert.DeserializeObject<BufferHintMessage>(json);

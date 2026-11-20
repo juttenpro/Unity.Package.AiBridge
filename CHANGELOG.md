@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.28.0] - 2026-11-20
+
+### Added
+- **Listener reactions (DA3): the NPC can nod or say "uhu" while the player holds the talk button and pauses.** Wire
+  side only; the client plays them. Matches ApiOrchestrator d319a03 (deployed 2026-11-20).
+  - `ListenerReactionSet` / `ListenerReactionOption` (scene, minConfidence, options with id, description, clipText).
+    `ConversationRequest.ListenerReactions` goes onto `SessionStartMessage.ListenerReactions` (`listenerReactions`),
+    omitted when null: personas without a set send nothing new.
+  - `WebSocketClient.SendListenerReactionRequestAsync(requestId)`: asks per pause. Never opens a connection and never
+    throws on sending (false when not sent), like the turn telemetry.
+  - `ListenerReactionMessage` (`reactionId`, `confidence`) routed to `ConversationMetadataHandler.OnListenerReaction`
+    and forwarded as `NpcClientBase.OnListenerReaction`. One that arrives after the button is released must not be
+    played; that check belongs to the client.
+- `ListenerReactionTests` (EditMode): wire shape against the backend, routing, no connection attempt from a request.
+
 ## [5.27.1] - 2026-11-13
 
 ### Fixed

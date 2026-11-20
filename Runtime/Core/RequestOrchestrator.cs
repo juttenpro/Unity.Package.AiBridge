@@ -2130,6 +2130,8 @@ namespace Tsc.AIBridge.Core
                     // Optional per-template dialogue-LLM fallback target. Null when the template
                     // configures none → omitted from the wire payload → backend wraps nothing.
                     LlmFallback = request.Request.LlmFallback,
+                    // Persona's listener reactions (DA3). Null → omitted from the wire → the backend chooses none.
+                    ListenerReactions = request.Request.ListenerReactions,
                     // STT settings
                     SttProvider = parameters.SttProvider,
                     LanguageCode = parameters.Language,  // Note: field is called LanguageCode, not Language

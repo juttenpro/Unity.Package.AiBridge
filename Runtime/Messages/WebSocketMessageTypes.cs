@@ -17,6 +17,7 @@ namespace Tsc.AIBridge.Messages
         public const string InterruptionOccurred = "InterruptionOccurred"; // User interrupted NPC - stop TTS but keep LLM for metadata
         public const string SessionCancel = "SessionCancel"; // Emergency cancel - stop everything (crash, scene switch)
         public const string ClientTurnMetrics = "clientTurnMetrics"; // Telemetry per listen, fire-and-forget: never answered
+        public const string ListenerReactionRequest = "ListenerReactionRequest"; // DA3: the player paused while holding the button
 
         // Server -> Client messages
         public const string ConnectionEstablished = "ConnectionEstablished";
@@ -39,6 +40,7 @@ namespace Tsc.AIBridge.Messages
         public const string NoTranscript = "NoTranscript";
         public const string BufferHint = "BufferHint";
         public const string LatencyMetrics = "LatencyMetrics";
+        public const string ListenerReaction = "ListenerReaction"; // DA3: play this nod/"uhu" now, if the button is still held
         public const string SentenceMetadata = "SentenceMetadata"; // Real-time character animation metadata
         public const string ConversationComplete = "conversationComplete"; // Lowercase per protocol
 

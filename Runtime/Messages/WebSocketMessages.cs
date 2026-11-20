@@ -267,6 +267,13 @@ namespace Tsc.AIBridge.Messages
         public LlmFallbackConfig LlmFallback { get; set; }
 
         /// <summary>
+        /// The persona's listener reactions (DA3). Omitted when null, so personas without a set and older backends see
+        /// no change. Set via ConversationRequest.ListenerReactions → RequestOrchestrator.
+        /// </summary>
+        [JsonProperty("listenerReactions", NullValueHandling = NullValueHandling.Ignore)]
+        public ListenerReactionSet ListenerReactions { get; set; }
+
+        /// <summary>
         /// Temperature for LLM response generation (0.0 - 1.0)
         /// </summary>
         [JsonProperty("temperature")]
@@ -418,6 +425,35 @@ namespace Tsc.AIBridge.Messages
         NoSpeech,
         Error,
         Stopped,
+    }
+
+    /// <summary>
+    /// Client → server (DA3): the player paused while holding the talk button; the backend may answer with a
+    /// <see cref="ListenerReactionMessage"/>, or stay silent. Only the turn id: the backend reads what was said itself.
+    /// </summary>
+    [Serializable]
+    public class ListenerReactionRequestMessage : WebSocketMessageBase
+    {
+        public ListenerReactionRequestMessage()
+        {
+            Type = WebSocketMessageTypes.ListenerReactionRequest;
+        }
+    }
+
+    /// <summary>
+    /// Server → client (DA3): play this listener reaction now. The backend drops it once the button is released, but one
+    /// in flight can still arrive just after: the client checks that the player still holds the button.
+    /// </summary>
+    [Serializable]
+    public class ListenerReactionMessage : WebSocketMessageBase
+    {
+        /// <summary>The <see cref="ListenerReactionOption.Id"/> to play.</summary>
+        [JsonProperty("reactionId")]
+        public string ReactionId;
+
+        /// <summary>The model's probability for this choice (0..1), already above the set's threshold.</summary>
+        [JsonProperty("confidence")]
+        public double Confidence;
     }
 
     /// <summary>
