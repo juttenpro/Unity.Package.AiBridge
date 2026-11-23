@@ -757,6 +757,7 @@ namespace Tsc.AIBridge.WebSocket
         /// the talk button and pauses. Like telemetry it must never disturb the turn: it never opens a connection and never
         /// throws on sending (false when not sent). The answer, if any, arrives as NpcClientBase.OnListenerReaction.
         /// </summary>
+        [Obsolete("DA3b: the backend picks the moment itself (every ~6 words) and ignores this request. Remove the call; the method goes in a later minor.")]
         public virtual Task<bool> SendListenerReactionRequestAsync(string requestId)
         {
             if (string.IsNullOrEmpty(requestId)) throw new ArgumentException("A listener reaction belongs to a turn.", nameof(requestId));

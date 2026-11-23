@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.29.0] - 2026-11-23
+
+### Added
+- **Listener reactions DA3b: everything that steers the choice is content in the set.** Matches ApiOrchestrator 5ec7bbb
+  (deployed 2026-11-23), where the backend now picks the moment itself (every ~6 words of the turn).
+  - `ListenerReactionSet.Instruction` (`instruction`), `NoneDescription` (`noneDescription`), `MinSecondsBetween`
+    (`minSecondsBetween`); `ListenerReactionOption.MinConfidence` (`minConfidence`). All omitted when null: the backend
+    then uses its neutral defaults.
+
+### Deprecated
+- `WebSocketClient.SendListenerReactionRequestAsync`: the backend ignores the pause request since 5ec7bbb. Kept (obsolete,
+  a warning) so the TP client of 5.28 still compiles; removed in a later minor once the TP client stops calling it.
+
 ## [5.28.0] - 2026-11-20
 
 ### Added

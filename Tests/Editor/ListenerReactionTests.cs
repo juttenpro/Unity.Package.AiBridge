@@ -73,6 +73,40 @@ namespace Tsc.AIBridge.Tests.Editor
         }
 
         [Test]
+        public void SessionStart_carries_the_DA3b_content_fields_in_the_backend_shape()
+        {
+            var set = RecruiterSet();
+            set.Instruction = "Welke reactie past nu bij een luisteraar?";
+            set.NoneDescription = "Geen reactie: niets nieuws.";
+            set.MinSecondsBetween = 1.5;
+            set.Options[1].MinConfidence = 0.75;
+
+            var json = (JObject)JObject.Parse(JsonConvert.SerializeObject(new SessionStartMessage { ListenerReactions = set }))["listenerReactions"];
+
+            // DA3b (ApiOrchestrator 5ec7bbb): everything that steers the choice is content. A key the backend does not
+            // know is silently ignored there, and the backend's neutral default is used instead of the creator's text.
+            Assert.That((string)json["instruction"], Is.EqualTo("Welke reactie past nu bij een luisteraar?"),
+                "The set's question never reached the backend: the creator's wording is ignored.");
+            Assert.That((string)json["noneDescription"], Is.EqualTo("Geen reactie: niets nieuws."),
+                "The set's none-text never reached the backend: the NPC reacts by the backend's default, not the content.");
+            Assert.That((double)json["minSecondsBetween"], Is.EqualTo(1.5), "The set's gap never reached the backend.");
+            Assert.That((double)json["options"][1]["minConfidence"], Is.EqualTo(0.75),
+                "An option's own threshold never reached the backend: a wrong 'huh?' plays at the set's lower threshold.");
+        }
+
+        [Test]
+        public void Empty_DA3b_fields_are_left_out_so_the_backend_uses_its_defaults()
+        {
+            var json = (JObject)JObject.Parse(JsonConvert.SerializeObject(new SessionStartMessage { ListenerReactions = RecruiterSet() }))["listenerReactions"];
+
+            Assert.That(json.ContainsKey("instruction"), Is.False, "An empty question went out as a value instead of the backend default.");
+            Assert.That(json.ContainsKey("noneDescription"), Is.False, "An empty none-text went out as a value instead of the backend default.");
+            Assert.That(json.ContainsKey("minSecondsBetween"), Is.False, "An unset gap went out as a value instead of the backend default.");
+            Assert.That(((JObject)json["options"][0]).ContainsKey("minConfidence"), Is.False,
+                "An option without its own threshold sent one: the set's threshold no longer applies to it.");
+        }
+
+        [Test]
         public void The_request_names_the_turn_and_carries_nothing_else()
         {
             var json = JObject.Parse(JsonConvert.SerializeObject(new ListenerReactionRequestMessage { RequestId = "turn-7" }));
