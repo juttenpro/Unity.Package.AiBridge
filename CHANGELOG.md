@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.29.1] - 2026-11-24
+
+### Fixed
+- **A connection attempt that is cut off because the client is destroyed is no longer reported as an error.** `WebSocketClient` connects as soon as it starts; leaving the scene while that attempt was still connecting destroyed the client, and `EnsureConnectionAsync` then logged `[UserError:Connection lost. Please try again.] [Recoverable] ...` with `Debug.LogError`. In the Training Platform that went to Oops (non-fatal, no popup) as noise for normal behavior, and in a Unity test it is an unhandled error that fails whichever test is running (Assistant Platform Play test, 24-11). `WebSocketClient` now has an `_isDestroyed` flag, set first thing in `OnDestroy` (so also on application quit), and all 24 reports of a connection failure go through `ReportConnectionFailure`: a warning once the client is destroyed, unchanged (the Recoverable error) while it lives. Authentication and URL failures are untouched.
+- `OnDestroy` disposes the connection semaphore while an attempt can still hold it; the `Release` in the `finally` of `EnsureConnectionAsync` then threw `ObjectDisposedException` into the task. It is now ignored when the client is destroyed (and only then).
+- Tests (`Tests/Runtime/WebSocketClientTeardownTests`): a pending connect (a local server that never answers the handshake) cut off by destroying the client reports a warning and no error; the task does not throw; a connection that fails while the client lives still logs the Recoverable error.
+
 ## [5.29.0] - 2026-11-23
 
 ### Added
